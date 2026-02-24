@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Site = { id: string; name: string; is_pending?: boolean };
 type TripRow = {
@@ -316,7 +317,7 @@ export default function TripsPage() {
             </div>
             {openTrip?.start_time && (
               <div className="mt-2 text-xs text-neutral-600">
-                Start: {openTrip.start_time.slice(0, 16).replace("T", " ")}
+                Start: {fmtDateTimeCZFromIso(openTrip.start_time)}
               </div>
             )}
           </div>

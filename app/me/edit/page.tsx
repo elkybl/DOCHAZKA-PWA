@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   id: string;
@@ -142,7 +143,7 @@ export default function Page() {
               <div>
                 <div className="text-sm font-semibold">
                   {r.type === "OUT" ? "Odchod" : "Mimo stavbu"} •{" "}
-                  {r.server_time.slice(0, 16).replace("T", " ")}
+                  {fmtDateTimeCZFromIso(r.server_time)}
                 </div>
                 <div className="mt-1 text-xs text-neutral-600">Stavba: {r.site_name || "—"}</div>
               </div>

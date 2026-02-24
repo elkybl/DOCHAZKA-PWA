@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   id: string;
@@ -94,7 +95,7 @@ export default function CloseRequestsAdminPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo schválit.");
 
-      setInfo(`Schváleno. OUT uložen na ${data?.out_time ? String(data.out_time).slice(0, 16).replace("T", " ") : out_time}.`);
+      setInfo(`Schváleno. OUT uložen na ${data?.out_time ? fmtDateTimeCZFromIso(String(data.out_time)) : out_time}.`);
       await load();
     } catch (e: any) {
       setErr(e.message || "Chyba");
@@ -164,8 +165,7 @@ export default function CloseRequestsAdminPage() {
                   {r.user_name} • {r.site_name || "—"}
                 </div>
                 <div className="mt-1 text-xs text-neutral-600">
-                  Příchod: {r.in_time.slice(0, 16).replace("T", " ")} • Žádost:{" "}
-                  {r.requested_at.slice(0, 16).replace("T", " ")}
+                  Příchod: {fmtDateTimeCZFromIso(r.in_time)} • Žádost: {fmtDateTimeCZFromIso(r.requested_at)}
                 </div>
               </div>
 

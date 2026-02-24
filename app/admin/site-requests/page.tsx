@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   id: string;
@@ -191,7 +192,7 @@ export default function SiteRequestsAdminPage() {
               <div>
                 <div className="text-sm font-semibold text-neutral-900">{r.name}</div>
                 <div className="mt-1 text-xs text-neutral-600">
-                  Založil: {r.created_by_name} • {String(r.created_at || "").slice(0, 16).replace("T", " ")}
+                  Založil: {r.created_by_name} • {fmtDateTimeCZFromIso(String(r.created_at || ""))}
                 </div>
                 <div className="mt-1 text-xs text-neutral-600">
                   Mapy:{" "}

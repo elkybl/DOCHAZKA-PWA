@@ -2,32 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-
-function parseReportedLeftAt(reported: string | null, inTimeIso: string) {
-  const now = new Date();
-  const inTime = new Date(inTimeIso);
-
-  if (!reported || !reported.trim()) return now;
-  const s = reported.trim();
-
-  // 1) ISO nebo libovolný formát, co Date umí parse
-  const tryFull = new Date(s);
-  if (!Number.isNaN(tryFull.getTime())) return tryFull;
-
-  // 2) HH:MM
-  const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (m) {
-    const hh = Number(m[1]);
-    const mm = Number(m[2]);
-    if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
-      const d = new Date(inTime);
-      d.setHours(hh, mm, 0, 0);
-      return d;
-    }
-  }
-
-  return now;
-}
+import { dayLocalCZFromIso, parseReportedLeftAtCZ, roundToHalfHourCZ } from "@/lib/time";
 
 function clampOutTime(out: Date, inTimeIso: string) {
   const now = new Date();
@@ -74,7 +49,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const override = typeof body?.out_time === "string" ? body.out_time : null;
   const src = override || (reqRow.reported_left_at ?? null);
 
-  let outTime = parseReportedLeftAt(src, reqRow.in_time);
+  // Parse in Europe/Prague local time, then round to nearest 30 minutes.
+  let outTime = parseReportedLeftAtCZ(src, reqRow.in_time);
+  outTime = roundToHalfHourCZ(outTime);
   outTime = clampOutTime(outTime, reqRow.in_time);
 
   // vytvoř OUT event s tímto časem
@@ -83,6 +60,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     site_id: reqRow.site_id,
     type: "OUT",
     server_time: outTime.toISOString(),
+    day_local: dayLocalCZFromIso(outTime.toISOString()),
 
     note_work: reqRow.note_work ?? null,
     km: reqRow.km ?? null,

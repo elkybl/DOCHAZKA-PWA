@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type PendingSite = {
   id: string;
@@ -162,7 +163,7 @@ export default function PendingSitesPage() {
                   {s.radius_m ? `• radius ${s.radius_m} m` : ""}
                 </div>
                 <div className="mt-1 text-[11px] text-neutral-500">
-                  {s.created_at ? `Vytvořeno: ${s.created_at.slice(0, 16).replace("T", " ")}` : ""}
+                  {s.created_at ? `Vytvořeno: ${fmtDateTimeCZFromIso(s.created_at)}` : ""}
                   {s.created_by_name ? ` • od: ${s.created_by_name}` : ""}
                 </div>
               </div>

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZNow } from "@/lib/time";
+import { dayLocalCZFromIso, roundToHalfHourCZ } from "@/lib/time";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -78,14 +78,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const nowIso = new Date().toISOString();
+  const rounded = roundToHalfHourCZ(new Date());
+  const nowIso = rounded.toISOString();
 
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,
     site_id,
     type: "OUT",
     server_time: nowIso,
-    day_local: dayLocalCZNow(),
+    day_local: dayLocalCZFromIso(nowIso),
 
     lat,
     lng,

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Site = {
   id: string;
@@ -439,7 +440,7 @@ export default function AttendancePage() {
             <div className="mt-1 text-xl font-semibold text-neutral-900">{user?.name || "—"}</div>
             {status === "IN" && openInTime && (
               <div className="mt-1 text-xs text-neutral-600">
-                Otevřená směna od: {openInTime.slice(0, 16).replace("T", " ")}
+                Otevřená směna od: {fmtDateTimeCZFromIso(openInTime)}
               </div>
             )}
           </div>

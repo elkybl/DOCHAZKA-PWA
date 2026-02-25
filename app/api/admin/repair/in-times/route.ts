@@ -12,9 +12,11 @@ function dayLocalPrague(d: Date) {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(d);
-  const o: any = {};
+
+  const o: Record<string, string> = {};
   for (const p of parts) o[p.type] = p.value;
-	return `${o.year}-${o.month}-${o.day}`;
+
+  return `${o.year}-${o.month}-${o.day}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
   const to = new Date();
   const from = new Date(Date.now() - days * 86400000);
 
-  // 1) načti IN eventy za období
+  // 1) IN eventy
   const { data: ins, error: inErr } = await db
     .from("attendance_events")
     .select("id,user_id,site_id,server_time,type")
@@ -39,44 +41,41 @@ export async function POST(req: NextRequest) {
 
   if (inErr) return json({ error: "DB chyba (IN)." }, { status: 500 });
 
-  const inEvents = (ins || []) as any[];
-
-  // 2) načti close requests za období (tvoje tabulka)
+  // 2) close requests (u vás obsahuje správné in_time)
   const { data: reqs, error: rErr } = await db
     .from("attendance_close_requests")
-    .select("id,user_id,site_id,in_time,reported_left_at,status")
+    .select("id,user_id,site_id,in_time")
     .gte("in_time", from.toISOString())
     .lte("in_time", to.toISOString());
 
   if (rErr) return json({ error: "DB chyba (requests)." }, { status: 500 });
 
-  const requests = (reqs || []) as any[];
-
-  // map (user_id + site_id + day_local) -> in_time
+  // map: user__site__day -> in_time
   const reqMap = new Map<string, string>();
-  for (const r of requests) {
-    if (!r.user_id || !r.site_id || !r.in_time) continue;
+  for (const r of (reqs || []) as any[]) {
+    if (!r?.user_id || !r?.site_id || !r?.in_time) continue;
     const day = dayLocalPrague(new Date(r.in_time));
     reqMap.set(`${r.user_id}__${r.site_id}__${day}`, r.in_time);
-
   }
 
   let scanned = 0;
   let fixed = 0;
   const fixedIds: string[] = [];
 
-  for (const e of inEvents) {
+  for (const e of (ins || []) as any[]) {
     scanned++;
-    if (!e.user_id || !e.site_id || !e.server_time) continue;
+    if (!e?.id || !e?.user_id || !e?.site_id || !e?.server_time) continue;
 
     const day = dayLocalPrague(new Date(e.server_time));
-    const key = $`${r.user_id}__${r.site_id}__${day}`};
+    const key = `${e.user_id}__${e.site_id}__${day}`;
     const reqIn = reqMap.get(key);
     if (!reqIn) continue;
 
-    const diffSec = Math.abs((new Date(e.server_time).getTime() - new Date(reqIn).getTime()) / 1000);
+    const diffSec = Math.abs(
+      (new Date(e.server_time).getTime() - new Date(reqIn).getTime()) / 1000
+    );
 
-    // jen když je rozdíl ~ 1h (3500–3700 s)
+    // jen když je rozdíl ~ 1 hodina (3500–3700 sekund)
     if (diffSec < 3500 || diffSec > 3700) continue;
 
     const { error: upErr } = await db

@@ -14,7 +14,7 @@ function dayLocalPrague(d: Date) {
   }).formatToParts(d);
   const o: any = {};
   for (const p of parts) o[p.type] = p.value;
-  return ${o.year}-${o.month}-${o.day};
+	return `${o.year}-${o.month}-${o.day}`;
 }
 
 export async function POST(req: NextRequest) {

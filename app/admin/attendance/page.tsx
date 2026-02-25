@@ -3,443 +3,315 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fmtTimeCZFromIso } from "@/lib/time";
+import { Card, SubCard, MenuLink, Pill, Button } from "@/app/components/ui";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
-type Seg = {
-  kind: "WORK";
-  site_id: string | null;
-  site_name: string | null;
-  in_time: string;
-  out_time: string;
-  minutes: number;
-  hours: number;
-  hourly_rate: number;
-  rate_source: "site" | "default";
-  pay: number;
-  note_work: string | null;
-};
-
-type Off = {
-  kind: "OFFSITE";
-  site_id: string | null;
-  site_name: string | null;
-  reason: string;
-  hours: number;
-  hourly_rate: number;
-  rate_source: "site" | "default";
-  pay: number;
-};
-
-type Row = {
-  user_id: string;
-  user_name: string;
-  day: string;
-
-  first_in: string | null;
-  last_out: string | null;
-
-  sites: string[];
-  work_notes: string[];
-  material_notes: string[];
-
-  segments: Seg[];
-  offsites: Off[];
-
-  hours: number;
-  hourly_avg: number;
-  hours_pay: number;
-
-  km: number;
-  km_avg: number;
-  km_pay: number;
-
-  material: number;
-  total: number;
-
-  paid: boolean;
-};
+type Site = { id: string; name: string };
+type User = { id: string; name: string; role: "admin" | "worker" };
 
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
 }
-
-function fmt(n: any) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "0";
-  return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
+function getUser(): User | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("user");
+  return raw ? JSON.parse(raw) : null;
+}
+function cx(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
 }
 
-function timeHM(iso: string | null) {
-  if (!iso) return "—";
-  return fmtTimeCZFromIso(iso);
-}
+type DayRow = {
+  user_id: string;
+  user_name: string;
+  day: string;
+  sites: string[];
+  hours: number;
+  hours_pay: number;
+  km: number;
+  km_pay: number;
+  material: number;
+  total: number;
+  paid: boolean;
+};
 
-function mapLink(siteName: string) {
-  const q = encodeURIComponent(siteName);
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
-}
+type EventRow = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  site_id: string | null;
+  site_name: string | null;
+  type: "IN" | "OUT" | "OFFSITE";
+  server_time: string;
+  note_work: string | null;
+  km: number | null;
+  offsite_reason: string | null;
+  offsite_hours: number | null;
+  material_desc: string | null;
+  material_amount: number | null;
+  is_paid: boolean;
+};
 
-export default function Page() {
+export default function AdminAttendancePage() {
   const router = useRouter();
-  const [rows, setRows] = useState<Row[]>([]);
+  const me = useMemo(() => getUser(), []);
+
+  const [tab, setTab] = useState<"days" | "events">("days");
+
+  const [sites, setSites] = useState<Site[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
+  const [siteId, setSiteId] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
+  const [from, setFrom] = useState<string>("");
+  const [to, setTo] = useState<string>("");
+
+  const [daysRows, setDaysRows] = useState<DayRow[]>([]);
+  const [eventRows, setEventRows] = useState<EventRow[]>([]);
+
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const [from, setFrom] = useState(() =>
-    new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)
-  );
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    const t = getToken();
+    if (!t) {
+      router.push("/login");
+      return;
+    }
+    if (me?.role !== "admin") {
+      router.push("/attendance");
+      return;
+    }
 
-  const token = useMemo(() => getToken(), []);
+    // preload filters
+    fetch("/api/admin/sites", { headers: { authorization: `Bearer ${t}` } })
+      .then((r) => r.json())
+      .then((d) => setSites(d.sites || []))
+      .catch(() => setSites([]));
+
+    fetch("/api/admin/users", { headers: { authorization: `Bearer ${t}` } })
+      .then((r) => r.json())
+      .then((d) => setUsers(d.users || []))
+      .catch(() => setUsers([]));
+
+    // default range: last 14 days
+    const now = new Date();
+    const fromD = new Date(Date.now() - 14 * 86400000);
+    setFrom(fromD.toISOString().slice(0, 10));
+    setTo(now.toISOString().slice(0, 10));
+  }, [router, me?.role]);
 
   async function load() {
     setErr(null);
     setInfo(null);
+    const t = getToken();
+    if (!t) return;
 
-    if (!token) {
-      router.push("/login");
+    const qs = new URLSearchParams();
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+
+    if (tab === "days") {
+      const res = await fetch(`/api/admin/attendance?${qs.toString()}`, {
+        headers: { authorization: `Bearer ${t}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return setErr(data?.error || "Chyba");
+
+      let rows: DayRow[] = data.rows || [];
+      if (siteId) rows = rows.filter((r) => (r.sites || []).includes(siteId));
+      if (userId) rows = rows.filter((r) => r.user_id === userId);
+
+      setDaysRows(rows);
       return;
     }
 
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/admin/payouts?from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`,
-        { headers: { authorization: `Bearer ${token}` } }
-      );
+    // events tab
+    if (siteId) qs.set("site_id", siteId);
+    if (userId) qs.set("user_id", userId);
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Chyba");
-      setRows(data.rows || []);
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function pay(user_id: string, day: string) {
-    setErr(null);
-    setInfo(null);
-    if (!token) return;
-
-    try {
-      const res = await fetch("/api/admin/pay", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id, day }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo označit jako zaplaceno.");
-
-      setInfo("Označeno jako zaplaceno.");
-      await load();
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
-    }
-  }
-
-  async function deleteDay(user_id: string, day: string, user_name: string) {
-    setErr(null);
-    setInfo(null);
-    if (!token) return;
-
-    const ok = confirm(
-      `FAKT smazat celý den docházky?\n\n${user_name} – ${day}\n\nSmaže to IN/OUT/OFFSITE záznamy.`
-    );
-    if (!ok) return;
-
-    try {
-      const res = await fetch("/api/admin/attendance/delete-day", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id, day }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo smazat.");
-
-      setInfo(`Smazáno: ${user_name} – ${day}`);
-      await load();
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
-    }
+    const res = await fetch(`/api/admin/events?${qs.toString()}`, {
+      headers: { authorization: `Bearer ${t}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setErr(data?.error || "Chyba");
+    setEventRows(data.rows || []);
   }
 
   useEffect(() => {
-    load();
+    // load when tab or filters change
+    load().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tab, siteId, userId, from, to]);
 
-  const byDay = useMemo(() => {
-    const m = new Map<string, Row[]>();
-    for (const r of rows) m.set(r.day, [...(m.get(r.day) || []), r]);
-    const days = Array.from(m.keys()).sort((a, b) => (a < b ? 1 : -1));
-    return { map: m, days };
-  }, [rows]);
+  async function delEvent(id: string) {
+    setErr(null);
+    setInfo(null);
+    const t = getToken();
+    if (!t) return;
+
+    setBusy(id);
+    try {
+      const res = await fetch(`/api/admin/events/${id}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${t}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo smazat.");
+      setInfo("Záznam smazán.");
+      await load();
+    } catch (e: any) {
+      setErr(e.message || "Chyba");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
-    <main className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Admin docházka (detail)</h1>
-          <div className="mt-1 text-xs text-neutral-500">
-            Rozpis po dnech: intervaly IN→OUT, mimo stavbu, sazby a částky. Stavby mažeš ve{" "}
-            <Link className="underline" href="/admin/sites">
-              Správa staveb
-            </Link>
-            .
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin/payments">
-            Vyplácení
-          </Link>
-          <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin/sites">
-            Stavby
-          </Link>
-          <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">
-            Admin
-          </Link>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
+    <main className="space-y-4 px-3">
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <label className="block text-sm text-neutral-700">Od</label>
-            <input
-              className="mt-1 rounded-xl border px-3 py-2"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
+            <h1 className="text-lg font-semibold">Admin – Docházka</h1>
+            <p className="mt-1 text-xs text-neutral-500">
+              Přehled po dnech (výplaty) a detailní záznamy (mazání/editace).
+            </p>
           </div>
-
-          <div>
-            <label className="block text-sm text-neutral-700">Do</label>
-            <input
-              className="mt-1 rounded-xl border px-3 py-2"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-            />
-          </div>
-
-          <button
-            onClick={load}
-            disabled={loading}
-            className="rounded-xl bg-black px-4 py-3 text-sm text-white disabled:opacity-50"
-          >
-            {loading ? "Načítám…" : "Načíst"}
-          </button>
+          <Link className="text-sm underline" href="/admin">
+            Zpět do adminu
+          </Link>
         </div>
 
-        {err && <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-        {info && <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
-      </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <Button variant={tab === "days" ? "primary" : "secondary"} onClick={() => setTab("days")}>
+            Souhrn po dnech
+          </Button>
+          <Button variant={tab === "events" ? "primary" : "secondary"} onClick={() => setTab("events")}>
+            Detailní záznamy
+          </Button>
+        </div>
 
-      {byDay.days.map((day) => {
-        const list = byDay.map.get(day) || [];
-        const totalDay = list.reduce((s, r) => s + (Number(r.total) || 0), 0);
-        const unpaidDay = list.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total) || 0), 0);
+        <SubCard>
+          <div className="text-sm font-semibold">Filtry</div>
 
-        return (
-          <section key={day} className="space-y-3">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-base font-semibold">{day}</h2>
-                <div className="text-xs text-neutral-500">
-                  Celkem: <b>{fmt(totalDay)} Kč</b> • Nezaplaceno: <b>{fmt(unpaidDay)} Kč</b>
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <div>
+              <label className="block text-xs text-neutral-600">Od</label>
+              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-600">Do</label>
+              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-600">Stavba</label>
+              <select className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                <option value="">Vše</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-600">Uživatel</label>
+              <select className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Všichni</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <Button variant="secondary" onClick={load}>Obnovit</Button>
+          </div>
+        </SubCard>
+
+        {err && <div className="mt-3 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
+        {info && <div className="mt-3 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
+      </Card>
+
+      {tab === "days" ? (
+        <div className="space-y-2">
+          {daysRows.map((r, i) => (
+            <Card key={i}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">{r.day} • {r.user_name}</div>
+                  <div className="mt-1 text-xs text-neutral-600">
+                    Stavby: {(r.sites || []).length ? (r.sites || []).join(", ") : "—"}
+                  </div>
+                </div>
+                <Pill tone={r.paid ? "ok" : "warn"}>{r.paid ? "Zaplaceno" : "Nezaplaceno"}</Pill>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-4 text-sm">
+                <div className="rounded-2xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Hodiny</div>
+                  <div className="font-semibold">{r.hours} h</div>
+                  <div className="text-xs text-neutral-600">{r.hours_pay} Kč</div>
+                </div>
+                <div className="rounded-2xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Km</div>
+                  <div className="font-semibold">{r.km} km</div>
+                  <div className="text-xs text-neutral-600">{r.km_pay} Kč</div>
+                </div>
+                <div className="rounded-2xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Materiál</div>
+                  <div className="font-semibold">{r.material} Kč</div>
+                </div>
+                <div className="rounded-2xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Celkem</div>
+                  <div className="font-semibold">{r.total} Kč</div>
                 </div>
               </div>
-            </div>
-
-            <div className="space-y-3">
-              {list.map((r) => (
-                <div key={`${r.user_id}_${r.day}`} className="rounded-2xl border bg-white p-5 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">{r.user_name}</div>
-                      <div className="mt-1 text-xs text-neutral-600">
-                        Časy: <b>{timeHM(r.first_in)}</b> → <b>{timeHM(r.last_out)}</b>{" "}
-                        <span className="text-neutral-400">•</span> Intervalů:{" "}
-                        <b>{r.segments?.length || 0}</b>
-                      </div>
-                      <div className="mt-1 text-xs text-neutral-600">
-                        Stavby: {r.sites?.length ? r.sites.join(", ") : "—"}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 justify-end">
-                      <div
-                        className={`rounded-full px-3 py-1 text-xs ${
-                          r.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
-                        }`}
-                      >
-                        {r.paid ? "Zaplaceno" : "Nezaplaceno"}
-                      </div>
-
-                      {!r.paid && (
-                        <button
-                          onClick={() => pay(r.user_id, r.day)}
-                          className="rounded-xl bg-black px-4 py-2 text-sm text-white"
-                        >
-                          Označit zaplaceno
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => deleteDay(r.user_id, r.day, r.user_name)}
-                        className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm"
-                      >
-                        Smazat den
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Souhrny */}
-                  <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-                    <div className="rounded-xl border bg-neutral-50 p-3">
-                      <div className="text-xs text-neutral-600">Hodiny</div>
-                      <div className="mt-1 font-semibold">
-                        {fmt(r.hours)} h • ~{fmt(r.hourly_avg)} Kč/h
-                      </div>
-                      <div className="text-xs text-neutral-600">Částka: {fmt(r.hours_pay)} Kč</div>
-                    </div>
-
-                    <div className="rounded-xl border bg-neutral-50 p-3">
-                      <div className="text-xs text-neutral-600">Doprava</div>
-                      <div className="mt-1 font-semibold">
-                        {fmt(r.km)} km • ~{fmt(r.km_avg)} Kč/km
-                      </div>
-                      <div className="text-xs text-neutral-600">Částka: {fmt(r.km_pay)} Kč</div>
-                    </div>
-
-                    <div className="rounded-xl border bg-neutral-50 p-3">
-                      <div className="text-xs text-neutral-600">Materiál</div>
-                      <div className="mt-1 font-semibold">{fmt(r.material)} Kč</div>
-                      <div className="text-xs text-neutral-600">
-                        Celkem vyplatit: <b>{fmt(r.total)} Kč</b>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rozpis práce */}
-                  <div className="mt-4 rounded-2xl border bg-white p-4">
-                    <div className="text-xs font-semibold text-neutral-700">Rozpis práce (IN → OUT)</div>
-
-                    {r.segments?.length ? (
-                      <div className="mt-3 space-y-2">
-                        {r.segments.map((s, i) => (
-                          <div key={i} className="rounded-xl border bg-neutral-50 p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-sm font-semibold">
-                                {s.site_name || "—"}
-                                {s.site_name ? (
-                                  <a
-                                    className="ml-2 text-xs text-neutral-500 underline"
-                                    href={mapLink(s.site_name)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    mapa
-                                  </a>
-                                ) : null}
-                              </div>
-
-                              <div className="text-sm">
-                                <b>{timeHM(s.in_time)}</b> → <b>{timeHM(s.out_time)}</b>{" "}
-                                <span className="text-neutral-400">•</span> <b>{fmt(s.hours)}</b> h
-                              </div>
-                            </div>
-
-                            <div className="mt-1 text-xs text-neutral-600">
-                              Sazba: <b>{fmt(s.hourly_rate)} Kč/h</b>{" "}
-                              <span className="text-neutral-400">•</span>{" "}
-                              {s.rate_source === "site" ? "podle stavby" : "default"}
-                              <span className="text-neutral-400"> • </span>
-                              Částka: <b>{fmt(s.pay)} Kč</b>
-                            </div>
-
-                            {s.note_work ? (
-                              <div className="mt-2 text-sm text-neutral-700">
-                                <span className="text-xs font-semibold text-neutral-600">Co se dělalo: </span>
-                                {s.note_work}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-xs text-neutral-500">
-                        Žádné uzavřené intervaly (možná chybí odchod).
-                      </div>
-                    )}
-                  </div>
-
-                  {/* OFFSITE */}
-                  <div className="mt-3 rounded-2xl border bg-white p-4">
-                    <div className="text-xs font-semibold text-neutral-700">Mimo stavbu</div>
-
-                    {r.offsites?.length ? (
-                      <div className="mt-3 space-y-2">
-                        {r.offsites.map((o, i) => (
-                          <div key={i} className="rounded-xl border bg-neutral-50 p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-sm font-semibold">
-                                {o.reason}
-                                {o.site_name ? (
-                                  <span className="ml-2 text-xs text-neutral-500">({o.site_name})</span>
-                                ) : null}
-                              </div>
-                              <div className="text-sm">
-                                <b>{fmt(o.hours)}</b> h
-                              </div>
-                            </div>
-
-                            <div className="mt-1 text-xs text-neutral-600">
-                              Sazba: <b>{fmt(o.hourly_rate)} Kč/h</b>{" "}
-                              <span className="text-neutral-400">•</span>{" "}
-                              {o.rate_source === "site" ? "podle stavby" : "default"}
-                              <span className="text-neutral-400"> • </span>
-                              Částka: <b>{fmt(o.pay)} Kč</b>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-xs text-neutral-500">Žádné položky mimo stavbu.</div>
-                    )}
-                  </div>
-
-                  {/* Materiál detail */}
-                  <div className="mt-3 rounded-2xl border bg-white p-4">
-                    <div className="text-xs font-semibold text-neutral-700">Materiál ze svého</div>
-                    {r.material_notes?.length ? (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-700">
-                        {r.material_notes.map((x, i) => (
-                          <li key={i}>{x}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="mt-2 text-xs text-neutral-500">Žádný materiál.</div>
-                    )}
-                  </div>
+            </Card>
+          ))}
+          {daysRows.length === 0 && (
+            <Card>
+              <div className="text-sm text-neutral-600">Žádná data pro zvolené období.</div>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {eventRows.map((e) => (
+            <Card key={e.id}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">{e.user_name} • {e.type} • {e.site_name || "—"}</div>
+                  <div className="mt-1 text-xs text-neutral-600">{fmtDateTimeCZFromIso(e.server_time)}</div>
                 </div>
-              ))}
-            </div>
-          </section>
-        );
-      })}
+                <div className="flex items-center gap-2">
+                  <Pill tone={e.is_paid ? "ok" : "warn"}>{e.is_paid ? "Zaplaceno" : "Nezaplaceno"}</Pill>
+                  <Button variant="secondary" disabled={busy === e.id} onClick={() => delEvent(e.id)}>
+                    {busy === e.id ? "Mažu…" : "Smazat"}
+                  </Button>
+                </div>
+              </div>
 
-      {rows.length === 0 && (
-        <div className="rounded-2xl border bg-white p-5 text-sm text-neutral-600 shadow-sm">
-          Žádná data v tomto období.
+              {(e.note_work || e.offsite_reason || e.material_amount || e.km) ? (
+                <div className="mt-3 text-sm text-neutral-700 space-y-1">
+                  {e.note_work ? <div><span className="text-neutral-500">Práce:</span> {e.note_work}</div> : null}
+                  {e.offsite_reason ? <div><span className="text-neutral-500">Mimo:</span> {e.offsite_reason} ({e.offsite_hours || 0} h)</div> : null}
+                  {e.km ? <div><span className="text-neutral-500">Km:</span> {e.km}</div> : null}
+                  {e.material_amount ? <div><span className="text-neutral-500">Materiál:</span> {(e.material_desc || "—")} • {e.material_amount} Kč</div> : null}
+                </div>
+              ) : null}
+            </Card>
+          ))}
+          {eventRows.length === 0 && (
+            <Card>
+              <div className="text-sm text-neutral-600">Žádné záznamy pro zvolené filtry.</div>
+            </Card>
+          )}
         </div>
       )}
     </main>

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     if (!e.user_id || !e.site_id || !e.server_time) continue;
 
     const day = dayLocalPrague(new Date(e.server_time));
-    const key = ${e.user_id}__${e.site_id}__${day};
+    const key = $`${r.user_id}__${r.site_id}__${day}`};
     const reqIn = reqMap.get(key);
     if (!reqIn) continue;
 

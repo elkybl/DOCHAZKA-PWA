@@ -52,7 +52,45 @@ export default function Page() {
     setRows((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
 
-  async function save(r: Row) {
+  
+  function dayKeyPrague(iso: string) {
+    const d = new Date(iso);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Prague",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(d);
+    const obj: any = {};
+    for (const p of parts) obj[p.type] = p.value;
+    return `${obj.year}-${obj.month}-${obj.day}`;
+  }
+
+  async function fillKmFromTrips(r: Row) {
+    setErr(null);
+    setInfo(null);
+    if (!token) return setErr("Nejsi přihlášen.");
+
+    const day = dayKeyPrague(r.server_time);
+
+    setBusy(r.id);
+    try {
+      const res = await fetch(`/api/me/trips-km?day=${day}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo načíst km z knihy jízd.");
+
+      updateRow(r.id, { km: Number(data.km || 0) });
+      setInfo(`Km z knihy jízd doplněno (${data.km} km) pro ${day}.`);
+    } catch (e: any) {
+      setErr(e.message || "Chyba");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+async function save(r: Row) {
     setErr(null);
     setInfo(null);
 
@@ -178,6 +216,16 @@ export default function Page() {
                   }
                   disabled={r.is_paid}
                 />
+
+                {!r.is_paid && (
+                  <button
+                    className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-sm disabled:opacity-50"
+                    onClick={() => fillKmFromTrips(r)}
+                    disabled={busy === r.id}
+                  >
+                    {busy === r.id ? "Načítám km…" : "Doplnit km z knihy jízd"}
+                  </button>
+                )}
               </>
             ) : (
               <>

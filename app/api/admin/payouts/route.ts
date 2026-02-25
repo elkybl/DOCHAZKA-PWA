@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -36,8 +37,7 @@ function round1(n: number) {
 }
 
 function fmtTime(iso: string) {
-  // "2026-02-12T07:10:00.000Z" -> "07:10"
-  return iso.slice(11, 16);
+  return fmtTimeCZFromIso(iso);
 }
 
 async function requireAdmin(req: NextRequest) {

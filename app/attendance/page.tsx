@@ -193,6 +193,13 @@ export default function AttendancePage() {
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
 
+  // mimo stavbu (nákup/sklad)
+  const [offReason, setOffReason] = useState("");
+  const [offHours, setOffHours] = useState("");
+  const [offMatDesc, setOffMatDesc] = useState("");
+  const [offMatAmount, setOffMatAmount] = useState("");
+
+
   const [info, setInfo] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -427,6 +434,51 @@ export default function AttendancePage() {
     }
   }
 
+
+  async function addOffsite() {
+    setErr(null);
+    setInfo(null);
+
+    const token = requireLogin();
+    if (!token) return;
+
+    if (!offReason.trim()) return setErr("Doplň důvod mimo stavbu.");
+    const h = Number(offHours);
+    if (!h || h <= 0) return setErr("Doplň počet hodin (např. 1.5).");
+
+    const matAmt = offMatAmount ? Number(offMatAmount) : null;
+    if (offMatAmount && (!Number.isFinite(matAmt!) || matAmt! < 0)) return setErr("Materiál částka je neplatná.");
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/attendance/offsite", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          site_id: selected || null,
+          offsite_reason: offReason.trim(),
+          offsite_hours: h,
+          material_desc: offMatDesc.trim() || null,
+          material_amount: matAmt,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo uložit mimo stavbu.");
+
+      setOffReason("");
+      setOffHours("");
+      setOffMatDesc("");
+      setOffMatAmount("");
+
+      setInfo("Mimo stavbu uloženo.");
+    } catch (e: any) {
+      setErr(e.message || "Chyba");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const selectedSite = useMemo(() => sites.find((s) => s.id === selected) || null, [sites, selected]);
 
   return (
@@ -639,6 +691,61 @@ export default function AttendancePage() {
           {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
           {info && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
         </div>
+      </div>
+
+
+      {/* Mimo stavbu */}
+      <div className="rounded-3xl border bg-white p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-neutral-900">Mimo stavbu (nákup / sklad / vyřízení)</h2>
+        <p className="mt-1 text-xs text-neutral-600">
+          Použij, když jsi dělal něco mimo stavbu (nákup materiálu, sklad, vyřízení). Uloží se to jako samostatný záznam.
+        </p>
+
+        <label className="mt-4 block text-sm text-neutral-700">Důvod</label>
+        <input
+          className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+          value={offReason}
+          onChange={(e) => setOffReason(e.target.value.slice(0, 500))}
+          placeholder="Nákup materiálu…"
+        />
+
+        <label className="mt-4 block text-sm text-neutral-700">Hodiny</label>
+        <input
+          className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+          inputMode="decimal"
+          value={offHours}
+          onChange={(e) => setOffHours(e.target.value.replace(/[^\d.]/g, "").slice(0, 6))}
+          placeholder="např. 1.5"
+        />
+
+        <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
+          <div className="text-sm font-medium text-neutral-800">Materiál ze svého (volitelné)</div>
+
+          <label className="mt-3 block text-sm text-neutral-700">Popis</label>
+          <input
+            className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+            value={offMatDesc}
+            onChange={(e) => setOffMatDesc(e.target.value.slice(0, 500))}
+            placeholder="WAGO, páska, vruty…"
+          />
+
+          <label className="mt-3 block text-sm text-neutral-700">Částka (Kč)</label>
+          <input
+            className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+            inputMode="decimal"
+            value={offMatAmount}
+            onChange={(e) => setOffMatAmount(e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
+            placeholder="0"
+          />
+        </div>
+
+        <button
+          onClick={addOffsite}
+          disabled={loading}
+          className="mt-4 w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold shadow-sm disabled:opacity-50"
+        >
+          {loading ? "Ukládám…" : "Přidat mimo stavbu"}
+        </button>
       </div>
 
       <Manual />

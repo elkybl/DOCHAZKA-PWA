@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Seg = {
   kind: "WORK";
@@ -71,7 +72,7 @@ function fmt(n: any) {
 
 function timeHM(iso: string | null) {
   if (!iso) return "—";
-  return iso.slice(11, 16);
+  return fmtTimeCZFromIso(iso);
 }
 
 function mapLink(siteName: string) {

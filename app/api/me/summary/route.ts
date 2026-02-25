@@ -157,7 +157,7 @@ export async function GET(req: NextRequest) {
 
   const { data: trips, error: tErr } = await db
     .from("trips")
-    .select("id,start_time,km_final")
+    .select("id,start_time,distance_km,distance_km_user")
     .eq("user_id", userId)
     .gte("start_time", fromIso)
     .lte("start_time", toIso);
@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
   const tripKmByDay = new Map<string, number>();
   for (const t of (trips || []) as any[]) {
     const day = dayKeyPrague(t.start_time);
-    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum(t.km_final, 0));
+    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
   }
 
   const byDay = new Map<string, Ev[]>();

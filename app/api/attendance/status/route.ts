@@ -11,36 +11,36 @@ export async function GET(req: NextRequest) {
   const userId = (session as any).userId as string;
   const db = supabaseAdmin();
 
-  const { data: lastIn, error: inErr } = await db
+  const { data: lastIn } = await db
     .from("attendance_events")
-    .select("id,site_id,server_time")
+    .select("site_id,server_time,type")
     .eq("user_id", userId)
     .eq("type", "IN")
     .order("server_time", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (inErr) return json({ error: "DB chyba." }, { status: 500 });
-  if (!lastIn) return json({ status: "OUT", open: null });
-
-  const { data: firstOutAfter, error: outErr } = await db
+  const { data: lastOut } = await db
     .from("attendance_events")
-    .select("id,server_time")
+    .select("server_time,type")
     .eq("user_id", userId)
     .eq("type", "OUT")
-    .gt("server_time", lastIn.server_time)
-    .order("server_time", { ascending: true })
+    .order("server_time", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (outErr) return json({ error: "DB chyba." }, { status: 500 });
+  const inTime = lastIn?.server_time ? new Date(lastIn.server_time).getTime() : 0;
+  const outTime = lastOut?.server_time ? new Date(lastOut.server_time).getTime() : 0;
 
-  if (firstOutAfter) {
-    return json({ status: "OUT", open: null });
-  }
+  const isIn = !!lastIn && inTime > outTime;
 
   return json({
-    status: "IN",
-    open: { site_id: lastIn.site_id ?? null, in_time: lastIn.server_time, in_event_id: lastIn.id },
+    status: isIn ? "IN" : "OUT",
+    open: isIn
+      ? {
+          site_id: lastIn.site_id ?? null,
+          in_time: lastIn.server_time,
+        }
+      : null,
   });
 }

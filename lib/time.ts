@@ -152,8 +152,3 @@ export function parseReportedLeftAtCZ(reported: string | null | undefined, inTim
   if (!Number.isNaN(tryFull.getTime())) return tryFull;
   return new Date();
 }
-
-
-export function roundToHalfHourCZFromIso(iso: string) {
-  return roundToHalfHourCZ(new Date(iso));
-}

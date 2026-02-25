@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
   for (const r of requests) {
     if (!r.user_id || !r.site_id || !r.in_time) continue;
     const day = dayLocalPrague(new Date(r.in_time));
-    reqMap.set(${r.user_id}__${r.site_id}__${day}, r.in_time);
+    reqMap.set(`${r.user_id}__${r.site_id}__${day}`, r.in_time);
+
   }
 
   let scanned = 0;

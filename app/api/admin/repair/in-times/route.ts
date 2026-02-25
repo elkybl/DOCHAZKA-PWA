@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { json } from "@/lib/http";
-import { requireAdmin } from "@/lib/require";
+import { json, getBearer } from "@/lib/http";
+import { verifySession } from "@/lib/auth";
 
 const TZ = "Europe/Prague";
 
@@ -20,8 +20,10 @@ function dayLocalPrague(d: Date) {
 }
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin(req);
-  if (!admin) return json({ error: "Unauthorized" }, { status: 401 });
+  const token = getBearer(req);
+  const session = token ? await verifySession(token) : null;
+  if (!session) return json({ error: "Unauthorized" }, { status: 401 });
+  if ((session as any).role !== "admin") return json({ error: "Forbidden" }, { status: 403 });
 
   const url = new URL(req.url);
   const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days") || "7")));
@@ -71,9 +73,7 @@ export async function POST(req: NextRequest) {
     const reqIn = reqMap.get(key);
     if (!reqIn) continue;
 
-    const diffSec = Math.abs(
-      (new Date(e.server_time).getTime() - new Date(reqIn).getTime()) / 1000
-    );
+    const diffSec = Math.abs((new Date(e.server_time).getTime() - new Date(reqIn).getTime()) / 1000);
 
     // jen když je rozdíl ~ 1 hodina (3500–3700 sekund)
     if (diffSec < 3500 || diffSec > 3700) continue;

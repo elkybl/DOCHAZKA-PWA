@@ -16,8 +16,8 @@ type EventRow = {
   site_name: string | null;
   type: "IN" | "OUT" | "OFFSITE";
   day: string;
-  server_time: string;
 
+  // precomputed by API (/api/admin/events)
   time_raw: string;
   time_rounded: string;
 
@@ -27,12 +27,7 @@ type EventRow = {
   pay_hours?: number;
 
   note_work?: string | null;
-  km?: number | null;
   offsite_reason?: string | null;
-  offsite_hours?: number | null;
-  material_desc?: string | null;
-  material_amount?: number | null;
-
   is_paid: boolean;
 
   rate_hourly: number;
@@ -45,7 +40,7 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
-function getUser() {
+function getMe() {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem("user");
   return raw ? JSON.parse(raw) : null;
@@ -53,13 +48,13 @@ function getUser() {
 
 function fmt(n: any) {
   const x = Number(n);
-  if (!Number.isFinite(x)) return "0";
+  if (!Number.isFinite(x)) return "—";
   return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 }
 
 export default function AdminAttendancePage() {
   const router = useRouter();
-  const me = useMemo(() => getUser(), []);
+  const me = useMemo(() => getMe(), []);
 
   const [sites, setSites] = useState<Site[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -101,6 +96,7 @@ export default function AdminAttendancePage() {
   async function load() {
     setErr(null);
     setInfo(null);
+
     const t = getToken();
     if (!t) return;
 
@@ -114,7 +110,7 @@ export default function AdminAttendancePage() {
 
     setLoading(true);
     try {
-      const res = await fetch(/api/admin/events?${qs.toString()}, {
+      const res = await fetch(`/api/admin/events?${qs.toString()}`, {
         headers: { authorization: `Bearer ${t}` },
       });
       const data = await res.json().catch(() => ({}));
@@ -130,12 +126,13 @@ export default function AdminAttendancePage() {
   async function delEvent(id: string) {
     setErr(null);
     setInfo(null);
+
     const t = getToken();
     if (!t) return;
 
     setBusyId(id);
     try {
-      const res = await fetch(/api/admin/attendance/${id}, {
+      const res = await fetch(`/api/admin/attendance/${id}`, {
         method: "DELETE",
         headers: { authorization: `Bearer ${t}` },
       });
@@ -153,6 +150,7 @@ export default function AdminAttendancePage() {
   async function runRepair() {
     setErr(null);
     setInfo(null);
+
     const t = getToken();
     if (!t) return;
 
@@ -164,7 +162,7 @@ export default function AdminAttendancePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo opravit.");
-      setInfo(Oprava IN hotová: scanned ${data.scanned}, fixed ${data.fixed}.);
+      setInfo(`Oprava IN hotová: scanned ${data.scanned}, fixed ${data.fixed}.`);
       await load();
     } catch (e: any) {
       setErr(e.message || "Chyba");
@@ -179,7 +177,7 @@ export default function AdminAttendancePage() {
   }, []);
 
   const subtitle =
-    "Zde vidíš jednotlivé eventy (IN/OUT/OFFSITE), včetně zaokrouhlených časů a částek. Můžeš mazat jednotlivé záznamy. Posun do stran je nahoře.";
+    "Detailní eventy (IN/OUT/OFFSITE). Vidíš raw i rounded časy a výpočet částky. Posun do stran je nahoře.";
 
   const actions = (
     <>
@@ -280,19 +278,18 @@ export default function AdminAttendancePage() {
   );
 
   return (
-    <AdminTableShell title="Docházka – detailní záznamy" subtitle={subtitle} actions={actions} filters={filters} minWidth={1700}>
+    <AdminTableShell title="Docházka – detailní záznamy" subtitle={subtitle} actions={actions} filters={filters} minWidth={1750}>
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
-            {/* Sticky left header cells */}
             <th className="sticky left-0 top-0 z-20 bg-neutral-50 px-3 py-3 text-left border-b">Den</th>
-            <th className="sticky left-[90px] top-0 z-20 bg-neutral-50 px-3 py-3 text-left border-b">Uživatel</th>
+            <th className="sticky left-[92px] top-0 z-20 bg-neutral-50 px-3 py-3 text-left border-b">Uživatel</th>
 
             <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Stavba</th>
             <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Typ</th>
 
-            <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Čas (raw)</th>
-            <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Čas (round)</th>
+            <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Čas raw</th>
+            <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">Čas round</th>
             <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">IN round</th>
             <th className="top-0 bg-neutral-50 px-3 py-3 text-left border-b">OUT round</th>
 
@@ -308,11 +305,10 @@ export default function AdminAttendancePage() {
         <tbody>
           {rows.map((r, idx) => (
             <tr key={r.id} className={idx % 2 === 0 ? "bg-white" : "bg-neutral-50/50"}>
-              {/* Sticky left columns */}
               <td className="sticky left-0 z-10 bg-inherit px-3 py-2 whitespace-nowrap border-b border-neutral-100">
                 {r.day}
               </td>
-              <td className="sticky left-[90px] z-10 bg-inherit px-3 py-2 whitespace-nowrap border-b border-neutral-100">
+              <td className="sticky left-[92px] z-10 bg-inherit px-3 py-2 whitespace-nowrap border-b border-neutral-100">
                 {r.user_name}
               </td>
 
@@ -335,7 +331,7 @@ export default function AdminAttendancePage() {
                 {r.pay_hours != null ? fmt(r.pay_hours) : "—"}
               </td>
 
-              <td className="px-3 py-2 min-w-[340px] border-b border-neutral-100">
+              <td className="px-3 py-2 min-w-[360px] border-b border-neutral-100">
                 {r.type === "OUT" ? r.note_work || "—" : r.type === "OFFSITE" ? r.offsite_reason || "—" : "—"}
               </td>
 

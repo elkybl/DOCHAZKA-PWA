@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   user_id: string;
@@ -41,8 +42,7 @@ function fmt(n: any) {
 }
 
 function hm(iso: string | null) {
-  if (!iso) return "—";
-  return iso.slice(11, 16);
+  return fmtTimeCZFromIso(iso ?? null);
 }
 
 export default function Page() {

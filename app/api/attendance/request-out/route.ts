@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { toDate } from "@/lib/time";
 
 const schema = z.object({
   reported_left_at: z.string().min(2).max(50), // "16:50" nebo "12.2. 16:50"
@@ -45,8 +46,8 @@ export async function POST(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const inTime = lastIn?.server_time ? new Date(lastIn.server_time).getTime() : 0;
-  const outTime = lastOut?.server_time ? new Date(lastOut.server_time).getTime() : 0;
+  const inTime = lastIn?.server_time ? toDate(lastIn.server_time).getTime() : 0;
+  const outTime = lastOut?.server_time ? toDate(lastOut.server_time).getTime() : 0;
 
   if (!lastIn || !(inTime > outTime)) {
     return json({ error: "Nemáš otevřenou směnu (není co uzavírat)." }, { status: 400 });

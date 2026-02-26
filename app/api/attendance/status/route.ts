@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { toDate } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const token = getBearer(req);
@@ -29,8 +30,8 @@ export async function GET(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const inTime = lastIn?.server_time ? new Date(lastIn.server_time).getTime() : 0;
-  const outTime = lastOut?.server_time ? new Date(lastOut.server_time).getTime() : 0;
+  const inTime = lastIn?.server_time ? toDate(lastIn.server_time).getTime() : 0;
+  const outTime = lastOut?.server_time ? toDate(lastOut.server_time).getTime() : 0;
 
   const isIn = !!lastIn && inTime > outTime;
 

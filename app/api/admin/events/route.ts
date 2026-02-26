@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZFromIso, fmtTimeCZFromIso, roundToHalfHourCZ } from "@/lib/time";
+import { dayLocalCZFromIso, fmtTimeCZFromIso, roundToHalfHourCZ, toDate } from "@/lib/time";
 
 const qSchema = z.object({
   from: z.string().optional(), // YYYY-MM-DD
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
     const uid = e.user_id as string;
     const sid = e.site_id as string | null;
     const r = getRate(uid, sid);
-	const raw = new Date(e.server_time);
+	const raw = toDate(e.server_time);
 	const rounded = roundToHalfHourCZ(raw.toISOString());
     const row:any = {
       id: e.id,
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
     };
 
     if (e.type === "OUT" && e.matched_in?.server_time) {
-      const inRaw = new Date(e.matched_in.server_time);
+      const inRaw = toDate(e.matched_in.server_time);
       const inRounded = roundToHalfHourCZ(inRaw.toISOString());
       const outRounded = roundToHalfHourCZ(raw.toISOString());
       const minutesRaw = Math.max(0, Math.round((raw.getTime() - inRaw.getTime())/60000));

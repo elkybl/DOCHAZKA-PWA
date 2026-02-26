@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { json, getBearer } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { toDate } from "@/lib/time";
 
 const TZ = "Europe/Prague";
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   const reqMap = new Map<string, string>();
   for (const r of (reqs || []) as any[]) {
     if (!r?.user_id || !r?.site_id || !r?.in_time) continue;
-    const day = dayLocalPrague(new Date(r.in_time));
+    const day = dayLocalPrague(toDate(r.in_time));
     reqMap.set(`${r.user_id}__${r.site_id}__${day}`, r.in_time);
   }
 
@@ -68,12 +69,12 @@ export async function POST(req: NextRequest) {
     scanned++;
     if (!e?.id || !e?.user_id || !e?.site_id || !e?.server_time) continue;
 
-    const day = dayLocalPrague(new Date(e.server_time));
+    const day = dayLocalPrague(toDate(e.server_time));
     const key = `${e.user_id}__${e.site_id}__${day}`;
     const reqIn = reqMap.get(key);
     if (!reqIn) continue;
 
-    const diffSec = Math.abs((new Date(e.server_time).getTime() - new Date(reqIn).getTime()) / 1000);
+    const diffSec = Math.abs((toDate(e.server_time).getTime() - toDate(reqIn).getTime()) / 1000);
 
     // jen když je rozdíl ~ 1 hodina (3500–3700 sekund)
     if (diffSec < 3500 || diffSec > 3700) continue;
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       .from("attendance_events")
       .update({
         server_time: reqIn,
-        day_local: dayLocalPrague(new Date(reqIn)),
+        day_local: dayLocalPrague(toDate(reqIn)),
       })
       .eq("id", e.id);
 

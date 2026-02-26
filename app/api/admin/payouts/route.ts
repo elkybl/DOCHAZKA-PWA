@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { fmtTimeCZFromIso } from "@/lib/time";
+import { fmtTimeCZFromIso, toDate } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -172,9 +172,9 @@ export async function GET(req: NextRequest) {
 
     for (const e of list) {
       if (e.type === "IN") {
-        lastIn = { t: new Date(e.server_time), iso: e.server_time, site_id: e.site_id };
+        lastIn = { t: toDate(e.server_time), iso: e.server_time, site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
-        const out = new Date(e.server_time);
+        const out = toDate(e.server_time);
         const minutes = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
         const hours = minutes / 60;
 

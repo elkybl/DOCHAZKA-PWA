@@ -1,22 +1,70 @@
 // lib/time.ts
 // Jednotný časový helper pro celý projekt (UI + výpočty).
-// - UI zobrazuje lokální čas zařízení (v ČR sedí) -> bez vynucování timeZone
-// - Výpočty (day_local, rounding, reported_left_at) běží v Europe/Prague
+//
+// DŮLEŽITÉ:
+// - V DB máme časy jako UTC instants (typicky timestamptz ze Supabase).
+// - Supabase někdy vrací formát "YYYY-MM-DD HH:MM:SS+00" (s mezerou), který JS Date neumí spolehlivě parsovat.
+// - Proto nejdřív normalizujeme na ISO 8601 ("YYYY-MM-DDTHH:MM:SSZ" / "...+01:00") a teprve pak parsujeme.
+// - V UI chceme "pevné" zobrazení v Europe/Prague (admin + zaměstnanec), bez závislosti na timezone zařízení.
 
 export const APP_TZ = "Europe/Prague";
 
 // --------------------
-// UI formatters (bez timeZone -> lokální čas zařízení)
+// ISO normalizace (DB -> JS Date)
+// --------------------
+
+/**
+ * Normalizuje časový string na validní ISO 8601 pro JS Date.
+ * Podporuje např.:
+ * - "2026-02-17 08:00:00+00"  -> "2026-02-17T08:00:00Z"
+ * - "2026-02-17 08:00:00+00:00" -> "2026-02-17T08:00:00Z"
+ * - "2026-02-17T08:00:00+01" -> "2026-02-17T08:00:00+01:00"
+ */
+export function normalizeIso(input?: string | null) {
+  if (!input) return null;
+  let s = String(input).trim();
+  if (!s) return null;
+
+  // "YYYY-MM-DD HH:mm:ss" -> ISO "T"
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+    s = s.replace(" ", "T");
+  }
+
+  // +00 / +00:00 / -00 / -00:00 -> Z
+  s = s.replace(/([+-])00(?::?00)?$/, "Z");
+
+  // +01 / -02 -> +01:00 / -02:00
+  s = s.replace(/([+-])(\d{2})$/, "$1$2:00");
+
+  // +0100 / -0230 -> +01:00 / -02:30
+  s = s.replace(/([+-])(\d{2})(\d{2})$/, "$1$2:$3");
+
+  return s;
+}
+
+export function toDate(input?: string | null) {
+  const iso = normalizeIso(input);
+  if (!iso) return new Date(NaN);
+  return new Date(iso);
+}
+
+// --------------------
+// UI formatters (pevně v Europe/Prague)
 // --------------------
 
 export function hm(iso?: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+  const d = toDate(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("cs-CZ", { timeZone: APP_TZ, hour: "2-digit", minute: "2-digit" });
 }
 
 export function dtCZ(iso?: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("cs-CZ", {
+  const d = toDate(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString("cs-CZ", {
+    timeZone: APP_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -59,7 +107,9 @@ function tzParts(date: Date, tz = APP_TZ) {
 
 export function dayLocalCZFromIso(iso?: string | null) {
   if (!iso) return "";
-  const o = tzParts(new Date(iso), APP_TZ);
+  const d = toDate(iso);
+  if (isNaN(d.getTime())) return "";
+  const o = tzParts(d, APP_TZ);
   return `${o.year}-${o.month}-${o.day}`;
 }
 
@@ -126,7 +176,7 @@ function tzHM(date: Date, tz = APP_TZ) {
  * Vrací Date (instant), posunutý o delta minut oproti vstupu.
  */
 export function roundTo30ByTZ(iso: string, tz = APP_TZ) {
-  const d = new Date(iso);
+  const d = toDate(iso);
   const { h, m } = tzHM(d, tz);
 
   let targetH = h;

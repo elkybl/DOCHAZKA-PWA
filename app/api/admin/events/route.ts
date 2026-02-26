@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, fmtTimeCZFromIso, roundToHalfHourCZ, toDate } from "@/lib/time";
+import { czLocalToUtcDate } from "@/lib/time";
 
 const qSchema = z.object({
   from: z.string().optional(), // YYYY-MM-DD
@@ -84,7 +85,6 @@ export async function GET(req: NextRequest) {
   if (type) q = q.eq("type", type);
 
   // prefer day_local filtering if provided
-import { czLocalToUtcDate } from "@/lib/time";
 
 function addDays(d: Date, days: number) {
   return new Date(d.getTime() + days * 86400000);

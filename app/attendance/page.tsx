@@ -330,7 +330,11 @@ export default function AttendancePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba při ukládání odchodu.");
 
-      setInfo(data?.distance_m != null ? Odchod uložen (${data.distance_m} m). : "Odchod uložen.");
+      setInfo(
+  data?.distance_m != null
+    ? `Odchod uložen (${data.distance_m} m).`
+    : "Odchod uložen."
+);
       setNoteWork("");
       setKm("");
       setMatDesc("");

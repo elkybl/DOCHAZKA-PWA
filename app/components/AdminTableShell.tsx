@@ -77,7 +77,7 @@ export default function AdminTableShell({
       {/* Table shell */}
       <div className="mt-4 rounded-3xl border bg-white p-3 shadow-sm">
         <div ref={mainScrollRef} className="overflow-x-auto overscroll-x-contain">
-          <div style={{ minWidth: ${minWidth}px }}>{children}</div>
+          <div style={{ minWidth: `${minWidth}px` }}>{children}</div>
         </div>
       </div>
     </main>

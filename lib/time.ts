@@ -79,3 +79,7 @@ export function roundTo30ByTZ(iso: string, tz = APP_TZ) {
 export function roundToHalfHourCZ(iso: string) {
   return roundTo30ByTZ(iso, APP_TZ);
 }
+
+export function fmtDateTimeCZFromIso(iso?: string | null) {
+  return dtCZ(iso ?? null);
+}

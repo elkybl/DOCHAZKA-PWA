@@ -92,7 +92,7 @@ export default function AdminAttendancePage() {
       .then((d) => setSites(d.sites || []))
       .catch(() => setSites([]));
 
-    fetch("/api/admin/users", { headers: { authorization: Bearer ${t} } })
+    fetch("/api/admin/users", { headers: { authorization: `Bearer ${t}` } })
       .then((r) => r.json())
       .then((d) => setUsers(d.users || []))
       .catch(() => setUsers([]));
@@ -115,7 +115,7 @@ export default function AdminAttendancePage() {
     setLoading(true);
     try {
       const res = await fetch(/api/admin/events?${qs.toString()}, {
-        headers: { authorization: Bearer ${t} },
+        headers: { authorization: `Bearer ${t}` },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba");
@@ -137,7 +137,7 @@ export default function AdminAttendancePage() {
     try {
       const res = await fetch(/api/admin/attendance/${id}, {
         method: "DELETE",
-        headers: { authorization: Bearer ${t} },
+        headers: { authorization: `Bearer ${t}` },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo smazat.");
@@ -160,7 +160,7 @@ export default function AdminAttendancePage() {
     try {
       const res = await fetch("/api/admin/repair/in-times?days=14", {
         method: "POST",
-        headers: { authorization: Bearer ${t} },
+        headers: { authorization: `Bearer ${t}` },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo opravit.");

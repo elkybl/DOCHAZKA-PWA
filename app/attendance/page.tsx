@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fmtDateTimeCZFromIso } from "@/lib/time";
+import { dtCZ } from "@/lib/time"; // ✅ místo fmtDateTimeCZFromIso
 
 type Site = {
   id: string;
@@ -149,13 +149,13 @@ function Manual() {
               4) Když akce není v seznamu: klikni Akce není v seznamu, vyplň název, povol GPS a vytvoří se dočasná stavba. Admin ji pak aktivuje.
             </div>
             <div>
-              5) Kniha jízd: Menu → Kniha jízd → Start jízdy (GPS) → Stop jízdy. Km se spočítají (po silnici když to jde, jinak z GPS) a můžeš je ručně upravit.
+              5) Kniha jízd: Menu → Kniha jízd → Start jízdy (GPS) → Stop jízdy. Km se spočítají a můžeš je ručně upravit.
             </div>
           </div>
 
           <div className="mt-3 rounded-2xl border bg-white p-3 text-xs text-neutral-600">
-            Jak psát “co se dělalo”: piš stručně a konkrétně (co + kde + počet).
-            Příklad: “Montáž zásuvek – kuchyň 7 ks; tahání kabelů – 2 okruhy; světla 1.NP 6 ks”.
+            Jak psát “co se dělalo”: piš stručně a konkrétně (co + kde + počet). Příklad: “Montáž zásuvek – kuchyň
+            7 ks; tahání kabelů – 2 okruhy; světla 1.NP 6 ks”.
           </div>
         </div>
 
@@ -198,7 +198,6 @@ export default function AttendancePage() {
   const [offHours, setOffHours] = useState("");
   const [offMatDesc, setOffMatDesc] = useState("");
   const [offMatAmount, setOffMatAmount] = useState("");
-
 
   const [info, setInfo] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -286,7 +285,7 @@ export default function AttendancePage() {
       if (!res.ok) throw new Error(data?.error || "Chyba při ukládání příchodu.");
 
       localStorage.setItem("last_site_id", selected);
-      setInfo(data?.distance_m != null ? `Příchod uložen (${data.distance_m} m).` : "Příchod uložen.");
+      setInfo(data?.distance_m != null ? Příchod uložen (${data.distance_m} m). : "Příchod uložen.");
 
       await refreshStatus();
     } catch (e: any) {
@@ -327,7 +326,7 @@ export default function AttendancePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba při ukládání odchodu.");
 
-      setInfo(data?.distance_m != null ? `Odchod uložen (${data.distance_m} m).` : "Odchod uložen.");
+      setInfo(data?.distance_m != null ? Odchod uložen (${data.distance_m} m). : "Odchod uložen.");
       setNoteWork("");
       setKm("");
       setMatDesc("");
@@ -434,7 +433,6 @@ export default function AttendancePage() {
     }
   }
 
-
   async function addOffsite() {
     setErr(null);
     setInfo(null);
@@ -491,9 +489,7 @@ export default function AttendancePage() {
             <div className="text-sm text-neutral-600">Přihlášen</div>
             <div className="mt-1 text-xl font-semibold text-neutral-900">{user?.name || "—"}</div>
             {status === "IN" && openInTime && (
-              <div className="mt-1 text-xs text-neutral-600">
-                Otevřená směna od: {fmtDateTimeCZFromIso(openInTime)}
-              </div>
+              <div className="mt-1 text-xs text-neutral-600">Otevřená směna od: {dtCZ(openInTime)}</div>
             )}
           </div>
 
@@ -544,9 +540,7 @@ export default function AttendancePage() {
         {showNewSite && (
           <div className="mt-4 rounded-3xl border bg-neutral-50 p-5">
             <div className="text-sm font-semibold text-neutral-900">Založit dočasnou stavbu z terénu</div>
-            <div className="mt-1 text-xs text-neutral-600">
-              Použije se tvoje aktuální GPS. Admin pak stavbu zkontroluje a aktivuje.
-            </div>
+            <div className="mt-1 text-xs text-neutral-600">Použije se tvoje aktuální GPS. Admin pak stavbu zkontroluje.</div>
 
             <label className="mt-4 block text-sm text-neutral-700">Název akce (povinné)</label>
             <input
@@ -612,7 +606,6 @@ export default function AttendancePage() {
                 placeholder="Konkrétně: co + kde + počet/rozsah…"
               />
 
-              {/* ✅ změna: vše pod sebou, široké */}
               <div>
                 <label className="block text-sm text-neutral-700">Km dnes (volitelné)</label>
                 <input
@@ -656,9 +649,7 @@ export default function AttendancePage() {
               {showRequest && (
                 <div className="rounded-3xl border bg-amber-50 p-5">
                   <div className="text-sm font-semibold text-amber-950">Nemůžu dát odchod (jsem mimo stavbu)</div>
-                  <div className="mt-1 text-xs text-amber-900">
-                    Pošli žádost adminovi. Admin to schválí a případně upraví čas odchodu.
-                  </div>
+                  <div className="mt-1 text-xs text-amber-900">Pošli žádost adminovi. Admin to schválí.</div>
 
                   <label className="mt-4 block text-sm text-amber-950">Kdy jsi odešel (např. 16:50)</label>
                   <input
@@ -693,12 +684,11 @@ export default function AttendancePage() {
         </div>
       </div>
 
-
       {/* Mimo stavbu */}
       <div className="rounded-3xl border bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-neutral-900">Mimo stavbu (nákup / sklad / vyřízení)</h2>
         <p className="mt-1 text-xs text-neutral-600">
-          Použij, když jsi dělal něco mimo stavbu (nákup materiálu, sklad, vyřízení). Uloží se to jako samostatný záznam.
+          Použij, když jsi dělal něco mimo stavbu. Uloží se to jako samostatný záznam.
         </p>
 
         <label className="mt-4 block text-sm text-neutral-700">Důvod</label>

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { dayLocalCZFromIso, roundTo30ByTZ } from "@/lib/time";
 
 const TZ = "Europe/Prague";
 
@@ -166,7 +167,7 @@ export async function GET(req: NextRequest) {
 
   const tripKmByDay = new Map<string, number>();
   for (const t of (trips || []) as any[]) {
-    const day = dayKeyPrague(t.start_time);
+    const day = dayLocalCZFromIso(t.start_time);
     tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
   }
 
@@ -205,9 +206,9 @@ export async function GET(req: NextRequest) {
 
     for (const e of list) {
       if (e.type === "IN") {
-        lastIn = { rawIso: e.server_time, rounded: roundTo30Prague(e.server_time), site_id: e.site_id };
+        lastIn = { rawIso: e.server_time, rounded: roundTo30ByTZ(e.server_time), site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
-        const outRounded = roundTo30Prague(e.server_time);
+        const outRounded = roundTo30ByTZ(e.server_time);
 
         const minutes = Math.max(0, Math.round((outRounded.getTime() - lastIn.rounded.getTime()) / 60000));
         const hours = minutes / 60;
@@ -320,8 +321,8 @@ export async function GET(req: NextRequest) {
     const firstInRaw = list.find((x) => x.type === "IN")?.server_time ?? null;
     const lastOutRaw = [...list].reverse().find((x) => x.type === "OUT")?.server_time ?? null;
 
-    const firstInRounded = firstInRaw ? roundTo30Prague(firstInRaw).toISOString() : null;
-    const lastOutRounded = lastOutRaw ? roundTo30Prague(lastOutRaw).toISOString() : null;
+const firstInRounded = firstInRaw ? roundTo30ByTZ(firstInRaw).toISOString() : null;
+const lastOutRounded = lastOutRaw ? roundTo30ByTZ(lastOutRaw).toISOString() : null;
 
     rows.push({
       day,

@@ -117,8 +117,8 @@ export async function GET(req: NextRequest) {
     const uid = e.user_id as string;
     const sid = e.site_id as string | null;
     const r = getRate(uid, sid);
-    const raw = new Date(e.server_time);
-    const rounded = roundToHalfHourCZ(raw);
+	const raw = new Date(e.server_time);
+	const rounded = roundToHalfHourCZ(raw.toISOString());
     const row:any = {
       id: e.id,
       user_id: uid,

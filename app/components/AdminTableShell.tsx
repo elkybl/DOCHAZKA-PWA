@@ -42,7 +42,7 @@ export default function AdminTableShell({
 
   const spacerStyle = useMemo(
     () => ({
-      width: ${minWidth}px,
+      width: `${minWidth}px`,
       height: "1px",
     }),
     [minWidth]

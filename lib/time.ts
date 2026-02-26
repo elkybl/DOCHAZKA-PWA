@@ -183,3 +183,24 @@ export function parseReportedLeftAtCZ(reported: string, baseIso: string) {
 
   return makeInstantFromLocalTZ(Y, M, D, hh, mm, APP_TZ);
 }
+// YYYY-MM-DD podle CZ pro "teď"
+export function dayLocalCZNow() {
+  return dayLocalCZFromIso(new Date().toISOString());
+}
+
+/**
+ * Převede lokální CZ datum (YYYY-MM-DD) na UTC instant začátku dne v CZ.
+ * Používá se např. pro filtr v trips-km endpointu.
+ */
+export function czLocalToUtcDate(day: string) {
+  const m = (day || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return new Date(NaN);
+
+  const Y = Number(m[1]);
+  const M = Number(m[2]);
+  const D = Number(m[3]);
+
+  // start of day 00:00 v Europe/Prague jako skutečný instant
+  // používá interní helper makeInstantFromLocalTZ z tvého time.ts
+  return makeInstantFromLocalTZ(Y, M, D, 0, 0, APP_TZ);
+}

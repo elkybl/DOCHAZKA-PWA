@@ -285,7 +285,11 @@ export default function AttendancePage() {
       if (!res.ok) throw new Error(data?.error || "Chyba při ukládání příchodu.");
 
       localStorage.setItem("last_site_id", selected);
-      setInfo(data?.distance_m != null ? Příchod uložen (${data.distance_m} m). : "Příchod uložen.");
+     setInfo(
+		data?.distance_m != null
+		? `Příchod uložen (${data.distance_m} m).`
+		: "Příchod uložen."
+);
 
       await refreshStatus();
     } catch (e: any) {

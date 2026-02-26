@@ -84,8 +84,24 @@ export async function GET(req: NextRequest) {
   if (type) q = q.eq("type", type);
 
   // prefer day_local filtering if provided
-  if (from) q = q.gte("day_local", from);
-  if (to) q = q.lte("day_local", to);
+import { czLocalToUtcDate } from "@/lib/time";
+
+function addDays(d: Date, days: number) {
+  return new Date(d.getTime() + days * 86400000);
+}
+
+// ...
+
+if (from) {
+  const startUtc = czLocalToUtcDate(from); // CZ 00:00 převedené na UTC instant
+  q = q.gte("server_time", startUtc.toISOString());
+}
+
+if (to) {
+  // konec dne = začátek dalšího dne (CZ), použijeme < (exclusive)
+  const endExclusive = addDays(czLocalToUtcDate(to), 1);
+  q = q.lt("server_time", endExclusive.toISOString());
+}
 
   const { data: evs, error } = await q;
   if (error) return json({ error: "DB chyba." }, { status: 500 });

@@ -2,111 +2,81 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZFromIso, parseReportedLeftAtCZ, roundToHalfHourCZ } from "@/lib/time";
+import { parseReportedLeftAtCZ, roundToHalfHourCZ } from "@/lib/time";
 
 function clampOutTime(out: Date, inTimeIso: string) {
   const now = new Date();
   const inTime = new Date(inTimeIso);
 
-  // OUT nesmí být v budoucnu
-  if (out.getTime() > now.getTime()) return now;
+  // nesmí být před příchodem
+  if (out.getTime() < inTime.getTime()) return new Date(inTime.getTime());
 
-  // OUT nesmí být před IN
-  if (out.getTime() <= inTime.getTime()) {
-    return new Date(inTime.getTime() + 60_000); // IN + 1 min
-  }
+  // nesmí být v budoucnu
+  if (out.getTime() > now.getTime()) return now;
 
   return out;
 }
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
-  if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
-  if ((session as any).role !== "admin") return json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return json({ error: "Unauthorized" }, { status: 401 });
+  if ((session as any).role !== "admin") return json({ error: "Forbidden" }, { status: 403 });
 
-  const adminId = (session as any).userId as string;
   const { id } = await ctx.params;
+  if (!id) return json({ error: "Chybí ID." }, { status: 400 });
+
+  const body = await req.json().catch(() => ({}));
+  const action = String(body?.action || "");
+  const src = String(body?.out_time || body?.reported_left_at || "").trim();
+
   const db = supabaseAdmin();
 
-  const { data: reqRow, error: rErr } = await db
+  // načti žádost
+  const { data: reqRow, error: reqErr } = await db
     .from("attendance_close_requests")
     .select("*")
     .eq("id", id)
     .single();
 
-  if (rErr || !reqRow) return json({ error: "Žádost nenalezena." }, { status: 404 });
-  if (reqRow.status !== "pending") return json({ error: "Žádost už byla vyřízena." }, { status: 400 });
+  if (reqErr || !reqRow) return json({ error: "Žádost nenalezena." }, { status: 404 });
 
-  // ✅ Admin může poslat override času v body: { out_time: "16:50" }
-  let body: any = null;
-  try {
-    body = await req.json();
-  } catch {
-    body = null;
-  }
+  if (action !== "APPROVE") return json({ error: "Neplatná akce." }, { status: 400 });
+  if (!src) return json({ error: "Chybí čas odchodu (např. 16:50)." }, { status: 400 });
 
-  const override = typeof body?.out_time === "string" ? body.out_time : null;
-  const src = override || (reqRow.reported_left_at ?? null);
-
-  // Parse in Europe/Prague local time, then round to nearest 30 minutes.
+  // 1) parse reported_left_at (CZ) -> Date | null
   let outTime = parseReportedLeftAtCZ(src, reqRow.in_time);
-  outTime = roundToHalfHourCZ(outTime);
+  if (!outTime) return json({ error: "Neplatný čas. Použij např. 16:50." }, { status: 400 });
+
+  // 2) round to nearest 30m (funkce bere ISO string)
+  outTime = roundToHalfHourCZ(outTime.toISOString());
+
+  // 3) clamp (ne dřív než IN, ne v budoucnu)
   outTime = clampOutTime(outTime, reqRow.in_time);
 
-  // vytvoř OUT event s tímto časem
-  const outIns = await db.from("attendance_events").insert({
+  // 4) vytvoř OUT event
+  const { error: insErr } = await db.from("attendance_events").insert({
     user_id: reqRow.user_id,
     site_id: reqRow.site_id,
     type: "OUT",
     server_time: outTime.toISOString(),
-    day_local: dayLocalCZFromIso(outTime.toISOString()),
-
-    note_work: reqRow.note_work ?? null,
+    day_local: reqRow.day_local || null,
+    note_work: reqRow.note_work || null,
     km: reqRow.km ?? null,
-    material_desc: reqRow.material_desc ?? null,
+    material_desc: reqRow.material_desc || null,
     material_amount: reqRow.material_amount ?? null,
-
+    offsite_reason: null,
+    offsite_hours: null,
     is_paid: false,
   });
 
-  if (outIns.error) return json({ error: "Nešlo uzavřít směnu (OUT insert)." }, { status: 500 });
+  if (insErr) return json({ error: "Nešlo vytvořit odchod." }, { status: 500 });
 
-  const upd = await db
+  // 5) označ žádost jako schválenou + uložit použitý čas
+  await db
     .from("attendance_close_requests")
-    .update({
-      status: "approved",
-      decided_at: new Date().toISOString(),
-      decided_by: adminId,
-    })
+    .update({ status: "APPROVED", approved_out_time: outTime.toISOString() })
     .eq("id", id);
 
-  if (upd.error) return json({ error: "Nešlo označit žádost jako schválenou." }, { status: 500 });
-
-  return json({ ok: true, out_time: outTime.toISOString() });
-}
-
-export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const token = getBearer(req);
-  const session = token ? await verifySession(token) : null;
-  if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
-  if ((session as any).role !== "admin") return json({ error: "Unauthorized" }, { status: 401 });
-
-  const adminId = (session as any).userId as string;
-  const { id } = await ctx.params;
-  const db = supabaseAdmin();
-
-  const upd = await db
-    .from("attendance_close_requests")
-    .update({
-      status: "rejected",
-      decided_at: new Date().toISOString(),
-      decided_by: adminId,
-    })
-    .eq("id", id)
-    .eq("status", "pending");
-
-  if (upd.error) return json({ error: "Nešlo zamítnout žádost." }, { status: 500 });
-
-  return json({ ok: true });
+  return json({ ok: true, approved_out_time: outTime.toISOString() });
 }

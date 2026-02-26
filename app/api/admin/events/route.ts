@@ -145,8 +145,8 @@ export async function GET(req: NextRequest) {
 
     if (e.type === "OUT" && e.matched_in?.server_time) {
       const inRaw = new Date(e.matched_in.server_time);
-      const inRounded = roundToHalfHourCZ(inRaw);
-      const outRounded = roundToHalfHourCZ(raw);
+      const inRounded = roundToHalfHourCZ(inRaw.toISOString());
+      const outRounded = roundToHalfHourCZ(raw.toISOString());
       const minutesRaw = Math.max(0, Math.round((raw.getTime() - inRaw.getTime())/60000));
       const minutesRounded = Math.max(0, Math.round((outRounded.getTime() - inRounded.getTime())/60000));
       const hoursRounded = Math.round((minutesRounded/60)*100)/100;

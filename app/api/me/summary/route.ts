@@ -193,7 +193,7 @@ export async function GET(req: NextRequest) {
       in_time_rounded: string;
       out_time_rounded: string;
 
-      minutes_rounded: minutesRounded,
+      minutes_rounded: number,
       hours_rounded: number;
       hourly_rate: number;
       rate_source: "site" | "default";
@@ -209,8 +209,8 @@ export async function GET(req: NextRequest) {
         lastIn = { t: new Date(e.server_time), site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
         const out = new Date(e.server_time);
-const minutesRaw = Math.max(0, Math.round((out.getTime() - inTime.getTime()) / 60000));
-const minutesRounded = Math.ceil(minutesRaw / 30) * 30;
+const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+const minutesRounded = ceilMinutesTo30(minutesRaw);
 const hours = minutesRounded / 60;
         const outTimeRounded = new Date(lastIn.t.getTime() + minutesRounded * 60000);
 
@@ -228,7 +228,7 @@ const hours = minutesRounded / 60;
           in_time_rounded: lastIn.t.toISOString(),
           out_time_rounded: outTimeRounded.toISOString(),
 
-          minutes_rounded: minutes,
+          minutes_rounded: minutesRounded,
           hours_rounded: round2(hours),
           hourly_rate: round2(r.hourly),
           rate_source: r.source,

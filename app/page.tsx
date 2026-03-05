@@ -17,10 +17,6 @@ export default function HomePage() {
             Přihlásit
           </Link>
         </div>
-
-        <div className="mt-4 rounded-xl border bg-amber-50 p-3 text-xs text-amber-900">
-          <b>Tip iPhone:</b> Safari → Sdílet → <b>Přidat na plochu</b> (bude to jako aplikace).
-        </div>
       </div>
     </main>
   );

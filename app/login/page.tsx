@@ -80,13 +80,6 @@ export default function LoginPage() {
           >
             {loading ? "Přihlašuji…" : "Přihlásit"}
           </button>
-
-          <Link
-            href="/manual"
-            className="rounded-2xl border bg-white px-4 py-3 text-center text-sm shadow-sm"
-          >
-            Zobrazit manuál
-          </Link>
         </div>
 
         <div className="mt-5">
@@ -102,10 +95,6 @@ export default function LoginPage() {
 
         {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
         {info && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
-
-        <div className="mt-4 rounded-2xl border bg-amber-50 p-4 text-xs text-amber-900">
-          Tip iPhone: Safari → Sdílet → Přidat na plochu (bude to jako aplikace).
-        </div>
       </div>
     </main>
   );

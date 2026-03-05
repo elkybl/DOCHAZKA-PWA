@@ -31,45 +31,25 @@ function dayKeyPrague(iso: string) {
   return `${obj.year}-${obj.month}-${obj.day}`;
 }
 
-// nearest 30 min (00–14 -> :00, 15–44 -> :30, 45–59 -> next hour)
-function roundTo30Prague(iso: string) {
+// ✅ round UP to next 30 minutes (for ISO timestamps)
+function roundUpIsoTo30(iso: string) {
   const d = new Date(iso);
+  const m = d.getMinutes();
+  const s = d.getSeconds();
+  const ms = d.getMilliseconds();
 
-  // local hour/min in Prague
-  const hmParts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  }).formatToParts(d);
+  const mod = m % 30;
 
-  const hm: any = {};
-  for (const p of hmParts) hm[p.type] = p.value;
-
-  let hh = Number(hm.hour);
-  let mm = Number(hm.minute);
-
-  if (mm < 15) mm = 0;
-  else if (mm < 45) mm = 30;
-  else {
-    mm = 0;
-    hh += 1;
-    if (hh === 24) hh = 0;
+  // already exactly on 00 or 30 and no seconds -> keep
+  if (mod === 0 && s === 0 && ms === 0) {
+    d.setSeconds(0, 0);
+    return d;
   }
 
-  // local day in Prague
-  const dayParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-
-  const day: any = {};
-  for (const p of dayParts) day[p.type] = p.value;
-
-  const localStr = `${day.year}-${day.month}-${day.day}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
-  return new Date(localStr);
+  const add = mod === 0 ? 0 : 30 - mod;
+  d.setMinutes(m + add);
+  d.setSeconds(0, 0);
+  return d;
 }
 
 type Ev = {
@@ -168,7 +148,10 @@ export async function GET(req: NextRequest) {
   const tripKmByDay = new Map<string, number>();
   for (const t of (trips || []) as any[]) {
     const day = dayLocalCZFromIso(t.start_time);
-    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
+    tripKmByDay.set(
+      day,
+      (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0)
+    );
   }
 
   const byDay = new Map<string, Ev[]>();
@@ -193,8 +176,9 @@ export async function GET(req: NextRequest) {
       in_time_rounded: string;
       out_time_rounded: string;
 
-      minutes_rounded: number,
+      minutes_rounded: number;
       hours_rounded: number;
+
       hourly_rate: number;
       rate_source: "site" | "default";
       pay: number;
@@ -209,9 +193,13 @@ export async function GET(req: NextRequest) {
         lastIn = { t: new Date(e.server_time), site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
         const out = new Date(e.server_time);
-const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
-const minutesRounded = ceilMinutesTo30(minutesRaw);
-const hours = minutesRounded / 60;
+
+        // ✅ minutes rounding: ALWAYS UP to 30min blocks
+        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const minutesRounded = ceilMinutesTo30(minutesRaw);
+        const hours = minutesRounded / 60;
+
+        // rounded out time (keep start raw, extend end by rounded minutes)
         const outTimeRounded = new Date(lastIn.t.getTime() + minutesRounded * 60000);
 
         const sid = (lastIn.site_id || e.site_id) as string | null;
@@ -318,12 +306,12 @@ const hours = minutesRounded / 60;
     const total = round2(hoursPay + kmPay + material);
     const paid = list.length > 0 && list.every((x) => x.is_paid);
 
-    // For header times, show rounded first IN and last OUT if present
+    // header times: rounded UP to 30 (ISO-based)
     const firstInRaw = list.find((x) => x.type === "IN")?.server_time ?? null;
     const lastOutRaw = [...list].reverse().find((x) => x.type === "OUT")?.server_time ?? null;
 
-const firstInRounded = firstInRaw ? ceilMinutesTo30(firstInRaw).toISOString() : null;
-const lastOutRounded = lastOutRaw ? ceilMinutesTo30(lastOutRaw).toISOString() : null;
+    const firstInRounded = firstInRaw ? roundUpIsoTo30(firstInRaw).toISOString() : null;
+    const lastOutRounded = lastOutRaw ? roundUpIsoTo30(lastOutRaw).toISOString() : null;
 
     rows.push({
       day,

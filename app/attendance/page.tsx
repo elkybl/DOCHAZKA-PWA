@@ -127,57 +127,6 @@ function TopBar({ title, showAdmin }: { title: string; showAdmin: boolean }) {
   );
 }
 
-function Manual() {
-  return (
-    <div className="rounded-3xl border bg-white p-6 shadow-sm">
-      <h2 className="text-base font-semibold">Manuál</h2>
-
-      <div className="mt-3 space-y-5 text-sm text-neutral-700">
-        <div className="rounded-2xl border bg-neutral-50 p-4">
-          <div className="text-sm font-semibold text-neutral-900">Zaměstnanec – jak to používat</div>
-          <div className="mt-2 space-y-2">
-            <div>
-              1) Vyber stavbu a dej PŘÍCHOD. Aplikace si vezme čas a GPS. Příchod/odchod jde jen v radiusu stavby.
-            </div>
-            <div>
-              2) Na konci dne vyplň co se dělalo (povinné), případně km a materiál ze svého (popis + částka) a dej ODCHOD.
-            </div>
-            <div>
-              3) Když zapomeneš odchod a jsi doma: použij žádost adminovi (čas kdy jsi odešel + důvod + co se dělalo). Admin to schválí.
-            </div>
-            <div>
-              4) Když akce není v seznamu: klikni Akce není v seznamu, vyplň název, povol GPS a vytvoří se dočasná stavba. Admin ji pak aktivuje.
-            </div>
-            <div>
-              5) Kniha jízd: Menu → Kniha jízd → Start jízdy (GPS) → Stop jízdy. Km se spočítají a můžeš je ručně upravit.
-            </div>
-          </div>
-
-          <div className="mt-3 rounded-2xl border bg-white p-3 text-xs text-neutral-600">
-            Jak psát “co se dělalo”: piš stručně a konkrétně (co + kde + počet). Příklad: “Montáž zásuvek – kuchyň
-            7 ks; tahání kabelů – 2 okruhy; světla 1.NP 6 ks”.
-          </div>
-        </div>
-
-        <div className="rounded-2xl border bg-neutral-50 p-4">
-          <div className="text-sm font-semibold text-neutral-900">Admin – co nastavit a kde klikat</div>
-          <div className="mt-2 space-y-2">
-            <div>1) Admin → Stavby: nastavíš GPS bod + radius (100–300 m).</div>
-            <div>2) Admin → Uživatelé: vytvoříš zaměstnance (jméno + PIN), PIN mu pošleš.</div>
-            <div>3) Admin → Dočasné stavby: tady aktivuješ akce založené z terénu.</div>
-            <div>4) Admin → Docházka / Vyplácení: přehled práce, km, materiálu, výplat + CSV.</div>
-            <div>5) Admin → Žádosti o odchod: schvaluješ “zapomenuté odchody”.</div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border bg-amber-50 p-4 text-xs text-amber-900">
-          Tip iPhone: Safari → Sdílet → Přidat na plochu (ikonka jako aplikace).
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function AttendancePage() {
   const router = useRouter();
 
@@ -746,7 +695,6 @@ export default function AttendancePage() {
         </button>
       </div>
 
-      <Manual />
     </main>
   );
 }

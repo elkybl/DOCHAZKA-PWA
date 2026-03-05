@@ -98,11 +98,21 @@ export default function Page() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+
   const [days, setDays] = useState<number>(30);
   const [mode, setMode] = useState<"days" | "sites">("days");
   const [siteFilter, setSiteFilter] = useState<string>("ALL");
 
   const token = useMemo(() => getToken(), []);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/me/profile", { headers: { authorization: `Bearer ${token}` } })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setSheetUrl((d?.user?.google_sheet_url || null) as any))
+      .catch(() => setSheetUrl(null));
+  }, [token]);
 
   async function load(d: number) {
     setErr(null);
@@ -276,6 +286,18 @@ export default function Page() {
                 <MenuLink href="/trips">Kniha jízd</MenuLink>
                 <MenuLink href="/me/rates">Moje sazby</MenuLink>
                 <MenuLink href="/me/edit">Upravit záznamy</MenuLink>
+                {sheetUrl ? (
+                  <a
+                    className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm"
+                    href={sheetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Můj výkaz (Google Sheet)
+                  </a>
+                ) : (
+                  <MenuLink href="/me#export">Export / výkaz</MenuLink>
+                )}
               </div>
             </SubCard>
 

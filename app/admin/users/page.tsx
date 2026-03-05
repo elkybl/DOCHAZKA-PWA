@@ -8,6 +8,7 @@ type U = {
   name: string;
   role: "admin" | "worker";
   is_active: boolean;
+  google_sheet_url?: string | null;
   created_at: string;
 };
 
@@ -17,7 +18,7 @@ function token() {
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<U[]>([]);
-  const [form, setForm] = useState<any>({ name: "", pin: "", role: "worker", is_active: true });
+  const [form, setForm] = useState<any>({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [msg, setMsg] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export default function AdminUsers() {
       name: form.name,
       role: form.role,
       is_active: !!form.is_active,
+      google_sheet_url: (form.google_sheet_url || "").trim() || null,
     };
     if (form.pin) payload.pin = form.pin;
     if (editingId) payload.id = editingId;
@@ -85,20 +87,20 @@ export default function AdminUsers() {
 
     setMsg("Uloženo.");
     setEditingId(null);
-    setForm({ name: "", pin: "", role: "worker", is_active: true });
+    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
     await load();
   }
 
   function edit(u: U) {
     setEditingId(u.id);
-    setForm({ name: u.name, pin: "", role: u.role, is_active: u.is_active });
+    setForm({ name: u.name, pin: "", role: u.role, is_active: u.is_active, google_sheet_url: u.google_sheet_url || "" });
     setMsg(null);
     setErr(null);
   }
 
   function resetForm() {
     setEditingId(null);
-    setForm({ name: "", pin: "", role: "worker", is_active: true });
+    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
     setMsg(null);
     setErr(null);
   }
@@ -188,6 +190,13 @@ export default function AdminUsers() {
             </label>
           </div>
 
+          <input
+            className="rounded-xl border px-3 py-2"
+            placeholder="Google Sheet URL (volitelné – výkaz zaměstnance)"
+            value={form.google_sheet_url}
+            onChange={(e) => setForm({ ...form, google_sheet_url: e.target.value.slice(0, 500) })}
+          />
+
           <button className="rounded-xl bg-black px-4 py-3 text-white" onClick={save}>
             {editingId ? "Uložit změny" : "Přidat uživatele"}
           </button>
@@ -209,6 +218,16 @@ export default function AdminUsers() {
                   <div className="text-xs text-neutral-600">
                     {u.role} • {u.is_active ? "aktivní" : "neaktivní"}
                   </div>
+                  {u.google_sheet_url && (
+                    <a
+                      className="mt-1 inline-block text-xs underline text-neutral-700"
+                      href={u.google_sheet_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Google Sheet výkaz
+                    </a>
+                  )}
                 </div>
 
                 <div className="flex gap-2">

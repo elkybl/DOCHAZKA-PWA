@@ -88,14 +88,17 @@ export default function CloseRequestsAdminPage() {
     setBusy(id);
     try {
       const res = await fetch(`/api/admin/close-requests/${id}`, {
-        method: "POST",
+        method: "PATCH",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
-        body: JSON.stringify({ out_time }),
+        body: JSON.stringify({ action: "APPROVE", out_time }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo schválit.");
 
-      setInfo(`Schváleno. OUT uložen na ${data?.out_time ? fmtDateTimeCZFromIso(String(data.out_time)) : out_time}.`);
+      const shown = data?.approved_out_time
+        ? fmtDateTimeCZFromIso(String(data.approved_out_time))
+        : out_time;
+      setInfo(`Schváleno. OUT uložen na ${shown}.`);
       await load();
     } catch (e: any) {
       setErr(e.message || "Chyba");

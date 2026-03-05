@@ -75,8 +75,32 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // 5) označ žádost jako schválenou + uložit použitý čas
   await db
     .from("attendance_close_requests")
-    .update({ status: "APPROVED", approved_out_time: outTime.toISOString() })
+    .update({ status: "approved", approved_out_time: outTime.toISOString() })
     .eq("id", id);
 
   return json({ ok: true, approved_out_time: outTime.toISOString() });
+}
+
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const token = getBearer(req);
+  const session = token ? await verifySession(token) : null;
+  if (!session) return json({ error: "Unauthorized" }, { status: 401 });
+  if ((session as any).role !== "admin") return json({ error: "Forbidden" }, { status: 403 });
+
+  const { id } = await ctx.params;
+  if (!id) return json({ error: "Chybí ID." }, { status: 400 });
+
+  const db = supabaseAdmin();
+
+  const { data: reqRow, error: reqErr } = await db
+    .from("attendance_close_requests")
+    .select("id,status")
+    .eq("id", id)
+    .single();
+
+  if (reqErr || !reqRow) return json({ error: "Žádost nenalezena." }, { status: 404 });
+
+  await db.from("attendance_close_requests").update({ status: "rejected" }).eq("id", id);
+
+  return json({ ok: true });
 }

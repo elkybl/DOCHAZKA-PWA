@@ -75,31 +75,25 @@ export async function GET(req: NextRequest) {
 
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
-const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
-for (const r of usrSiteRates || []) {
-  const hourly = toNum((r as any).hourly_rate, 0);
-  rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-    hourly,
-    km: toNum((r as any).km_rate, 0),
-    // fallback: když per-site prog není, použije se hourly (a pokud nemáš hourly, tak 0)
-    prog: toNum((r as any).programming_rate, hourly),
-  });
-}
-
-const getRate = (user_id: string, site_id: string | null) => {
-  if (site_id) {
-    const r = rateMap.get(`${user_id}__${site_id}`);
-    if (r) return r;
+  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
+  for (const r of usrSiteRates || []) {
+    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
+      hourly: toNum((r as any).hourly_rate, 0),
+      km: toNum((r as any).km_rate, 0),
+      prog: toNum((r as any).programming_rate, toNum((r as any).hourly_rate, 0)),
+    });
   }
-  const def = defaultByUser.get(user_id);
-  const hourly = def?.hourly ?? 0;
-  return {
-    hourly,
-    km: def?.km ?? 0,
-    // fallback: když user nemá prog sazbu, použij hourly
-    prog: def?.prog ?? hourly,
+
+  const getRate = (user_id: string, site_id: string | null) => {
+    if (site_id) {
+      const r = rateMap.get(`${user_id}__${site_id}`);
+      if (r) return r;
+    }
+    const def = defaultByUser.get(user_id);
+    const hourly = def?.hourly ?? 0;
+    return { hourly, km: def?.km ?? 0, prog: def?.prog ?? hourly };
   };
-};
+
   // sites map (kvůli názvu)
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
@@ -110,9 +104,9 @@ const getRate = (user_id: string, site_id: string | null) => {
   // events
   const { data: evs, error } = await db
     .from("attendance_events")
-	.select(
-		"user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,programming_hours,programming_note,is_paid"
-)
+    .select(
+      "user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,programming_hours,programming_note,is_paid"
+    )
     .gte("server_time", from)
     .lte("server_time", to)
     .order("server_time", { ascending: true });
@@ -240,13 +234,6 @@ const getRate = (user_id: string, site_id: string | null) => {
 
       hourly_avg: Math.round(hourlyAvg * 100) / 100,
       km_avg: Math.round(kmAvg * 100) / 100,
-	  hours_raw: Math.round(hoursRaw * 100) / 100,
-hours_rounded: Math.round(hours * 100) / 100,
-prog_hours: Math.round(progHours * 100) / 100,
-site_hours: Math.round(Math.max(0, hours - progHours) * 100) / 100,
-work_pay: Math.round(hoursPay * 100) / 100,
-travel_pay: Math.round(kmPay * 100) / 100,
-total_to_pay: Math.round(total * 100) / 100,
 
       paid,
     });

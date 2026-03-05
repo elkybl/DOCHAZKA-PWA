@@ -142,6 +142,10 @@ export default function AttendancePage() {
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
 
+  // programování (jen pro programátory) – zadává se při odchodu jako část směny
+  const [progHours, setProgHours] = useState("");
+  const [progNote, setProgNote] = useState("");
+
   // mimo stavbu (nákup/sklad)
   const [offReason, setOffReason] = useState("");
   const [offHours, setOffHours] = useState("");

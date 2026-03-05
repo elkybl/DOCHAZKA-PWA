@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   const defaultRate: Rates = {
     hourly: defHourly,
     km: toNum((user as any).km_rate, 0),
-    // fallback: když programming_rate není, použij hourly
+    // fallback: when programming_rate not set -> use hourly
     prog: toNum((user as any).programming_rate, defHourly),
   };
 
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
       hourly,
       km: toNum((r as any).km_rate, defaultRate.km),
-      // fallback: když per-site programming_rate není, použij hourly (per-site)
+      // fallback: if per-site programming_rate missing -> use per-site hourly
       prog: toNum((r as any).programming_rate, hourly),
     });
   }
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   const siteName = new Map<string, string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  // events (only this user)  ✅ include programming_* fields
+  // events (only this user) – include programming_* fields
   const { data: evs, error } = await db
     .from("attendance_events")
     .select(
@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // OFFSITE hours (paid as hourly, not programming)
+    // OFFSITE hours (paid as hourly)
     let offH = 0;
     let offPay = 0;
     for (const o of list.filter((x) => x.type === "OFFSITE")) {
@@ -205,7 +205,6 @@ export async function GET(req: NextRequest) {
       travelPay += k * r.km;
     }
 
-    // material (refund)
     const material = list.reduce((s, x) => s + toNum(x.material_amount, 0), 0);
     const totalToPay = workPay + travelPay + material;
     const paid = list.length > 0 && list.every((x) => x.is_paid);
@@ -234,7 +233,7 @@ export async function GET(req: NextRequest) {
       material: Math.round(material * 100) / 100,
       total_to_pay: Math.round(totalToPay * 100) / 100,
 
-      // keep legacy fields (optional)
+      // legacy fields
       hours: Math.round(hoursRounded * 100) / 100,
       km: Math.round(km * 10) / 10,
       hours_pay: Math.round(workPay * 100) / 100,

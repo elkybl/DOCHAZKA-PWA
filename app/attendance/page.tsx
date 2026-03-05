@@ -97,7 +97,7 @@ function TopBar({ title, showAdmin }: { title: string; showAdmin: boolean }) {
         <div className="mt-3 rounded-3xl border bg-white p-4 shadow-sm">
           <div className="grid gap-2 sm:grid-cols-2">
             <Link className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm" href="/me">
-              Moje výdělek
+              Moje výdělky
             </Link>
             <Link className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm" href="/me/rates">
               Moje sazby

@@ -17,7 +17,7 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
-// yyyy-mm-dd v Europe/Prague
+// yyyy-mm-dd in Europe/Prague
 function dayKeyPrague(iso: string) {
   const d = new Date(iso);
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -148,10 +148,7 @@ export async function GET(req: NextRequest) {
   const tripKmByDay = new Map<string, number>();
   for (const t of (trips || []) as any[]) {
     const day = dayLocalCZFromIso(t.start_time);
-    tripKmByDay.set(
-      day,
-      (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0)
-    );
+    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
   }
 
   const byDay = new Map<string, Ev[]>();

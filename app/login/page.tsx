@@ -95,6 +95,7 @@ export default function LoginPage() {
 
         {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
         {info && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
+
       </div>
     </main>
   );

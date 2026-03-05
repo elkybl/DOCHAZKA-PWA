@@ -73,6 +73,9 @@ export default function AdminTableShell({
           <div ref={topScrollRef} className="overflow-x-auto overscroll-x-contain">
             <div style={spacerStyle} />
           </div>
+          <div className="mt-1 text-[11px] text-neutral-500">
+            Posun do stran řeš tady nahoře (nemusíš sjíždět dolů).
+          </div>
         </div>
       </div>
 

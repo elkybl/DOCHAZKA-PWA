@@ -7,12 +7,21 @@ function _getProps() {
   return { token, baseUrl };
 }
 
-function _isoToCzDate(isoDay) {
-  // isoDay: YYYY-MM-DD
-  if (!isoDay) return "";
-  const parts = isoDay.split("-");
-  if (parts.length !== 3) return isoDay;
-  return `${Number(parts[2])}.${Number(parts[1])}.${parts[0]}`;
+function _isoToCzDate(v) {
+  // Accepts: "YYYY-MM-DD", ISO datetime string, or Date object.
+  if (!v) return "";
+  // Date object
+  if (Object.prototype.toString.call(v) === "[object Date]" && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, "Europe/Prague", "d.M.yyyy");
+  }
+  const s = String(v).trim();
+  // ISO datetime -> take YYYY-MM-DD
+  if (s.length >= 10 && s[4] === "-" && s[7] === "-") {
+    const isoDay = s.slice(0, 10);
+    const parts = isoDay.split("-");
+    return `${Number(parts[2])}.${Number(parts[1])}.${parts[0]}`;
+  }
+  return s;
 }
 
 function syncMyDochazka() {
@@ -102,6 +111,8 @@ function buildReport_() {
 
   const rep = ss.getSheetByName("Report") || ss.insertSheet("Report");
   rep.clearContents();
+  // reset any previous backgrounds (also removes "alternating colors" look)
+  rep.getRange(1, 1, rep.getMaxRows(), rep.getMaxColumns()).setBackground(null);
 
   // layout columns like template: A,B,C,D,E,(F-J blank),K,L,M,(N blank),O,P,Q,R
   const hdr = ["Datum","Jméno","Akce","Co se dělalo","h","","","","","", "kč/h","Dopr","Σ","", "km","kč/km/hod","Materiál","Materiál poznámka"];
@@ -217,11 +228,24 @@ function buildReport_() {
   // km (O) and rateKm (P)
   rep.getRange(2,15,Math.max(0,outRow-2),1).setNumberFormat("0.0");
   rep.getRange(2,16,Math.max(0,outRow-2),1).setNumberFormat("0.00 \"Kč\"");
+  // alignment
+  const nRows = Math.max(0, outRow - 2);
+  if (nRows > 0) {
+    rep.getRange(2,5,nRows,1).setHorizontalAlignment("center");   // h
+    rep.getRange(2,15,nRows,1).setHorizontalAlignment("center");  // km
+    rep.getRange(2,11,nRows,1).setHorizontalAlignment("right");   // Kč/h
+    rep.getRange(2,12,nRows,2).setHorizontalAlignment("right");   // Dopr + Σ
+    rep.getRange(2,16,nRows,2).setHorizontalAlignment("right");   // Kč/km + Materiál
+  }
   // wrap long text
   rep.getRange(1,4,outRow,1).setWrap(true);
   rep.getRange(1,18,outRow,1).setWrap(true);
   rep.autoResizeColumn(4);
   rep.autoResizeColumn(18);
+
+  // subtle borders for the whole report area
+  rep.getRange(1, 1, Math.max(1, outRow - 1), 18)
+     .setBorder(true, true, true, true, true, true, "#d0d0d0", SpreadsheetApp.BorderStyle.SOLID);
 }
 
 function _colToIndex(col) {

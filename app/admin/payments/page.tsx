@@ -104,30 +104,6 @@ export default function Page() {
     }
   }
 
-  function exportCsv() {
-    if (!token) return;
-    (async () => {
-      setErr(null);
-      setInfo(null);
-      try {
-        const res = await fetch(`/api/admin/export?from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`, {
-          headers: { authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Export selhal.");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `payouts_${from}_to_${to}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e: any) {
-        setErr(e.message || "Chyba exportu");
-      }
-    })();
-  }
 
   useEffect(() => {
     load();
@@ -178,9 +154,9 @@ export default function Page() {
             {loading ? "Načítám…" : "Načíst"}
           </button>
 
-          <button onClick={exportCsv} className="rounded-xl border bg-white px-4 py-3 text-sm shadow-sm">
-            Export CSV
-          </button>
+          <div className="text-xs text-neutral-500">
+            Export řešíme přes Google Sheet reporty (CSV není potřeba).
+          </div>
 
           <div className="ml-auto text-sm">
             <div className="text-neutral-600">Nezaplaceno:</div>

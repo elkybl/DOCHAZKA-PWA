@@ -193,7 +193,7 @@ export async function GET(req: NextRequest) {
       in_time_rounded: string;
       out_time_rounded: string;
 
-      minutes_rounded: number;
+      minutes_rounded: minutesRounded,
       hours_rounded: number;
       hourly_rate: number;
       rate_source: "site" | "default";

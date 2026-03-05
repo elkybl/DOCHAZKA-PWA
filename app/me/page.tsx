@@ -18,10 +18,16 @@ type Seg = {
 
   minutes_rounded: number;
   hours_rounded: number;
+  site_hours: number;
+  prog_hours: number;
+  site_pay: number;
+  prog_pay: number;
   hourly_rate: number;
+  programming_rate: number;
   rate_source: "site" | "default";
   pay: number;
   note_work: string | null;
+  programming_note: string | null;
 };
 
 type Off = {
@@ -451,6 +457,19 @@ export default function Page() {
                             </div>
                           </div>
                           {s.note_work ? <div className="mt-2 text-sm text-neutral-700">{s.note_work}</div> : null}
+
+                          {s.prog_hours > 0 ? (
+                            <div className="mt-2 rounded-xl bg-white p-3 text-xs text-neutral-700">
+                              <div>
+                                Stavba: {fmt(s.site_hours)} h • {fmt(s.hourly_rate)} Kč/h • {fmt(s.site_pay)} Kč
+                              </div>
+                              <div className="mt-1">
+                                Programování: {fmt(s.prog_hours)} h • {fmt(s.programming_rate)} Kč/h • {fmt(s.prog_pay)} Kč
+                                {s.programming_note ? ` — ${s.programming_note}` : ""}
+                              </div>
+                            </div>
+                          ) : null}
+
                           <div className="mt-2 text-xs text-neutral-600">
                             Sazba: {fmt(s.hourly_rate)} Kč/h ({s.rate_source}) • Částka: {fmt(s.pay)} Kč
                           </div>

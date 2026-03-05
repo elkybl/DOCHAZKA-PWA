@@ -11,6 +11,8 @@ type Row = {
   site_name: string | null;
   note_work: string;
   km: number;
+  programming_hours: number;
+  programming_note: string;
   offsite_reason: string;
   offsite_hours: number;
   material_desc: string;
@@ -20,6 +22,7 @@ type Row = {
 
 export default function Page() {
   const [token, setToken] = useState<string | null>(null);
+  const [canProg, setCanProg] = useState(false);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -31,6 +34,14 @@ export default function Page() {
     const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     setToken(t);
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/me/profile", { headers: { authorization: `Bearer ${token}` } })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setCanProg(!!d?.user?.is_programmer))
+      .catch(() => setCanProg(false));
+  }, [token]);
 
   async function load(t: string) {
     setErr(null);
@@ -110,6 +121,11 @@ async function save(r: Row) {
       if (r.type === "OUT") {
         payload.note_work = r.note_work;
         payload.km = Number(r.km || 0);
+
+        if (canProg) {
+          payload.programming_hours = Number(r.programming_hours || 0);
+          payload.programming_note = r.programming_note || "";
+        }
       } else {
         payload.offsite_reason = r.offsite_reason;
         payload.offsite_hours = Number(r.offsite_hours || 0);
@@ -216,6 +232,35 @@ async function save(r: Row) {
                   }
                   disabled={r.is_paid}
                 />
+
+                {canProg && (
+                  <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
+                    <div className="text-sm font-semibold">Programování</div>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Pokud jsi dnes programoval, zadej počet hodin. Zbytek dne zůstane jako práce na stavbě.
+                    </p>
+
+                    <label className="mt-3 block text-sm text-neutral-700">Hodiny programování</label>
+                    <input
+                      className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                      inputMode="decimal"
+                      value={String(r.programming_hours ?? 0)}
+                      onChange={(e) =>
+                        updateRow(r.id, { programming_hours: Number(e.target.value.replace(/[^\d.]/g, "")) })
+                      }
+                      disabled={r.is_paid}
+                    />
+
+                    <label className="mt-3 block text-sm text-neutral-700">Poznámka k programování</label>
+                    <input
+                      className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                      value={r.programming_note}
+                      onChange={(e) => updateRow(r.id, { programming_note: e.target.value.slice(0, 500) })}
+                      disabled={r.is_paid}
+                      placeholder="např. Loxone, Home Assistant…"
+                    />
+                  </div>
+                )}
 
                 {!r.is_paid && (
                   <button

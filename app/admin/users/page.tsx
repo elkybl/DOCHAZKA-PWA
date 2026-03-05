@@ -9,6 +9,8 @@ type U = {
   role: "admin" | "worker";
   is_active: boolean;
   google_sheet_url?: string | null;
+  is_programmer?: boolean;
+  programming_rate?: number | null;
   created_at: string;
 };
 
@@ -18,7 +20,15 @@ function token() {
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<U[]>([]);
-  const [form, setForm] = useState<any>({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
+  const [form, setForm] = useState<any>({
+    name: "",
+    pin: "",
+    role: "worker",
+    is_active: true,
+    google_sheet_url: "",
+    is_programmer: false,
+    programming_rate: "",
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [msg, setMsg] = useState<string | null>(null);
@@ -66,6 +76,8 @@ export default function AdminUsers() {
       role: form.role,
       is_active: !!form.is_active,
       google_sheet_url: (form.google_sheet_url || "").trim() || null,
+      is_programmer: !!form.is_programmer,
+      programming_rate: form.programming_rate === "" ? null : Number(form.programming_rate),
     };
     if (form.pin) payload.pin = form.pin;
     if (editingId) payload.id = editingId;
@@ -87,20 +99,28 @@ export default function AdminUsers() {
 
     setMsg("Uloženo.");
     setEditingId(null);
-    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
+    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "", is_programmer: false, programming_rate: "" });
     await load();
   }
 
   function edit(u: U) {
     setEditingId(u.id);
-    setForm({ name: u.name, pin: "", role: u.role, is_active: u.is_active, google_sheet_url: u.google_sheet_url || "" });
+    setForm({
+      name: u.name,
+      pin: "",
+      role: u.role,
+      is_active: u.is_active,
+      google_sheet_url: u.google_sheet_url || "",
+      is_programmer: !!u.is_programmer,
+      programming_rate: u.programming_rate == null ? "" : String(u.programming_rate),
+    });
     setMsg(null);
     setErr(null);
   }
 
   function resetForm() {
     setEditingId(null);
-    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "" });
+    setForm({ name: "", pin: "", role: "worker", is_active: true, google_sheet_url: "", is_programmer: false, programming_rate: "" });
     setMsg(null);
     setErr(null);
   }
@@ -197,6 +217,27 @@ export default function AdminUsers() {
             onChange={(e) => setForm({ ...form, google_sheet_url: e.target.value.slice(0, 500) })}
           />
 
+          <div className="grid gap-2 rounded-2xl border bg-neutral-50 p-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!form.is_programmer}
+                onChange={(e) => setForm({ ...form, is_programmer: e.target.checked })}
+              />
+              programátor
+            </label>
+
+            <input
+              className="rounded-xl border bg-white px-3 py-2"
+              placeholder="Programovací sazba (Kč/h) – jen pro programátory"
+              inputMode="decimal"
+              value={form.programming_rate}
+              onChange={(e) => setForm({ ...form, programming_rate: e.target.value.replace(/[^\d.]/g, "").slice(0, 10) })}
+              disabled={!form.is_programmer}
+            />
+            <div className="text-xs text-neutral-500">Sazbu si může upravit i sám v „Moje sazby“, pokud je programátor.</div>
+          </div>
+
           <button className="rounded-xl bg-black px-4 py-3 text-white" onClick={save}>
             {editingId ? "Uložit změny" : "Přidat uživatele"}
           </button>
@@ -217,6 +258,7 @@ export default function AdminUsers() {
                   <div className="font-medium">{u.name}</div>
                   <div className="text-xs text-neutral-600">
                     {u.role} • {u.is_active ? "aktivní" : "neaktivní"}
+                    {u.is_programmer ? " • programátor" : ""}
                   </div>
                   {u.google_sheet_url && (
                     <a

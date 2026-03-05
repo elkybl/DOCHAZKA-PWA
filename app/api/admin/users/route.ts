@@ -12,6 +12,8 @@ const userSchema = z.object({
   role: z.enum(["admin", "worker"]),
   is_active: z.boolean().default(true),
   google_sheet_url: z.string().max(500).optional().nullable(),
+  is_programmer: z.boolean().optional(),
+  programming_rate: z.number().min(0).max(200000).optional().nullable(),
 });
 
 async function requireAdmin(req: NextRequest) {
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
   const db = supabaseAdmin();
   const attempt = await db
     .from("users")
-    .select("id,name,role,is_active,google_sheet_url,created_at")
+    .select("id,name,role,is_active,google_sheet_url,is_programmer,programming_rate,created_at")
     .order("created_at", { ascending: false });
 
   if (!attempt.error) return json({ users: attempt.data || [] });
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (fallback.error) return json({ error: "DB chyba." }, { status: 500 });
-  const rows = (fallback.data || []).map((u: any) => ({ ...u, google_sheet_url: null }));
+  const rows = (fallback.data || []).map((u: any) => ({ ...u, google_sheet_url: null, is_programmer: false, programming_rate: null }));
   return json({ users: rows });
 }
 
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
   const attempt = await db
     .from("users")
     .insert(payload)
-    .select("id,name,role,is_active,google_sheet_url,created_at")
+    .select("id,name,role,is_active,google_sheet_url,is_programmer,programming_rate,created_at")
     .single();
 
   if (!attempt.error && attempt.data) return json({ user: attempt.data });
@@ -72,6 +74,8 @@ export async function POST(req: NextRequest) {
   // 2) fallback pro DB bez google_sheet_url: zopakuj insert bez toho sloupce
   if (attempt.error && String((attempt.error as any).message || "").includes("google_sheet_url")) {
     delete payload.google_sheet_url;
+    delete payload.is_programmer;
+    delete payload.programming_rate;
     const fbIns = await db
       .from("users")
       .insert(payload)
@@ -79,7 +83,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (fbIns.error || !fbIns.data) return json({ error: "Nešlo uložit." }, { status: 500 });
-    return json({ user: { ...fbIns.data, google_sheet_url: null } });
+    return json({ user: { ...fbIns.data, google_sheet_url: null, is_programmer: false, programming_rate: null } });
   }
 
   return json({ error: "Nešlo uložit." }, { status: 500 });
@@ -103,7 +107,7 @@ export async function PATCH(req: NextRequest) {
     .from("users")
     .update(update)
     .eq("id", id)
-    .select("id,name,role,is_active,google_sheet_url,created_at")
+    .select("id,name,role,is_active,google_sheet_url,is_programmer,programming_rate,created_at")
     .single();
 
   if (!attempt.error && attempt.data) return json({ user: attempt.data });
@@ -111,6 +115,8 @@ export async function PATCH(req: NextRequest) {
   // fallback pro DB bez google_sheet_url
   if (attempt.error && String((attempt.error as any).message || "").includes("google_sheet_url")) {
     delete update.google_sheet_url;
+    delete update.is_programmer;
+    delete update.programming_rate;
     const fbUpd = await db
       .from("users")
       .update(update)
@@ -119,7 +125,7 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (fbUpd.error || !fbUpd.data) return json({ error: "Nešlo uložit." }, { status: 500 });
-    return json({ user: { ...fbUpd.data, google_sheet_url: null } });
+    return json({ user: { ...fbUpd.data, google_sheet_url: null, is_programmer: false, programming_rate: null } });
   }
 
   return json({ error: "Nešlo uložit." }, { status: 500 });

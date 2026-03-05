@@ -62,6 +62,9 @@ type Ev = {
   note_work: string | null;
   km: number | null;
 
+  programming_hours: number | null;
+  programming_note: string | null;
+
   offsite_reason: string | null;
   offsite_hours: number | null;
 
@@ -90,24 +93,28 @@ export async function GET(req: NextRequest) {
 
   const { data: me, error: meErr } = await db
     .from("users")
-    .select("id,name,role,hourly_rate,km_rate")
+    .select("id,name,role,hourly_rate,km_rate,is_programmer,programming_rate")
     .eq("id", userId)
     .single();
   if (meErr || !me) return json({ error: "Uživatel nenalezen." }, { status: 404 });
 
   const defaultHourly = toNum((me as any).hourly_rate, 0);
   const defaultKm = toNum((me as any).km_rate, 0);
+  const isProg = (me as any).is_programmer === true;
+  const defaultProg = toNum((me as any).programming_rate, defaultHourly);
 
   const { data: usrSiteRates } = await db
     .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate")
+    .select("user_id,site_id,hourly_rate,km_rate,programming_rate")
     .eq("user_id", userId);
 
-  const rateMap = new Map<string, { hourly: number; km: number }>();
+  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
   for (const r of usrSiteRates || []) {
+    const hourly = toNum((r as any).hourly_rate, 0);
     rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: toNum((r as any).hourly_rate, 0),
+      hourly,
       km: toNum((r as any).km_rate, 0),
+      prog: toNum((r as any).programming_rate, hourly || defaultProg),
     });
   }
 
@@ -116,7 +123,7 @@ export async function GET(req: NextRequest) {
       const r = rateMap.get(`${userId}__${site_id}`);
       if (r) return { ...r, source: "site" as const };
     }
-    return { hourly: defaultHourly, km: defaultKm, source: "default" as const };
+    return { hourly: defaultHourly, km: defaultKm, prog: defaultProg, source: "default" as const };
   };
 
   const { data: sites } = await db.from("sites").select("id,name");
@@ -126,7 +133,7 @@ export async function GET(req: NextRequest) {
   const { data: evs, error: evErr } = await db
     .from("attendance_events")
     .select(
-      "user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,is_paid"
+      "user_id,site_id,type,server_time,day_local,note_work,km,programming_hours,programming_note,offsite_reason,offsite_hours,material_desc,material_amount,is_paid"
     )
     .eq("user_id", userId)
     .gte("server_time", fromIso)
@@ -176,10 +183,17 @@ export async function GET(req: NextRequest) {
       minutes_rounded: number;
       hours_rounded: number;
 
+      site_hours: number;
+      prog_hours: number;
+      site_pay: number;
+      prog_pay: number;
+
       hourly_rate: number;
+      programming_rate: number;
       rate_source: "site" | "default";
       pay: number;
       note_work: string | null;
+      programming_note: string | null;
     };
 
     const segments: Seg[] = [];
@@ -202,6 +216,13 @@ export async function GET(req: NextRequest) {
         const sid = (lastIn.site_id || e.site_id) as string | null;
         const r = getRate(sid);
 
+        // programování je jen pro programátory a zapisuje se na OUT eventu jako počet hodin v rámci směny
+        const progH = isProg ? Math.max(0, Math.min(hours, toNum((e as any).programming_hours, 0))) : 0;
+        const siteH = Math.max(0, hours - progH);
+        const progPay = round2(progH * (r as any).prog);
+        const sitePay = round2(siteH * r.hourly);
+        const pay = round2(sitePay + progPay);
+
         segments.push({
           kind: "WORK",
           site_id: sid,
@@ -215,10 +236,16 @@ export async function GET(req: NextRequest) {
 
           minutes_rounded: minutesRounded,
           hours_rounded: round2(hours),
+          site_hours: round2(siteH),
+          prog_hours: round2(progH),
+          site_pay: sitePay,
+          prog_pay: progPay,
           hourly_rate: round2(r.hourly),
+          programming_rate: round2((r as any).prog),
           rate_source: r.source,
-          pay: round2(hours * r.hourly),
+          pay,
           note_work: e.note_work || null,
+          programming_note: (e as any).programming_note || null,
         });
 
         lastIn = null;

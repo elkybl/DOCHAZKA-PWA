@@ -43,6 +43,22 @@ export async function PATCH(req: NextRequest) {
     if (parsed.data[k] !== undefined) patch[k] = parsed.data[k];
   }
 
+  // Programování může upravovat jen programátor (a jen na OUT)
+  if (parsed.data.programming_hours !== undefined || parsed.data.programming_note !== undefined) {
+    const { data: me, error: meErr } = await db
+      .from("users")
+      .select("id,is_programmer")
+      .eq("id", session.userId)
+      .maybeSingle();
+    if (meErr) return json({ error: "DB chyba (me)." }, { status: 500 });
+    const canProg = (me as any)?.is_programmer === true;
+    if (!canProg) return json({ error: "Programování smí upravit jen programátor." }, { status: 403 });
+    if (row.type !== "OUT") return json({ error: "Programování lze upravit jen na odchodu." }, { status: 409 });
+
+    if (parsed.data.programming_hours !== undefined) patch.programming_hours = parsed.data.programming_hours;
+    if (parsed.data.programming_note !== undefined) patch.programming_note = parsed.data.programming_note;
+  }
+
   // drobná logika: materiál povol jen na OUT/OFFSITE, práce jen na OUT, offsite jen na OFFSITE
   if (row.type !== "OUT") delete patch.note_work;
   if (row.type !== "OFFSITE") { delete patch.offsite_reason; delete patch.offsite_hours; }

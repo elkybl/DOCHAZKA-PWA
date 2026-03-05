@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   // NOTE: google_sheet_url je volitelný sloupec (může ještě neexistovat).
   const attempt = await db
     .from("users")
-    .select("id,name,role,google_sheet_url")
+    .select("id,name,role,google_sheet_url,is_programmer,programming_rate")
     .eq("id", session.userId)
     .single();
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const fallback = await db
     .from("users")
-    .select("id,name,role")
+    .select("id,name,role,is_programmer,programming_rate")
     .eq("id", session.userId)
     .single();
 

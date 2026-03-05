@@ -16,6 +16,7 @@ const saveSchema = z.object({
         site_id: z.string().min(1),
         hourly_rate: rateNum.nullable().optional(),
         km_rate: rateNum.nullable().optional(),
+        programming_rate: rateNum.nullable().optional(),
       })
     )
     .default([]),
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error: rErr } = await db
     .from("user_site_rates")
-    .select("site_id,hourly_rate,km_rate")
+    .select("site_id,hourly_rate,km_rate,programming_rate")
     .eq("user_id", userId)
     .order("site_id", { ascending: true });
 
@@ -55,10 +56,13 @@ export async function GET(req: NextRequest) {
   return json({
     default_hourly_rate: (me as any).hourly_rate ?? null,
     default_km_rate: (me as any).km_rate ?? null,
+    is_programmer: !!(me as any).is_programmer,
+    programming_rate: (me as any).programming_rate ?? null,
     rows: (rows || []).map((r: any) => ({
       site_id: r.site_id,
       hourly_rate: r.hourly_rate ?? null,
       km_rate: r.km_rate ?? null,
+      programming_rate: r.programming_rate ?? null,
     })),
   });
 }
@@ -80,6 +84,7 @@ export async function POST(req: NextRequest) {
   const payload = parsed.data;
   const defHourly = toNullOrNumber(payload.default_hourly_rate);
   const defKm = toNullOrNumber(payload.default_km_rate);
+  const defProg = toNullOrNumber(payload.programming_rate);
 
   // 1) uložit default sazby do users
   const upd = await db
@@ -87,6 +92,7 @@ export async function POST(req: NextRequest) {
     .update({
       hourly_rate: defHourly,
       km_rate: defKm,
+      programming_rate: defProg,
     })
     .eq("id", userId);
 
@@ -98,12 +104,13 @@ export async function POST(req: NextRequest) {
     site_id: r.site_id,
     hourly_rate: toNullOrNumber(r.hourly_rate),
     km_rate: toNullOrNumber(r.km_rate),
+    programming_rate: toNullOrNumber((r as any).programming_rate),
   }));
 
   // nechceme ukládat úplně prázdné řádky (obě null) – místo toho je smažeme
-  const toKeep = rowsToUpsert.filter((r) => r.hourly_rate !== null || r.km_rate !== null);
+  const toKeep = rowsToUpsert.filter((r) => r.hourly_rate !== null || r.km_rate !== null || r.programming_rate !== null);
   const toDeleteSiteIds = rowsToUpsert
-    .filter((r) => r.hourly_rate === null && r.km_rate === null)
+    .filter((r) => r.hourly_rate === null && r.km_rate === null && r.programming_rate === null)
     .map((r) => r.site_id);
 
   if (toKeep.length) {

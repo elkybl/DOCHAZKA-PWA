@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Site = { id: string; name: string };
-type Row = { site_id: string; hourly_rate: number | null; km_rate: number | null };
+type Row = { site_id: string; hourly_rate: number | null; km_rate: number | null; programming_rate?: number | null };
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -21,6 +21,8 @@ export default function Page() {
 
   const [defHourly, setDefHourly] = useState("");
   const [defKm, setDefKm] = useState("");
+  const [defProg, setDefProg] = useState("");
+  const [isProg, setIsProg] = useState(false);
 
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -46,13 +48,15 @@ export default function Page() {
 
       setDefHourly(String(rData.default_hourly_rate ?? ""));
       setDefKm(String(rData.default_km_rate ?? ""));
+      setIsProg(!!rData.is_programmer);
+      setDefProg(String(rData.programming_rate ?? ""));
       setRows(rData.rows || []);
     } catch (e: any) {
       setErr(e.message || "Chyba");
     }
   }
 
-  function patch(site_id: string, key: "hourly_rate" | "km_rate", val: string) {
+  function patch(site_id: string, key: "hourly_rate" | "km_rate" | "programming_rate", val: string) {
     const n = val === "" ? null : Number(val);
     setRows((prev) => {
       const idx = prev.findIndex((x) => x.site_id === site_id);
@@ -73,6 +77,7 @@ export default function Page() {
       const payload = {
         default_hourly_rate: defHourly === "" ? null : Number(defHourly),
         default_km_rate: defKm === "" ? null : Number(defKm),
+        programming_rate: !isProg ? null : defProg === "" ? null : Number(defProg),
         rows,
       };
 
@@ -152,6 +157,19 @@ export default function Page() {
           onChange={(e) => setDefKm(e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
           placeholder="např. 7"
         />
+
+        {isProg && (
+          <>
+            <label className="mt-3 block text-sm text-neutral-700">Programování (Kč/h)</label>
+            <input
+              className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+              inputMode="decimal"
+              value={defProg}
+              onChange={(e) => setDefProg(e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
+              placeholder="např. 600"
+            />
+          </>
+        )}
       </div>
 
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -190,6 +208,19 @@ export default function Page() {
                     />
                   </div>
                 </div>
+
+                {isProg && (
+                  <div className="mt-3">
+                    <label className="block text-sm text-neutral-700">Programování (Kč/h)</label>
+                    <input
+                      className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                      inputMode="decimal"
+                      value={(r as any)?.programming_rate == null ? "" : String((r as any).programming_rate)}
+                      onChange={(e) => patch(s.id, "programming_rate", e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
+                      placeholder="nechat prázdné = default"
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

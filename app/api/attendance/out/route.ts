@@ -52,6 +52,18 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
 
+  // zjišťujeme, jestli je uživatel programátor (aby si nemohl každý posílat programming_hours)
+  const { data: me, error: meErr } = await db
+    .from("users")
+    .select("id,is_programmer")
+    .eq("id", session.userId)
+    .maybeSingle();
+  if (meErr) return json({ error: "DB chyba (me)." }, { status: 500 });
+  const canProg = (me as any)?.is_programmer === true;
+  if (!canProg && (programming_hours != null || programming_note)) {
+    return json({ error: "Programování smí zadávat jen programátor." }, { status: 403 });
+  }
+
   // ✅ pojistka: nejde OUT bez IN
   const { data: last, error: lastErr } = await db
     .from("attendance_events")
@@ -102,6 +114,9 @@ export async function POST(req: NextRequest) {
     km,
     material_desc,
     material_amount,
+
+    programming_hours: canProg ? programming_hours : null,
+    programming_note: canProg ? programming_note : null,
   });
 
   if (error) return json({ error: `Nešlo uložit odchod: ${error.message}` }, { status: 500 });

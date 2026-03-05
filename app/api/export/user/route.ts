@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { json } from "@/lib/http";
-import { toDate, roundTo30ByTZ } from "@/lib/time";
+import { toDate, roundUpTo30ByTZ } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -158,8 +158,8 @@ export async function GET(req: NextRequest) {
       if (e.type === "OUT" && lastIn) {
         const out = toDate(e.server_time);
 
-        const inR = roundTo30ByTZ(lastIn.t.toISOString());
-        const outR = roundTo30ByTZ(out.toISOString());
+        const inR = roundUpTo30ByTZ(lastIn.t.toISOString());
+        const outR = roundUpTo30ByTZ(out.toISOString());
 
         const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
         const minutesRounded = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));

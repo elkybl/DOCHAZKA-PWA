@@ -73,33 +73,6 @@ export function dtCZ(iso?: string | null) {
   });
 }
 
-
-export function roundUpTo30ByTZ(iso: string, tz = APP_TZ) {
-  const d = toDate(iso);
-  const { h, m } = tzHM(d, tz);
-
-  let targetH = h;
-  let targetM = m <= 30 ? 30 : 0;
-
-  // already exactly on boundary
-  if (m === 0) targetM = 0;
-  if (m === 30) targetM = 30;
-
-  if (m > 30) {
-    targetH = h + 1;
-    if (targetH === 24) targetH = 0;
-  }
-
-  const cur = h * 60 + m;
-  const tgt = targetH * 60 + targetM;
-
-  let delta = tgt - cur;
-  if (delta < -720) delta += 1440; // přes půlnoc
-  if (delta > 720) delta -= 1440;
-
-  return new Date(d.getTime() + delta * 60000);
-}
-
 // Backward compat: starší UI volalo fmtCZ / fmtTimeCZFromIso / fmtDateTimeCZFromIso
 export function fmtCZ(dt: string | null | undefined) {
   return dtCZ(dt ?? null);
@@ -280,4 +253,10 @@ export function czLocalToUtcDate(day: string) {
   // start of day 00:00 v Europe/Prague jako skutečný instant
   // používá interní helper makeInstantFromLocalTZ z tvého time.ts
   return makeInstantFromLocalTZ(Y, M, D, 0, 0, APP_TZ);
+}
+
+// Zaokrouhlení minut NAHORU na 30 minutové bloky (CEILING).
+export function ceilMinutesTo30(mins: number) {
+  const m = Math.max(0, Math.round(mins));
+  return Math.ceil(m / 30) * 30;
 }

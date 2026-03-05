@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZFromIso, roundTo30ByTZ } from "@/lib/time";
+import { dayLocalCZFromIso, ceilMinutesTo30 } from "@/lib/time";
 
 const TZ = "Europe/Prague";
 
@@ -202,16 +202,17 @@ export async function GET(req: NextRequest) {
     };
 
     const segments: Seg[] = [];
-    let lastIn: { rawIso: string; rounded: Date; site_id: string | null } | null = null;
+    let lastIn: { t: Date; site_id: string | null } | null = null;
 
     for (const e of list) {
       if (e.type === "IN") {
-        lastIn = { rawIso: e.server_time, rounded: roundTo30ByTZ(e.server_time), site_id: e.site_id };
+        lastIn = { t: new Date(e.server_time), site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
-        const outRounded = roundTo30ByTZ(e.server_time);
-
-        const minutes = Math.max(0, Math.round((outRounded.getTime() - lastIn.rounded.getTime()) / 60000));
-        const hours = minutes / 60;
+        const out = new Date(e.server_time);
+        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const minutesRounded = ceilMinutesTo30(minutesRaw);
+        const h = minutesRounded / 60;
+        const outTimeRounded = new Date(lastIn.t.getTime() + minutesRounded * 60000);
 
         const sid = (lastIn.site_id || e.site_id) as string | null;
         const r = getRate(sid);
@@ -221,11 +222,11 @@ export async function GET(req: NextRequest) {
           site_id: sid,
           site_name: sid ? siteName.get(sid) || null : null,
 
-          in_time_raw: lastIn.rawIso,
+          in_time_raw: lastIn.t.toISOString(),
           out_time_raw: e.server_time,
 
-          in_time_rounded: lastIn.rounded.toISOString(),
-          out_time_rounded: outRounded.toISOString(),
+          in_time_rounded: lastIn.t.toISOString(),
+          out_time_rounded: outTimeRounded.toISOString(),
 
           minutes_rounded: minutes,
           hours_rounded: round2(hours),
@@ -321,8 +322,8 @@ export async function GET(req: NextRequest) {
     const firstInRaw = list.find((x) => x.type === "IN")?.server_time ?? null;
     const lastOutRaw = [...list].reverse().find((x) => x.type === "OUT")?.server_time ?? null;
 
-const firstInRounded = firstInRaw ? roundTo30ByTZ(firstInRaw).toISOString() : null;
-const lastOutRounded = lastOutRaw ? roundTo30ByTZ(lastOutRaw).toISOString() : null;
+const firstInRounded = firstInRaw ? ceilMinutesTo30(firstInRaw).toISOString() : null;
+const lastOutRounded = lastOutRaw ? ceilMinutesTo30(lastOutRaw).toISOString() : null;
 
     rows.push({
       day,

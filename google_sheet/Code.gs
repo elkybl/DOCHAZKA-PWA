@@ -1,54 +1,60 @@
-/**
- * Google Sheets sync + report (grouped by Akce with subtotals).
- *
- * Script Properties (Project Settings -> Script properties):
- *   BASE_URL = https://your-vercel-domain.vercel.app
- *   EXPORT_TOKEN = long token from public.users.export_token
- *
- * Optional:
- *   DATE_FROM / DATE_TO in ISO (if not set -> current year)
- */
-function syncMyDochazka() {
+function _getProps() {
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty("EXPORT_TOKEN");
   const baseUrl = props.getProperty("BASE_URL");
-
   if (!token) throw new Error("Chybí Script Property EXPORT_TOKEN");
   if (!baseUrl) throw new Error("Chybí Script Property BASE_URL");
+  return { token, baseUrl };
+}
 
-  const from = props.getProperty("DATE_FROM") || new Date(new Date().getFullYear(), 0, 1).toISOString();
-  const to = props.getProperty("DATE_TO") || new Date(new Date().getFullYear(), 11, 31, 23, 59, 59, 999).toISOString();
+function _isoToCzDate(isoDay) {
+  // isoDay: YYYY-MM-DD
+  if (!isoDay) return "";
+  const parts = isoDay.split("-");
+  if (parts.length !== 3) return isoDay;
+  return `${Number(parts[2])}.${Number(parts[1])}.${parts[0]}`;
+}
+
+function syncMyDochazka() {
+  const { token, baseUrl } = _getProps();
+
+  const from = "2026-01-01T00:00:00.000Z";
+  const to   = "2026-12-31T23:59:59.999Z";
 
   const url = `${baseUrl}/api/export/user?token=${encodeURIComponent(token)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-
   const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
   const txt = res.getContentText();
   const data = JSON.parse(txt);
   if (!data.rows) throw new Error("Export failed: " + txt);
 
-  writeExport_(data.rows);
-  buildReport_();
-}
-
-function writeExport_(rows) {
   const ss = SpreadsheetApp.getActive();
   const sh = ss.getSheetByName("Export") || ss.insertSheet("Export");
+
+  // keep only unpaid or last ~183 days (half-year)
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 183 * 86400000);
+
+  const rows = (data.rows || []).filter(r => {
+    const paid = !!r.paid;
+    const day = String(r.day || "");
+    // parse YYYY-MM-DD
+    const dt = day && day.length >= 10 ? new Date(day + "T00:00:00Z") : null;
+    if (!paid) return true;
+    if (!dt) return false;
+    return dt >= cutoff;
+  });
+
   sh.clearContents();
 
-  const header = [
-    "Den","Jméno","Akce",
-    "Hodiny raw","Hodiny rounded","Hod. stavba","Hod. program",
-    "KM","Práce Kč","Doprava Kč","Materiál","Celkem k vyplacení",
-    "Kč/h (avg)","Kč/km (avg)","Paid",
-    "Práce","Offsite","Materiál pozn."
-  ];
-  sh.getRange(1, 1, 1, header.length).setValues([header]);
+  const header = ["day","user_name","action","work_notes","hours_raw","hours_rounded","site_hours","prog_hours","km","work_pay","travel_pay","material","total_to_pay","paid","material_notes","offsite_notes"];
+  sh.getRange(1,1,1,header.length).setValues([header]);
   sh.setFrozenRows(1);
 
   const values = rows.map(r => ([
     r.day ?? "",
     r.user_name ?? "",
-    (r.sites||[]).join(", "),
+    r.action ?? ((r.sites||[]).join(", ")),
+    (r.work_notes||[]).join(" | "),
     r.hours_raw ?? "",
     r.hours_rounded ?? r.hours ?? "",
     r.site_hours ?? "",
@@ -58,143 +64,181 @@ function writeExport_(rows) {
     r.travel_pay ?? r.km_pay ?? "",
     r.material ?? "",
     r.total_to_pay ?? r.total ?? "",
-    r.hourly_avg ?? ((r.hours_rounded || r.hours) ? ( (r.work_pay ?? r.hours_pay ?? 0) / (r.hours_rounded ?? r.hours) ) : ""),
-    r.km_avg ?? (r.km ? ( (r.travel_pay ?? r.km_pay ?? 0) / r.km ) : ""),
     r.paid ? "ANO" : "NE",
-    (r.work_notes||[]).join(" | "),
-    (r.offsite_notes||[]).join(" | "),
     (r.material_notes||[]).join(" | "),
+    (r.offsite_notes||[]).join(" | "),
   ]));
 
-  if (values.length) sh.getRange(2, 1, values.length, header.length).setValues(values);
+  if (values.length) sh.getRange(2,1,values.length,header.length).setValues(values);
 
-  // basic formatting
-  sh.getRange(1,1,sh.getLastRow(),header.length).setWrap(true);
-  sh.autoResizeColumns(1, header.length);
+  buildReport_();
 }
 
-/**
- * Creates a "Report" sheet similar to the screenshot:
- * grouped by Akce (action/site) with a subtotal row "Celkem" under each group.
- */
 function buildReport_() {
   const ss = SpreadsheetApp.getActive();
   const src = ss.getSheetByName("Export");
-  if (!src) throw new Error("Chybí list Export. Nejdřív spusť syncMyDochazka().");
+  if (!src) throw new Error("Chybí list Export");
 
-  const lastRow = src.getLastRow();
-  const lastCol = src.getLastColumn();
-  if (lastRow < 2) return;
+  const data = src.getDataRange().getValues();
+  if (data.length < 2) {
+    const rep = ss.getSheetByName("Report") || ss.insertSheet("Report");
+    rep.clearContents();
+    return;
+  }
 
-  const data = src.getRange(2,1,lastRow-1,lastCol).getValues();
+  const header = data[0];
+  const idx = {};
+  header.forEach((h, i) => idx[String(h)] = i);
 
-  // Export header indexes (match writeExport_)
-  const IDX_DAY = 0;
-  const IDX_NAME = 1;
-  const IDX_ACTION = 2;
-  const IDX_H = 4;          // hours rounded
-  const IDX_KM = 7;
-  const IDX_WORKPAY = 8;
-  const IDX_TRAVELPAY = 9;
-  const IDX_MAT = 10;
-  const IDX_TOTAL = 11;
-  const IDX_HAVG = 12;
-  const IDX_KMAVG = 13;
-  const IDX_WORKNOTES = 15;
-  const IDX_OFFNOTES = 16;
-  const IDX_MATNOTES = 17;
+  const rows = data.slice(1).filter(r => r[idx["day"]]);
 
-  // Build rows for report
-  const rows = data.map(r => ({
-    day: r[IDX_DAY],
-    name: r[IDX_NAME],
-    action: r[IDX_ACTION],
-    notes: [r[IDX_WORKNOTES], r[IDX_OFFNOTES]].filter(Boolean).join(" | "),
-    h: Number(r[IDX_H] || 0),
-    havg: Number(r[IDX_HAVG] || 0),
-    travelPay: Number(r[IDX_TRAVELPAY] || 0),
-    total: Number(r[IDX_TOTAL] || 0),
-    km: Number(r[IDX_KM] || 0),
-    kmavg: Number(r[IDX_KMAVG] || 0),
-    mat: Number(r[IDX_MAT] || 0),
-    matNotes: r[IDX_MATNOTES] || ""
-  }));
-
-  // sort by action, then day
-  rows.sort((a,b) => {
-    const aa = String(a.action||"");
-    const bb = String(b.action||"");
-    if (aa !== bb) return aa.localeCompare(bb);
-    return String(a.day||"").localeCompare(String(b.day||""));
-  });
+  // group by action
+  const groups = new Map();
+  for (const r of rows) {
+    const action = String(r[idx["action"]] || "Bez akce");
+    if (!groups.has(action)) groups.set(action, []);
+    groups.get(action).push(r);
+  }
 
   const rep = ss.getSheetByName("Report") || ss.insertSheet("Report");
   rep.clearContents();
 
-  const header = ["Datum","Jméno","Akce","Co se dělalo","h","Kč/h","Dopr","Σ","km","Kč/km","Materiál","Materiál poznámka"];
-  rep.getRange(1,1,1,header.length).setValues([header]);
+  // layout columns like template: A,B,C,D,E,(F-J blank),K,L,M,(N blank),O,P,Q,R
+  const hdr = ["Datum","Jméno","Akce","Co se dělalo","h","","","","","", "kč/h","Dopr","Σ","", "km","kč/km/hod","Materiál","Materiál poznámka"];
+  rep.getRange(1,1,1,hdr.length).setValues([hdr]);
   rep.setFrozenRows(1);
 
-  const out = [];
-  let curAction = null;
-  let sumH=0, sumTravel=0, sumTotal=0, sumKm=0, sumMat=0;
+  // widths (from your template)
+  const widths = {A:11.38,B:12.25,C:17.25,D:50.13,E:5.13,K:12.5,L:12.88,M:14.13,O:3.75,P:8.5,Q:8.88,R:36.75};
+  Object.keys(widths).forEach(k => rep.setColumnWidth(_colToIndex(k), Math.round(widths[k]*7))); // approx excel->px
 
-  function pushSubtotal(actionName) {
-    if (actionName == null) return;
-    out.push([
-      "Celkem", "", actionName, "",
-      sumH,
-      "", // avg hour rate not meaningful on subtotal
-      sumTravel,
-      sumTotal,
-      sumKm,
-      "", // avg km rate not meaningful on subtotal
-      sumMat,
-      ""
-    ]);
-  }
+  // header style
+  rep.getRange(1,1,1,hdr.length)
+     .setFontWeight("bold")
+     .setBackground("#DDDDDD")
+     .setVerticalAlignment("middle");
 
-  for (const r of rows) {
-    if (curAction !== null && r.action !== curAction) {
-      pushSubtotal(curAction);
-      // blank row between groups (like screenshot spacing)
-      out.push(["","","","","","","","","","","",""]);
-      sumH=0; sumTravel=0; sumTotal=0; sumKm=0; sumMat=0;
+  let outRow = 2;
+
+  // sort actions alphabetically
+  const actions = Array.from(groups.keys()).sort((a,b)=>a.localeCompare(b,'cs'));
+
+  for (const action of actions) {
+    const rs = groups.get(action);
+
+    // sort rows by day asc then name
+    rs.sort((a,b)=>{
+      const da=String(a[idx["day"]]); const db=String(b[idx["day"]]);
+      if (da!==db) return da<db?-1:1;
+      const na=String(a[idx["user_name"]]); const nb=String(b[idx["user_name"]]);
+      return na.localeCompare(nb,'cs');
+    });
+
+    let sumHours=0, sumTravel=0, sumTotal=0, sumKm=0, sumMat=0;
+
+    for (const r of rs) {
+      const dayIso = String(r[idx["day"]]);
+      const name = String(r[idx["user_name"]]);
+      const work = String(r[idx["work_notes"]] || "");
+      const h = Number(r[idx["hours_rounded"]] || 0);
+      const km = Number(r[idx["km"]] || 0);
+      const workPay = Number(r[idx["work_pay"]] || 0);
+      const travelPay = Number(r[idx["travel_pay"]] || 0);
+      const mat = Number(r[idx["material"]] || 0);
+      const total = Number(r[idx["total_to_pay"]] || 0);
+      const matNote = String(r[idx["material_notes"]] || "");
+
+      const rateH = h > 0 ? workPay / h : "";
+      const rateKm = km > 0 ? travelPay / km : "";
+
+      // write row into specific columns
+      rep.getRange(outRow,1,1,18).setValues([[
+        _isoToCzDate(dayIso),
+        name,
+        action,
+        work,
+        h || "",
+        "", "", "", "", "",
+        rateH === "" ? "" : rateH,
+        travelPay || "",
+        total || "",
+        "",
+        km || "",
+        rateKm === "" ? "" : rateKm,
+        mat || "",
+        matNote
+      ]]);
+
+      sumHours += h;
+      sumKm += km;
+      sumTravel += travelPay;
+      sumMat += mat;
+      sumTotal += total;
+
+      outRow++;
     }
-    curAction = r.action;
 
-    out.push([
-      r.day, r.name, r.action, r.notes,
-      r.h,
-      r.havg ? Math.round(r.havg*100)/100 : "",
-      r.travelPay ? Math.round(r.travelPay*100)/100 : "",
-      r.total ? Math.round(r.total*100)/100 : "",
-      r.km ? Math.round(r.km*10)/10 : "",
-      r.kmavg ? Math.round(r.kmavg*100)/100 : "",
-      r.mat ? Math.round(r.mat*100)/100 : "",
-      r.matNotes
-    ]);
+    // celkem row
+    rep.getRange(outRow,1,1,18).setValues([[
+      "Celkem",
+      "",
+      action,
+      "",
+      sumHours || "",
+      "", "", "", "", "",
+      "",
+      sumTravel || "",
+      sumTotal || "",
+      "",
+      sumKm || "",
+      "",
+      sumMat || "",
+      ""
+    ]]);
 
-    sumH += r.h;
-    sumTravel += r.travelPay;
-    sumTotal += r.total;
-    sumKm += r.km;
-    sumMat += r.mat;
+    rep.getRange(outRow,1,1,18)
+       .setFontWeight("bold")
+       .setBackground("#F0F0F0");
+
+    outRow++;
+
+    // spacer row
+    outRow++;
   }
-  pushSubtotal(curAction);
 
-  if (out.length) rep.getRange(2,1,out.length,header.length).setValues(out);
-
-  rep.getRange(1,1,rep.getLastRow(),header.length).setWrap(true);
-  rep.autoResizeColumns(1, header.length);
+  // formats
+  // h column (E)
+  rep.getRange(2,5,Math.max(0,outRow-2),1).setNumberFormat("0.0");
+  // currency columns K,L,M,Q
+  rep.getRange(2,11,Math.max(0,outRow-2),1).setNumberFormat("#,##0.00 \"Kč\"");
+  rep.getRange(2,12,Math.max(0,outRow-2),1).setNumberFormat("#,##0.00 \"Kč\"");
+  rep.getRange(2,13,Math.max(0,outRow-2),1).setNumberFormat("#,##0.00 \"Kč\"");
+  rep.getRange(2,17,Math.max(0,outRow-2),1).setNumberFormat("#,##0.00 \"Kč\"");
+  // km (O) and rateKm (P)
+  rep.getRange(2,15,Math.max(0,outRow-2),1).setNumberFormat("0.0");
+  rep.getRange(2,16,Math.max(0,outRow-2),1).setNumberFormat("0.00 \"Kč\"");
+  // wrap long text
+  rep.getRange(1,4,outRow,1).setWrap(true);
+  rep.getRange(1,18,outRow,1).setWrap(true);
+  rep.autoResizeColumn(4);
+  rep.autoResizeColumn(18);
 }
 
-/** Convenience: create an onOpen trigger (run once). */
+function _colToIndex(col) {
+  // A=1
+  let n = 0;
+  for (let i=0;i<col.length;i++) n = n*26 + (col.charCodeAt(i)-64);
+  return n;
+}
+
 function installOnOpenTrigger() {
-  // deletes previous triggers for this function
+  // creates onOpen trigger for this spreadsheet
   const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(t => {
-    if (t.getHandlerFunction() === "syncMyDochazka") ScriptApp.deleteTrigger(t);
-  });
+  for (const t of triggers) {
+    if (t.getHandlerFunction && t.getHandlerFunction() === "syncMyDochazka") {
+      // already exists
+      return;
+    }
+  }
   ScriptApp.newTrigger("syncMyDochazka").forSpreadsheet(SpreadsheetApp.getActive()).onOpen().create();
 }

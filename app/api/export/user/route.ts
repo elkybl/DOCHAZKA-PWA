@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { json } from "@/lib/http";
-import { toDate, roundUpTo30ByTZ } from "@/lib/time";
+import { toDate, ceilMinutesTo30 } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -126,124 +126,156 @@ export async function GET(req: NextRequest) {
 
   const rows: any[] = [];
 
-  for (const [day, list] of byDay.entries()) {
-    const sitesUsed = new Set<string>();
-    const workNotes: string[] = [];
-    const offsiteNotes: string[] = [];
-    const materialNotes: string[] = [];
+  
+for (const [day, list] of byDay.entries()) {
+  // Aggregate per action (site) so that one day with two actions becomes two rows.
+  type Acc = {
+    action: string;
+    site_id: string | null;
+    sitesUsed: Set<string>;
+    workNotes: string[];
+    offsiteNotes: string[];
+    materialNotes: string[];
+    hoursRounded: number;
+    hoursRaw: number;
+    progHours: number;
+    workPay: number;
+    km: number;
+    travelPay: number;
+    material: number;
+    paid: boolean;
+  };
 
-    for (const e of list) {
-      if (e.site_id) sitesUsed.add(siteName.get(e.site_id) || e.site_id);
+  const accMap = new Map<string, Acc>();
 
-      if (e.type === "OUT" && e.note_work) workNotes.push(e.note_work.trim());
-      if (e.type === "OFFSITE" && e.offsite_reason) {
-        const h = toNum(e.offsite_hours, 0);
-        offsiteNotes.push(`${e.offsite_reason.trim()} (${h} h)`);
-      }
-      if (e.material_amount && toNum(e.material_amount, 0) > 0) {
+  const getAcc = (site_id: string | null) => {
+    const action = site_id ? (siteName.get(site_id) || site_id) : "Mimo lokaci";
+    const key = `${site_id || "OFFSITE"}__${action}`;
+    const existing = accMap.get(key);
+    if (existing) return existing;
+    const a: Acc = {
+      action,
+      site_id,
+      sitesUsed: new Set<string>(),
+      workNotes: [],
+      offsiteNotes: [],
+      materialNotes: [],
+      hoursRounded: 0,
+      hoursRaw: 0,
+      progHours: 0,
+      workPay: 0,
+      km: 0,
+      travelPay: 0,
+      material: 0,
+      paid: true,
+    };
+    if (site_id) a.sitesUsed.add(action);
+    accMap.set(key, a);
+    return a;
+  };
+
+  // IN->OUT segments (action is taken from IN.site_id; fallback OUT.site_id)
+  let lastIn: { t: Date; site_id: string | null } | null = null;
+
+  for (const e of list) {
+    if (e.type === "IN") {
+      lastIn = { t: toDate(e.server_time), site_id: e.site_id };
+      continue;
+    }
+
+    if (e.type === "OUT" && lastIn) {
+      const out = toDate(e.server_time);
+
+      const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+      const minutesRounded = ceilMinutesTo30(minutesRaw);
+
+      const hRaw = minutesRaw / 60;
+      const h = minutesRounded / 60;
+
+      const segSiteId = lastIn.site_id || e.site_id || null;
+      const a = getAcc(segSiteId);
+      const r = getRate(segSiteId);
+
+      const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
+      const siteH = Math.max(0, h - progH);
+
+      a.hoursRounded += h;
+      a.hoursRaw += hRaw;
+      a.progHours += progH;
+      a.workPay += siteH * r.hourly + progH * r.prog;
+
+      // km + travel pay belongs to this OUT (same action)
+      const k = toNum(e.km, 0);
+      a.km += k;
+      a.travelPay += k * r.km;
+
+      // material refund belongs to this OUT
+      const mat = toNum(e.material_amount, 0);
+      a.material += mat;
+      if (mat > 0) {
         const desc = (e.material_desc || "").trim();
-        materialNotes.push(`${desc ? desc + " – " : ""}${toNum(e.material_amount, 0)} Kč`);
+        a.materialNotes.push(`${desc ? desc + " – " : ""}${mat} Kč`);
       }
+
+      if (e.note_work) a.workNotes.push(e.note_work.trim());
+
+      a.paid = a.paid && !!e.is_paid;
+      lastIn = null;
+      continue;
     }
 
-    // IN->OUT hours (rounded for pay)
-    let lastIn: { t: Date; site_id: string | null } | null = null;
-    let hoursRounded = 0; // rounded
-    let hoursRaw = 0;
-    let progHours = 0;
-    let workPay = 0;
-
-    for (const e of list) {
-      if (e.type === "IN") lastIn = { t: toDate(e.server_time), site_id: e.site_id };
-      if (e.type === "OUT" && lastIn) {
-        const out = toDate(e.server_time);
-
-        const inR = roundUpTo30ByTZ(lastIn.t.toISOString());
-        const outR = roundUpTo30ByTZ(out.toISOString());
-
-        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
-        const minutesRounded = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));
-
-        const hRaw = minutesRaw / 60;
-        const h = minutesRounded / 60;
-
-        hoursRounded += h;
-        hoursRaw += hRaw;
-
-        const r = getRate(lastIn.site_id || e.site_id || null);
-
-        const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
-        const siteH = Math.max(0, h - progH);
-
-        progHours += progH;
-        workPay += siteH * r.hourly + progH * r.prog;
-
-        lastIn = null;
+    if (e.type === "OFFSITE") {
+      const a = getAcc(e.site_id || null);
+      const r = getRate(e.site_id || null);
+      const h = toNum(e.offsite_hours, 0);
+      if (h > 0) {
+        a.hoursRounded += h;
+        a.workPay += h * r.hourly;
       }
+      if (e.offsite_reason) a.offsiteNotes.push(`${e.offsite_reason.trim()} (${h} h)`);
+      a.paid = a.paid && !!e.is_paid;
+      continue;
     }
+  }
 
-    // OFFSITE hours (paid as hourly)
-    let offH = 0;
-    let offPay = 0;
-    for (const o of list.filter((x) => x.type === "OFFSITE")) {
-      const h = toNum(o.offsite_hours, 0);
-      offH += h;
-      const r = getRate(o.site_id || null);
-      offPay += h * r.hourly;
-    }
-
-    hoursRounded += offH;
-    workPay += offPay;
-
-    // KM from OUT
-    let km = 0;
-    let travelPay = 0;
-    for (const o of list.filter((x) => x.type === "OUT")) {
-      const k = toNum(o.km, 0);
-      km += k;
-      const r = getRate(o.site_id || null);
-      travelPay += k * r.km;
-    }
-
-    const material = list.reduce((s, x) => s + toNum(x.material_amount, 0), 0);
-    const totalToPay = workPay + travelPay + material;
-    const paid = list.length > 0 && list.every((x) => x.is_paid);
-
-    const siteHours = Math.max(0, hoursRounded - progHours);
+  // Emit rows for this day (one per action)
+  for (const a of accMap.values()) {
+    const siteHours = Math.max(0, a.hoursRounded - a.progHours);
+    const totalToPay = a.workPay + a.travelPay + a.material;
 
     rows.push({
       user_id,
       user_name,
       day,
 
-      sites: Array.from(sitesUsed),
-      work_notes: workNotes,
-      offsite_notes: offsiteNotes,
-      material_notes: materialNotes,
+      action: a.action, // single action label for reports
+      sites: Array.from(a.sitesUsed),
+      work_notes: a.workNotes,
+      offsite_notes: a.offsiteNotes,
+      material_notes: a.materialNotes,
 
-      // time
-      hours_raw: Math.round(hoursRaw * 100) / 100,
-      hours_rounded: Math.round(hoursRounded * 100) / 100,
-      prog_hours: Math.round(progHours * 100) / 100,
+      hours_raw: Math.round(a.hoursRaw * 100) / 100,
+      hours_rounded: Math.round(a.hoursRounded * 100) / 100,
+      prog_hours: Math.round(a.progHours * 100) / 100,
       site_hours: Math.round(siteHours * 100) / 100,
 
-      // money
-      work_pay: Math.round(workPay * 100) / 100,
-      travel_pay: Math.round(travelPay * 100) / 100,
-      material: Math.round(material * 100) / 100,
+      km: Math.round(a.km * 10) / 10,
+
+      work_pay: Math.round(a.workPay * 100) / 100,
+      travel_pay: Math.round(a.travelPay * 100) / 100,
+      material: Math.round(a.material * 100) / 100,
       total_to_pay: Math.round(totalToPay * 100) / 100,
 
       // legacy fields
-      hours: Math.round(hoursRounded * 100) / 100,
-      km: Math.round(km * 10) / 10,
-      hours_pay: Math.round(workPay * 100) / 100,
-      km_pay: Math.round(travelPay * 100) / 100,
+      hours: Math.round(a.hoursRounded * 100) / 100,
+      hours_pay: Math.round(a.workPay * 100) / 100,
+      km_pay: Math.round(a.travelPay * 100) / 100,
       total: Math.round(totalToPay * 100) / 100,
 
-      paid,
+      paid: a.paid,
     });
   }
-
+}
   // sort: unpaid first, newest first
   rows.sort((a, b) => {
     if (a.paid !== b.paid) return a.paid ? 1 : -1;

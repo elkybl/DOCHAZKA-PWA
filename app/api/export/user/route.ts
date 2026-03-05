@@ -25,6 +25,8 @@ type Ev = {
   is_paid: boolean;
 };
 
+type Rates = { hourly: number; km: number; prog: number };
+
 function toNum(v: any, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
@@ -59,10 +61,12 @@ export async function GET(req: NextRequest) {
   const user_id = (user as any).id as string;
   const user_name = (user as any).name as string;
 
-  const defaultRate = {
-    hourly: toNum((user as any).hourly_rate, 0),
+  const defHourly = toNum((user as any).hourly_rate, 0);
+  const defaultRate: Rates = {
+    hourly: defHourly,
     km: toNum((user as any).km_rate, 0),
-    prog: toNum((user as any).programming_rate, toNum((user as any).hourly_rate, 0)),
+    // fallback: když programming_rate není, použij hourly
+    prog: toNum((user as any).programming_rate, defHourly),
   };
 
   // rates per user+site
@@ -73,15 +77,18 @@ export async function GET(req: NextRequest) {
 
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
-  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
+  const rateMap = new Map<string, Rates>();
   for (const r of usrSiteRates || []) {
+    const hourly = toNum((r as any).hourly_rate, defaultRate.hourly);
     rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: toNum((r as any).hourly_rate, 0),
-      km: toNum((r as any).km_rate, 0),
+      hourly,
+      km: toNum((r as any).km_rate, defaultRate.km),
+      // fallback: když per-site programming_rate není, použij hourly (per-site)
+      prog: toNum((r as any).programming_rate, hourly),
     });
   }
 
-  const getRate = (site_id: string | null) => {
+  const getRate = (site_id: string | null): Rates => {
     if (site_id) {
       const r = rateMap.get(`${user_id}__${site_id}`);
       if (r) return r;
@@ -95,11 +102,11 @@ export async function GET(req: NextRequest) {
   const siteName = new Map<string, string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  // events (only this user)
+  // events (only this user)  ✅ include programming_* fields
   const { data: evs, error } = await db
     .from("attendance_events")
     .select(
-      "user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,is_paid"
+      "user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,programming_hours,programming_note,is_paid"
     )
     .eq("user_id", user_id)
     .gte("server_time", from)
@@ -139,39 +146,43 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // IN->OUT hours
+    // IN->OUT hours (rounded for pay)
     let lastIn: { t: Date; site_id: string | null } | null = null;
-    let hours = 0; // rounded
+    let hoursRounded = 0; // rounded
     let hoursRaw = 0;
     let progHours = 0;
-    let hoursPay = 0;
+    let workPay = 0;
 
     for (const e of list) {
       if (e.type === "IN") lastIn = { t: toDate(e.server_time), site_id: e.site_id };
       if (e.type === "OUT" && lastIn) {
         const out = toDate(e.server_time);
+
         const inR = roundTo30ByTZ(lastIn.t.toISOString());
         const outR = roundTo30ByTZ(out.toISOString());
-        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
-        const minutes = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));
-        const hRaw = minutesRaw / 60;
-        const h = minutes / 60;
 
-        hours += h;
+        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const minutesRounded = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));
+
+        const hRaw = minutesRaw / 60;
+        const h = minutesRounded / 60;
+
+        hoursRounded += h;
+        hoursRaw += hRaw;
+
         const r = getRate(lastIn.site_id || e.site_id || null);
 
         const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
         const siteH = Math.max(0, h - progH);
 
-        hoursPay += siteH * r.hourly + progH * r.prog;
-        hoursRaw += hRaw;
         progHours += progH;
+        workPay += siteH * r.hourly + progH * r.prog;
 
         lastIn = null;
       }
     }
 
-    // OFFSITE hours
+    // OFFSITE hours (paid as hourly, not programming)
     let offH = 0;
     let offPay = 0;
     for (const o of list.filter((x) => x.type === "OFFSITE")) {
@@ -180,22 +191,26 @@ export async function GET(req: NextRequest) {
       const r = getRate(o.site_id || null);
       offPay += h * r.hourly;
     }
-    hours += offH;
-    hoursPay += offPay;
+
+    hoursRounded += offH;
+    workPay += offPay;
 
     // KM from OUT
     let km = 0;
-    let kmPay = 0;
+    let travelPay = 0;
     for (const o of list.filter((x) => x.type === "OUT")) {
       const k = toNum(o.km, 0);
       km += k;
       const r = getRate(o.site_id || null);
-      kmPay += k * r.km;
+      travelPay += k * r.km;
     }
 
+    // material (refund)
     const material = list.reduce((s, x) => s + toNum(x.material_amount, 0), 0);
-    const total = hoursPay + kmPay + material;
+    const totalToPay = workPay + travelPay + material;
     const paid = list.length > 0 && list.every((x) => x.is_paid);
+
+    const siteHours = Math.max(0, hoursRounded - progHours);
 
     rows.push({
       user_id,
@@ -207,13 +222,24 @@ export async function GET(req: NextRequest) {
       offsite_notes: offsiteNotes,
       material_notes: materialNotes,
 
-      hours: Math.round(hours * 100) / 100,
-      km: Math.round(km * 10) / 10,
-      material: Math.round(material * 100) / 100,
+      // time
+      hours_raw: Math.round(hoursRaw * 100) / 100,
+      hours_rounded: Math.round(hoursRounded * 100) / 100,
+      prog_hours: Math.round(progHours * 100) / 100,
+      site_hours: Math.round(siteHours * 100) / 100,
 
-      hours_pay: Math.round(hoursPay * 100) / 100,
-      km_pay: Math.round(kmPay * 100) / 100,
-      total: Math.round(total * 100) / 100,
+      // money
+      work_pay: Math.round(workPay * 100) / 100,
+      travel_pay: Math.round(travelPay * 100) / 100,
+      material: Math.round(material * 100) / 100,
+      total_to_pay: Math.round(totalToPay * 100) / 100,
+
+      // keep legacy fields (optional)
+      hours: Math.round(hoursRounded * 100) / 100,
+      km: Math.round(km * 10) / 10,
+      hours_pay: Math.round(workPay * 100) / 100,
+      km_pay: Math.round(travelPay * 100) / 100,
+      total: Math.round(totalToPay * 100) / 100,
 
       paid,
     });

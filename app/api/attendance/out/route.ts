@@ -37,7 +37,13 @@ export async function POST(req: NextRequest) {
   const material_desc = (body?.material_desc ?? "").toString().trim() || null;
   const material_amount = body?.material_amount != null ? Number(body.material_amount) : null;
 
+  const programming_hours = body?.programming_hours != null ? Number(body.programming_hours) : null;
+  const programming_note = (body?.programming_note ?? "").toString().trim() || null;
+
   if (!site_id) return json({ error: "Chybí stavba." }, { status: 400 });
+  if (programming_hours != null && (!Number.isFinite(programming_hours) || programming_hours < 0 || programming_hours > 24)) {
+    return json({ error: "Neplatné hodiny programování." }, { status: 400 });
+  }
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: "Chybí poloha." }, { status: 400 });
   if (!note_work) return json({ error: "Doplň co se dělalo." }, { status: 400 });
   if (km != null && (!Number.isFinite(km) || km < 0)) return json({ error: "Km je neplatné." }, { status: 400 });

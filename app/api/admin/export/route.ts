@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { toDate } from "@/lib/time";
+import { toDate, roundTo30ByTZ } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -19,6 +19,9 @@ type Ev = {
 
   material_desc: string | null;
   material_amount: number | null;
+
+  programming_hours: number | null;
+  programming_note: string | null;
 
   is_paid: boolean;
 };
@@ -49,24 +52,26 @@ export async function GET(req: NextRequest) {
   // users (default sazby)
   const { data: users, error: uErr } = await db
     .from("users")
-    .select("id,name,role,hourly_rate,km_rate")
+    .select("id,name,role,hourly_rate,km_rate,is_programmer,programming_rate")
     .order("name", { ascending: true });
 
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
-  const defaultByUser = new Map<string, { name: string; hourly: number; km: number }>();
+  const defaultByUser = new Map<string, { name: string; hourly: number; km: number; prog: number; canProg: boolean }>();
   for (const u of users || []) {
     defaultByUser.set((u as any).id, {
       name: (u as any).name,
       hourly: toNum((u as any).hourly_rate, 0),
       km: toNum((u as any).km_rate, 0),
+      prog: toNum((u as any).programming_rate, toNum((u as any).hourly_rate, 0)),
+      canProg: ((u as any).is_programmer || false) === true,
     });
   }
 
   // sazby per user+site
   const { data: usrSiteRates, error: rErr } = await db
     .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate");
+    .select("user_id,site_id,hourly_rate,km_rate,programming_rate");
 
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
@@ -146,19 +151,31 @@ export async function GET(req: NextRequest) {
     // IN->OUT úseky (hodinovka podle site_id IN)
     let lastIn: { t: Date; site_id: string | null } | null = null;
 
-    let hours = 0;
+    let hours = 0; // rounded
+    let hoursRaw = 0;
+    let progHours = 0;
     let hoursPay = 0;
 
     for (const e of list) {
       if (e.type === "IN") lastIn = { t: toDate(e.server_time), site_id: e.site_id };
       if (e.type === "OUT" && lastIn) {
         const out = toDate(e.server_time);
-        const minutes = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const inR = roundTo30ByTZ(lastIn.t.toISOString());
+        const outR = roundTo30ByTZ(out.toISOString());
+        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const minutes = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));
+        const hRaw = minutesRaw / 60;
         const h = minutes / 60;
 
-        hours += h;
+        hours += h; // rounded hours
         const r = getRate(user_id, lastIn.site_id || e.site_id || null);
-        hoursPay += h * r.hourly;
+
+        const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
+        const siteH = Math.max(0, h - progH);
+
+        hoursPay += siteH * r.hourly + progH * r.prog;
+        hoursRaw += hRaw;
+        progHours += progH;
 
         lastIn = null;
       }

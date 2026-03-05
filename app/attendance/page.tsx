@@ -15,7 +15,7 @@ type Site = {
   is_pending?: boolean;
 };
 
-type User = { id: string; name: string; role: "admin" | "worker" };
+type User = { id: string; name: string; role: "admin" | "worker"; is_programmer?: boolean };
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -273,6 +273,8 @@ export default function AttendancePage() {
           km: km ? Number(km) : undefined,
           material_desc: matDesc.trim() || undefined,
           material_amount: matAmt,
+          programming_hours: user?.is_programmer && progHours ? Number(progHours) : undefined,
+          programming_note: user?.is_programmer ? (progNote.trim() || undefined) : undefined,
         }),
       });
 
@@ -288,6 +290,8 @@ export default function AttendancePage() {
       setKm("");
       setMatDesc("");
       setMatAmount("");
+      setProgHours("");
+      setProgNote("");
 
       await refreshStatus();
     } catch (e: any) {
@@ -324,6 +328,8 @@ export default function AttendancePage() {
           km: km ? Number(km) : undefined,
           material_desc: matDesc.trim() || undefined,
           material_amount: matAmt,
+          programming_hours: user?.is_programmer && progHours ? Number(progHours) : undefined,
+          programming_note: user?.is_programmer ? (progNote.trim() || undefined) : undefined,
         }),
       });
 
@@ -415,6 +421,8 @@ export default function AttendancePage() {
           offsite_hours: h,
           material_desc: offMatDesc.trim() || null,
           material_amount: matAmt,
+          programming_hours: user?.is_programmer && progHours ? Number(progHours) : undefined,
+          programming_note: user?.is_programmer ? (progNote.trim() || undefined) : undefined,
         }),
       });
 

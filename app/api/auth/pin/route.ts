@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
   const { data: users, error } = await db
     .from("users")
-    .select("id,name,pin_hash,role,is_active")
+    .select("id,name,pin_hash,role,is_active,is_programmer")
     .eq("is_active", true);
 
   if (error) return json({ error: "DB chyba." }, { status: 500 });
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   for (const u of users || []) {
     if (await bcrypt.compare(pin, u.pin_hash)) {
       const token = await signSession({ userId: u.id, role: u.role, name: u.name });
-      return json({ token, user: { id: u.id, name: u.name, role: u.role } });
+      return json({ token, user: { id: u.id, name: u.name, role: u.role, is_programmer: (u as any).is_programmer || false } });
     }
   }
 

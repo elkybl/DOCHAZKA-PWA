@@ -7,6 +7,7 @@ import { verifySession } from "@/lib/auth";
 const rateNum = z.number().min(0).max(200000);
 
 const saveSchema = z.object({
+  programming_rate: rateNum.nullable().optional(),
   default_hourly_rate: rateNum.nullable().optional(),
   default_km_rate: rateNum.nullable().optional(),
   rows: z
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const { data: me, error: meErr } = await db
     .from("users")
-    .select("id,hourly_rate,km_rate")
+    .select("id,hourly_rate,km_rate,is_programmer,programming_rate")
     .eq("id", userId)
     .single();
 

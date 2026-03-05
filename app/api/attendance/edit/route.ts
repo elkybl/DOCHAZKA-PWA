@@ -12,6 +12,8 @@ const schema = z.object({
   offsite_hours: z.number().min(0).max(24).optional(),
   material_desc: z.string().max(500).optional(),
   material_amount: z.number().min(0).max(200000).optional(),
+  programming_hours: z.number().min(0).max(24).optional(),
+  programming_note: z.string().max(500).optional(),
 });
 
 export async function PATCH(req: NextRequest) {

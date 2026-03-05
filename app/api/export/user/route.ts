@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { json } from "@/lib/http";
-import { toDate } from "@/lib/time";
+import { toDate, roundTo30ByTZ } from "@/lib/time";
 
 type Ev = {
   user_id: string;
@@ -18,6 +18,9 @@ type Ev = {
 
   material_desc: string | null;
   material_amount: number | null;
+
+  programming_hours: number | null;
+  programming_note: string | null;
 
   is_paid: boolean;
 };
@@ -46,7 +49,7 @@ export async function GET(req: NextRequest) {
   // Find user by export_token
   const { data: user, error: uErr } = await db
     .from("users")
-    .select("id,name,role,hourly_rate,km_rate,export_token")
+    .select("id,name,role,hourly_rate,km_rate,is_programmer,programming_rate,export_token")
     .eq("export_token", token)
     .maybeSingle();
 
@@ -59,17 +62,18 @@ export async function GET(req: NextRequest) {
   const defaultRate = {
     hourly: toNum((user as any).hourly_rate, 0),
     km: toNum((user as any).km_rate, 0),
+    prog: toNum((user as any).programming_rate, toNum((user as any).hourly_rate, 0)),
   };
 
   // rates per user+site
   const { data: usrSiteRates, error: rErr } = await db
     .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate")
+    .select("user_id,site_id,hourly_rate,km_rate,programming_rate")
     .eq("user_id", user_id);
 
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
-  const rateMap = new Map<string, { hourly: number; km: number }>();
+  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
   for (const r of usrSiteRates || []) {
     rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
       hourly: toNum((r as any).hourly_rate, 0),
@@ -137,19 +141,31 @@ export async function GET(req: NextRequest) {
 
     // IN->OUT hours
     let lastIn: { t: Date; site_id: string | null } | null = null;
-    let hours = 0;
+    let hours = 0; // rounded
+    let hoursRaw = 0;
+    let progHours = 0;
     let hoursPay = 0;
 
     for (const e of list) {
       if (e.type === "IN") lastIn = { t: toDate(e.server_time), site_id: e.site_id };
       if (e.type === "OUT" && lastIn) {
         const out = toDate(e.server_time);
-        const minutes = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const inR = roundTo30ByTZ(lastIn.t.toISOString());
+        const outR = roundTo30ByTZ(out.toISOString());
+        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
+        const minutes = Math.max(0, Math.round((outR.getTime() - inR.getTime()) / 60000));
+        const hRaw = minutesRaw / 60;
         const h = minutes / 60;
 
         hours += h;
         const r = getRate(lastIn.site_id || e.site_id || null);
-        hoursPay += h * r.hourly;
+
+        const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
+        const siteH = Math.max(0, h - progH);
+
+        hoursPay += siteH * r.hourly + progH * r.prog;
+        hoursRaw += hRaw;
+        progHours += progH;
 
         lastIn = null;
       }

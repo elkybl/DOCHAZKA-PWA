@@ -209,9 +209,9 @@ export async function GET(req: NextRequest) {
         lastIn = { t: new Date(e.server_time), site_id: e.site_id };
       } else if (e.type === "OUT" && lastIn) {
         const out = new Date(e.server_time);
-        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
-        const minutesRounded = ceilMinutesTo30(minutesRaw);
-        const h = minutesRounded / 60;
+const minutesRaw = Math.max(0, Math.round((out.getTime() - inTime.getTime()) / 60000));
+const minutesRounded = Math.ceil(minutesRaw / 30) * 30;
+const hours = minutesRounded / 60;
         const outTimeRounded = new Date(lastIn.t.getTime() + minutesRounded * 60000);
 
         const sid = (lastIn.site_id || e.site_id) as string | null;

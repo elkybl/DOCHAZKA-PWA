@@ -163,12 +163,12 @@ async function save(r: Row) {
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Opravit záznamy</h1>
+            <h1 className="text-lg font-semibold">Doplnit práci</h1>
             <p className="mt-1 text-xs text-neutral-500">
-              Upravíš jen texty/částky (práce, km, materiál, mimo stavbu). Čas a poloha nejdou.
+              Doplň práci, km, materiál (a programování). Čas směny ani poloha se tady nemění.
             </p>
             <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/me">
-              Zpět na Moje výdělek
+              Zpět na Moje výdělky
             </Link>
           </div>
           <button

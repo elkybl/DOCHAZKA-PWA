@@ -51,6 +51,17 @@ function getPosition(): Promise<{ lat: number; lng: number; accuracy_m?: number 
   });
 }
 
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000;
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -103,7 +114,7 @@ function TopBar({ title, showAdmin }: { title: string; showAdmin: boolean }) {
               Moje sazby
             </Link>
             <Link className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm" href="/me/edit">
-              Upravit záznamy
+              Doplnit práci
             </Link>
             <Link className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm" href="/trips">
               Kniha jízd
@@ -155,6 +166,9 @@ export default function AttendancePage() {
   const [info, setInfo] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Minimal UI: rozbalovací doplnění (volitelné)
+  const [showDetails, setShowDetails] = useState(false);
 
   const [showRequest, setShowRequest] = useState(false);
   const [repLeftAt, setRepLeftAt] = useState("");
@@ -223,21 +237,43 @@ export default function AttendancePage() {
 
     const token = requireLogin();
     if (!token) return;
-    if (!selected) return setErr("Vyber stavbu.");
+    // stavbu vybereme automaticky podle polohy, pokud uživatel nic nevybral
 
     setLoading(true);
     try {
       const pos = await getPosition();
+
+      let siteId = selected;
+      if (!siteId) {
+        // Auto-výběr nejbližší stavby v radiusu
+        let best: { id: string; dist: number } | null = null;
+        for (const s of sites) {
+          if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) continue;
+          const dist = haversineMeters({ lat: pos.lat, lng: pos.lng }, { lat: Number(s.lat), lng: Number(s.lng) });
+          const radius = Number(s.radius_m || 0);
+          if (radius > 0 && dist > radius) continue;
+          if (!best || dist < best.dist) best = { id: s.id, dist };
+        }
+        if (best) {
+          siteId = best.id;
+          setSelected(best.id);
+          localStorage.setItem("last_site_id", best.id);
+        } else {
+          setErr("Nenašla se žádná stavba v dosahu. Založ dočasnou stavbu.");
+          setShowNewSite(true);
+          return;
+        }
+      }
       const res = await fetch("/api/attendance/in", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ site_id: selected, ...pos }),
+        body: JSON.stringify({ site_id: siteId, ...pos }),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba při ukládání příchodu.");
 
-      localStorage.setItem("last_site_id", selected);
+      if (siteId) localStorage.setItem("last_site_id", siteId);
      setInfo(
 		data?.distance_m != null
 		? `Příchod uložen (${data.distance_m} m).`
@@ -258,8 +294,7 @@ export default function AttendancePage() {
 
     const token = requireLogin();
     if (!token) return;
-    if (!selected) return setErr("Vyber stavbu.");
-    if (!noteWork.trim()) return setErr("Doplň co se dělalo.");
+    // stavbu vybereme automaticky podle polohy, pokud uživatel nic nevybral
 
     const matAmt = matAmount ? Number(matAmount) : undefined;
     if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) return setErr("Materiál částka je neplatná.");
@@ -267,13 +302,36 @@ export default function AttendancePage() {
     setLoading(true);
     try {
       const pos = await getPosition();
+
+      let siteId = selected;
+      if (!siteId) {
+        let best: { id: string; dist: number } | null = null;
+        for (const s of sites) {
+          if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) continue;
+          const dist = haversineMeters({ lat: pos.lat, lng: pos.lng }, { lat: Number(s.lat), lng: Number(s.lng) });
+          const radius = Number(s.radius_m || 0);
+          if (radius > 0 && dist > radius) continue;
+          if (!best || dist < best.dist) best = { id: s.id, dist };
+        }
+        if (best) {
+          siteId = best.id;
+          setSelected(best.id);
+          localStorage.setItem("last_site_id", best.id);
+        } else {
+          setErr("Nenašla se žádná stavba v dosahu. Založ dočasnou stavbu, nebo pošli žádost adminovi.");
+          setShowNewSite(true);
+          return;
+        }
+      }
+
       const res = await fetch("/api/attendance/out", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          site_id: selected,
+          site_id: siteId,
           ...pos,
-          note_work: noteWork.trim(),
+          // volitelné doplnění (lze vyplnit i později v "Doplnit práci")
+          note_work: noteWork.trim() || undefined,
           km: km ? Number(km) : undefined,
           material_desc: matDesc.trim() || undefined,
           material_amount: matAmt,
@@ -296,6 +354,7 @@ export default function AttendancePage() {
       setMatAmount("");
       setProgHours("");
       setProgNote("");
+      setShowDetails(false);
 
       await refreshStatus();
     } catch (e: any) {
@@ -315,7 +374,6 @@ export default function AttendancePage() {
 
     if (!repLeftAt.trim()) return setErr("Doplň kdy jsi odešel (např. 16:50).");
     if (!forgetReason.trim()) return setErr("Doplň důvod, proč nebyl odchod.");
-    if (!noteWork.trim()) return setErr("Doplň co se dělalo.");
 
     const matAmt = matAmount ? Number(matAmount) : undefined;
     if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) return setErr("Materiál částka je neplatná.");
@@ -328,7 +386,7 @@ export default function AttendancePage() {
         body: JSON.stringify({
           reported_left_at: repLeftAt.trim(),
           forget_reason: forgetReason.trim(),
-          note_work: noteWork.trim(),
+          note_work: noteWork.trim() || undefined,
           km: km ? Number(km) : undefined,
           material_desc: matDesc.trim() || undefined,
           material_amount: matAmt,
@@ -566,47 +624,6 @@ export default function AttendancePage() {
             </button>
           ) : (
             <div className="space-y-3">
-              <label className="block text-sm text-neutral-700">Co se dělalo (povinné)</label>
-              <textarea
-                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                rows={4}
-                value={noteWork}
-                onChange={(e) => setNoteWork(e.target.value)}
-                placeholder="Konkrétně: co + kde + počet/rozsah…"
-              />
-
-              <div>
-                <label className="block text-sm text-neutral-700">Km dnes (volitelné)</label>
-                <input
-                  className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                  inputMode="decimal"
-                  value={km}
-                  onChange={(e) => setKm(e.target.value.replace(/[^\d.]/g, "").slice(0, 8))}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="rounded-2xl border bg-neutral-50 p-4">
-                <div className="text-sm font-medium text-neutral-800">Materiál ze svého (volitelné)</div>
-
-                <label className="mt-3 block text-sm text-neutral-700">Popis</label>
-                <input
-                  className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                  value={matDesc}
-                  onChange={(e) => setMatDesc(e.target.value)}
-                  placeholder="WAGO, páska, vruty…"
-                />
-
-                <label className="mt-3 block text-sm text-neutral-700">Částka (Kč)</label>
-                <input
-                  className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                  inputMode="decimal"
-                  value={matAmount}
-                  onChange={(e) => setMatAmount(e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
-                  placeholder="0"
-                />
-              </div>
-
               <button
                 onClick={doOut}
                 disabled={loading}
@@ -614,6 +631,103 @@ export default function AttendancePage() {
               >
                 {loading ? "Ukládám…" : "ODCHOD"}
               </button>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Link
+                  href="/me/edit"
+                  className="rounded-2xl border bg-white px-4 py-3 text-center text-sm font-medium shadow-sm"
+                >
+                  Doplnit práci
+                </Link>
+                <Link
+                  href="/me"
+                  className="rounded-2xl border bg-white px-4 py-3 text-center text-sm font-medium shadow-sm"
+                >
+                  Moje výdělky
+                </Link>
+              </div>
+
+              <button
+                onClick={() => setShowDetails((v) => !v)}
+                className="w-full rounded-2xl border bg-neutral-50 px-4 py-3 text-sm"
+              >
+                {showDetails ? "Skrýt doplnění" : "Doplnit hned (volitelné)"}
+              </button>
+
+              {showDetails && (
+                <div className="rounded-3xl border bg-neutral-50 p-5">
+                  <div className="text-sm font-semibold text-neutral-900">Volitelné doplnění</div>
+                  <div className="mt-1 text-xs text-neutral-600">Můžeš nechat prázdné a doplnit později.</div>
+
+                  <label className="mt-4 block text-sm text-neutral-700">Co se dělalo</label>
+                  <textarea
+                    className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                    rows={3}
+                    value={noteWork}
+                    onChange={(e) => setNoteWork(e.target.value)}
+                    placeholder="Krátce popiš práci…"
+                  />
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm text-neutral-700">Km dnes</label>
+                      <input
+                        className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                        inputMode="decimal"
+                        value={km}
+                        onChange={(e) => setKm(e.target.value.replace(/[^\d.]/g, "").slice(0, 8))}
+                        placeholder="0"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-neutral-700">Materiál (Kč)</label>
+                      <input
+                        className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                        inputMode="decimal"
+                        value={matAmount}
+                        onChange={(e) => setMatAmount(e.target.value.replace(/[^\d.]/g, "").slice(0, 10))}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="mt-4 block text-sm text-neutral-700">Popis materiálu</label>
+                  <input
+                    className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                    value={matDesc}
+                    onChange={(e) => setMatDesc(e.target.value)}
+                    placeholder="WAGO, páska, vruty…"
+                  />
+
+                  {user?.is_programmer && (
+                    <div className="mt-4 rounded-2xl border bg-white p-4">
+                      <div className="text-sm font-medium text-neutral-800">Programování (volitelné)</div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-sm text-neutral-700">Hodiny</label>
+                          <input
+                            className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                            inputMode="decimal"
+                            value={progHours}
+                            onChange={(e) => setProgHours(e.target.value.replace(/[^\d.]/g, "").slice(0, 6))}
+                            placeholder="např. 1.5"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-neutral-700">Poznámka</label>
+                          <input
+                            className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                            value={progNote}
+                            onChange={(e) => setProgNote(e.target.value.slice(0, 200))}
+                            placeholder="např. Loxone / HA…"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {showRequest && (
                 <div className="rounded-3xl border bg-amber-50 p-5">
@@ -635,6 +749,18 @@ export default function AttendancePage() {
                     onChange={(e) => setForgetReason(e.target.value.slice(0, 500))}
                     placeholder="Zapomněl jsem, vybil se mobil, spěchal jsem…"
                   />
+
+                  <div className="mt-4 rounded-2xl border bg-white p-4">
+                    <div className="text-sm font-medium text-amber-950">Volitelné doplnění</div>
+                    <label className="mt-3 block text-sm text-amber-950">Co se dělalo</label>
+                    <textarea
+                      className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
+                      rows={3}
+                      value={noteWork}
+                      onChange={(e) => setNoteWork(e.target.value)}
+                      placeholder="Krátce popiš práci…"
+                    />
+                  </div>
 
                   <button
                     onClick={requestOutByAdmin}

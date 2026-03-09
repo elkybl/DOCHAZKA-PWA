@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   const lng = Number(body?.lng);
   const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
 
+  // Poznámka práce je volitelná – zaměstnanec ji může doplnit později v "Doplnit práci".
   const note_work = (body?.note_work ?? "").toString().trim();
   const km = body?.km != null ? Number(body.km) : null;
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     return json({ error: "Neplatné hodiny programování." }, { status: 400 });
   }
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: "Chybí poloha." }, { status: 400 });
-  if (!note_work) return json({ error: "Doplň co se dělalo." }, { status: 400 });
+  // note_work může být prázdné
   if (km != null && (!Number.isFinite(km) || km < 0)) return json({ error: "Km je neplatné." }, { status: 400 });
   if (material_amount != null && (!Number.isFinite(material_amount) || material_amount < 0))
     return json({ error: "Materiál částka je neplatná." }, { status: 400 });
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
     accuracy_m,
     distance_m,
 
-    note_work,
+    note_work: note_work || null,
     km,
     material_desc,
     material_amount,

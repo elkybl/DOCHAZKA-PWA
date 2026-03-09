@@ -8,7 +8,8 @@ import { toDate } from "@/lib/time";
 const schema = z.object({
   reported_left_at: z.string().min(2).max(50), // "16:50" nebo "12.2. 16:50"
   forget_reason: z.string().min(3).max(500),
-  note_work: z.string().min(3).max(2000),
+  // práce je volitelná – doplní se později v "Doplnit práci"
+  note_work: z.string().max(2000).optional(),
 
   km: z.number().min(0).max(2000).optional(),
   material_desc: z.string().max(500).optional(),
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     reported_left_at: p.reported_left_at,
     forget_reason: p.forget_reason,
-    note_work: p.note_work,
+    note_work: (p.note_work || "").toString().trim() || null,
     km: p.km ?? null,
     material_desc: p.material_desc ?? null,
     material_amount: p.material_amount ?? null,

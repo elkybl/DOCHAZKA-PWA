@@ -292,7 +292,6 @@ export default function AttendancePage() {
       }
       const matAmt = matAmount ? Number(matAmount) : undefined;
       if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) throw new Error("Materiál částka je neplatná.");
-      const res = await fetch("/api/attendance/out", {st pos = await getPosition();
       let siteId = selected;
       if (!siteId) {
         // auto-pick nearest inside radius
@@ -366,7 +365,6 @@ export default function AttendancePage() {
       }
       const matAmt = matAmount ? Number(matAmount) : undefined;
       if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) throw new Error("Materiál částka je neplatná.");
-      const res = await fetch("/api/attendance/out", {st pos = await getPosition();
       const res = await fetch("/api/attendance/out", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -440,7 +438,7 @@ export default function AttendancePage() {
       }
       const matAmt = matAmount ? Number(matAmount) : undefined;
       if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) throw new Error("Materiál částka je neplatná.");
-      const res = await fetch("/api/attendance/out", {st res = await fetch("/api/attendance/request-out", {
+      const res = await fetch("/api/attendance/request-out", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -505,7 +503,6 @@ export default function AttendancePage() {
       }
       const matAmt = matAmount ? Number(matAmount) : undefined;
       if (matAmount && (Number.isNaN(matAmt) || matAmt! < 0)) throw new Error("Materiál částka je neplatná.");
-      const res = await fetch("/api/attendance/out", {st pos = await getPosition();
 
       const res = await fetch("/api/sites/pending", {
         method: "POST",

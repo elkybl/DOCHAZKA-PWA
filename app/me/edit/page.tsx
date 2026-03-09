@@ -8,6 +8,7 @@ type Row = {
   id: string;
   type: "OUT" | "OFFSITE";
   server_time: string;
+  site_id: string | null;
   site_name: string | null;
   note_work: string;
   km: number;
@@ -28,6 +29,9 @@ export default function Page() {
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  // for days where OFFSITE doesn't exist yet (key: day__siteId)
+  const [newOffsite, setNewOffsite] = useState<Record<string, { reason: string; hours: string }>>({});
 
   // ✅ localStorage až v useEffect
   useEffect(() => {
@@ -99,6 +103,34 @@ export default function Page() {
     } finally {
       setBusy(null);
     }
+  }
+
+  function setNewOffsiteField(key: string, patch: Partial<{ reason: string; hours: string }>) {
+    setNewOffsite((prev) => ({
+      ...prev,
+      [key]: { reason: prev[key]?.reason ?? "", hours: prev[key]?.hours ?? "", ...patch },
+    }));
+  }
+
+  async function createOffsiteForDay(opts: { day: string; site_id: string | null; reason: string; hours: number }) {
+    if (!token) {
+      setErr("Nejsi přihlášen.");
+      return;
+    }
+    setErr(null);
+    setInfo(null);
+    const res = await fetch("/api/attendance/offsite", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        day_local: opts.day,
+        site_id: opts.site_id,
+        offsite_reason: opts.reason,
+        offsite_hours: opts.hours,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Nešlo uložit mimo stavbu.");
   }
 
 async function save(r: Row) {
@@ -271,6 +303,113 @@ async function save(r: Row) {
                     {busy === r.id ? "Načítám km…" : "Doplnit km z knihy jízd"}
                   </button>
                 )}
+
+                {/* OFFSITE (nákup/sklad/vyřízení) attached to this day + site */}
+                {(() => {
+                  const day = dayKeyPrague(r.server_time);
+                  const key = `${day}__${r.site_id || ""}`;
+
+                  // find existing OFFSITE for same day + same site (fallback: any OFFSITE that day)
+                  const existing = rows.find(
+                    (x) =>
+                      x.type === "OFFSITE" &&
+                      dayKeyPrague(x.server_time) === day &&
+                      ((r.site_id && x.site_id === r.site_id) || (!r.site_id && !x.site_id))
+                  ) ||
+                    rows.find((x) => x.type === "OFFSITE" && dayKeyPrague(x.server_time) === day);
+
+                  const draft = newOffsite[key] || { reason: "", hours: "" };
+                  const isPaid = r.is_paid;
+
+                  return (
+                    <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
+                      <div className="text-sm font-semibold">Mimo stavbu (nákup / sklad / vyřízení)</div>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Přidá se k tomuto dni. Piš sem i „co se dělalo“ mimo stavbu (např. nákup kabelů, vyzvednutí materiálu).
+                      </p>
+
+                      {existing ? (
+                        <>
+                          <label className="mt-3 block text-sm text-neutral-700">Důvod / co se dělalo</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                            value={existing.offsite_reason}
+                            onChange={(e) => updateRow(existing.id, { offsite_reason: e.target.value })}
+                            disabled={existing.is_paid}
+                          />
+
+                          <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                            inputMode="decimal"
+                            value={String(existing.offsite_hours ?? 0)}
+                            onChange={(e) =>
+                              updateRow(existing.id, {
+                                offsite_hours: Number(e.target.value.replace(/[^\d.]/g, "")),
+                              })
+                            }
+                            disabled={existing.is_paid}
+                          />
+
+                          {!existing.is_paid && (
+                            <button
+                              className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
+                              onClick={() => save(existing)}
+                              disabled={busy === existing.id}
+                            >
+                              {busy === existing.id ? "Ukládám…" : "Uložit mimo stavbu"}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <label className="mt-3 block text-sm text-neutral-700">Důvod / co se dělalo</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                            value={draft.reason}
+                            onChange={(e) => setNewOffsiteField(key, { reason: e.target.value })}
+                            disabled={isPaid}
+                            placeholder="např. nákup materiálu, sklad…"
+                          />
+
+                          <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                            inputMode="decimal"
+                            value={draft.hours}
+                            onChange={(e) => setNewOffsiteField(key, { hours: e.target.value.replace(/[^\d.]/g, "") })}
+                            disabled={isPaid}
+                            placeholder="např. 2"
+                          />
+
+                          {!isPaid && (
+                            <button
+                              className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
+                              disabled={busy === r.id}
+                              onClick={async () => {
+                                try {
+                                  setBusy(r.id);
+                                  const hours = Number(draft.hours || 0);
+                                  if (!draft.reason.trim()) throw new Error("Doplň důvod mimo stavbu.");
+                                  if (!Number.isFinite(hours) || hours <= 0) throw new Error("Doplň počet hodin (např. 2).");
+                                  await createOffsiteForDay({ day, site_id: r.site_id || null, reason: draft.reason.trim(), hours });
+                                  setInfo("Mimo stavbu uloženo.");
+                                  await load(token);
+                                } catch (e: any) {
+                                  setErr(e.message || "Chyba");
+                                } finally {
+                                  setBusy(null);
+                                }
+                              }}
+                            >
+                              Přidat mimo stavbu
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             ) : (
               <>

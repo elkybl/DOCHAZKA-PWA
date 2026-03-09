@@ -27,6 +27,13 @@ async function getToken(): Promise<string | null> {
   }
 }
 
+function logout() {
+  try {
+    localStorage.removeItem("token");
+  } catch {}
+  window.location.href = "/login";
+}
+
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -70,6 +77,11 @@ function pickNearestSite(pos: Pos, sites: Site[], fallbackRadiusM = 250) {
   return best;
 }
 
+function asArray<T = any>(v: any): T[] {
+  if (Array.isArray(v)) return v as T[];
+  return [];
+}
+
 export default function AttendancePage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -111,30 +123,68 @@ export default function AttendancePage() {
   async function load() {
     setErr(null);
     setInfo(null);
+
     const t = await getToken();
     if (!t) {
       setErr("Chybí přihlášení.");
       return;
     }
 
-    const [meRes, sitesRes, statusRes] = await Promise.all([
-      fetch("/api/me", { headers: { authorization: `Bearer ${t}` } }),
-      fetch("/api/sites", { headers: { authorization: `Bearer ${t}` } }),
-      fetch("/api/attendance/status", { headers: { authorization: `Bearer ${t}` } }),
-    ]);
-
+    // /api/me
+    const meRes = await fetch("/api/me", { headers: { authorization: `Bearer ${t}` } });
+    if (meRes.status === 401) return logout();
     const meJson = await meRes.json().catch(() => ({}));
-    const sitesJson = await sitesRes.json().catch(() => ({}));
-    const statusJson = await statusRes.json().catch(() => ({}));
-
     if (!meRes.ok) throw new Error(meJson?.error || "Nešlo načíst uživatele.");
+
+    // tolerant: me can be in different shapes
+    const meObj =
+      meJson?.me ??
+      meJson?.user ??
+      meJson?.data?.me ??
+      meJson?.data?.user ??
+      meJson;
+
+    if (!meObj || !meObj.name) throw new Error("Nešlo načíst uživatele.");
+    setMe(meObj as Me);
+
+    // /api/sites
+    const sitesRes = await fetch("/api/sites", { headers: { authorization: `Bearer ${t}` } });
+    if (sitesRes.status === 401) return logout();
+    const sitesJson = await sitesRes.json().catch(() => ({}));
     if (!sitesRes.ok) throw new Error(sitesJson?.error || "Nešlo načíst stavby.");
+
+    const sitesArr =
+      sitesJson?.sites ??
+      sitesJson?.data?.sites ??
+      sitesJson?.data ??
+      sitesJson;
+
+    setSites(asArray<Site>(sitesArr));
+
+    // /api/attendance/status
+    const statusRes = await fetch("/api/attendance/status", { headers: { authorization: `Bearer ${t}` } });
+    if (statusRes.status === 401) return logout();
+    const statusJson = await statusRes.json().catch(() => ({}));
     if (!statusRes.ok) throw new Error(statusJson?.error || "Nešlo načíst stav.");
 
-    setMe(meJson?.me || null);
-    setSites((sitesJson?.sites || []) as Site[]);
-    setPresent(!!statusJson?.present);
-    setActiveSiteName(statusJson?.site_name || null);
+    const presentVal =
+      statusJson?.present ??
+      statusJson?.is_present ??
+      statusJson?.data?.present ??
+      statusJson?.data?.is_present ??
+      false;
+
+    const siteNameVal =
+      statusJson?.site_name ??
+      statusJson?.active_site_name ??
+      statusJson?.current_site_name ??
+      statusJson?.data?.site_name ??
+      statusJson?.data?.active_site_name ??
+      statusJson?.data?.current_site_name ??
+      null;
+
+    setPresent(!!presentVal);
+    setActiveSiteName(siteNameVal);
   }
 
   async function refreshGeo(sitesList: Site[]) {
@@ -161,6 +211,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (sites.length) refreshGeo(sites);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites.length]);
 
   async function doIn() {
@@ -334,9 +385,26 @@ export default function AttendancePage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="w-full">
-          <h1 className="text-2xl font-semibold">Docházka</h1>
-          <div className="mt-2 inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-800">
-            {statusChip}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold">Docházka</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <span>
+                  Přihlášen: <span className="font-medium text-slate-900">{me?.name || "—"}</span>
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                  onClick={logout}
+                >
+                  Odhlásit
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-1 inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-800">
+              {statusChip}
+            </div>
           </div>
 
           <div className="mt-4 rounded-2xl border bg-white p-4">

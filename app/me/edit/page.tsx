@@ -10,12 +10,18 @@ type Row = {
   server_time: string;
   site_id: string | null;
   site_name: string | null;
+
+  // OUT
   note_work: string;
   km: number;
   programming_hours: number;
   programming_note: string;
+
+  // OFFSITE
   offsite_reason: string;
   offsite_hours: number;
+
+  // shared
   material_desc: string;
   material_amount: number;
   is_paid: boolean;
@@ -33,7 +39,6 @@ export default function Page() {
   // for days where OFFSITE doesn't exist yet (key: day__siteId)
   const [newOffsite, setNewOffsite] = useState<Record<string, { reason: string; hours: string }>>({});
 
-  // ✅ localStorage až v useEffect
   useEffect(() => {
     const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     setToken(t);
@@ -60,14 +65,13 @@ export default function Page() {
       setErr(data?.error || "Chyba");
       return;
     }
-    setRows(data.rows || []);
+    setRows((data.rows || []) as Row[]);
   }
 
   function updateRow(id: string, patch: Partial<Row>) {
     setRows((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
 
-  
   function dayKeyPrague(iso: string) {
     const d = new Date(iso);
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -133,7 +137,7 @@ export default function Page() {
     if (!res.ok) throw new Error(data?.error || "Nešlo uložit mimo stavbu.");
   }
 
-async function save(r: Row) {
+  async function save(r: Row) {
     setErr(null);
     setInfo(null);
 
@@ -176,7 +180,7 @@ async function save(r: Row) {
       if (!res.ok) throw new Error(data?.error || "Nešlo uložit.");
 
       setInfo("Uloženo.");
-      await load(token);
+      await load(token!);
     } catch (e: any) {
       setErr(e.message || "Chyba");
     } finally {
@@ -184,7 +188,6 @@ async function save(r: Row) {
     }
   }
 
-  // ✅ načíst až když token existuje
   useEffect(() => {
     if (!token) return;
     load(token);
@@ -195,12 +198,12 @@ async function save(r: Row) {
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Opravit záznamy</h1>
+            <h1 className="text-lg font-semibold">Doplnit práci</h1>
             <p className="mt-1 text-xs text-neutral-500">
               Upravíš jen texty/částky (práce, km, materiál, mimo stavbu). Čas a poloha nejdou.
             </p>
             <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/me">
-              Zpět na Moje výdělek
+              Zpět na Moje výdělky
             </Link>
           </div>
           <button
@@ -228,8 +231,7 @@ async function save(r: Row) {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold">
-                  {r.type === "OUT" ? "Odchod" : "Mimo stavbu"} •{" "}
-                  {fmtDateTimeCZFromIso(r.server_time)}
+                  {r.type === "OUT" ? "Odchod" : "Mimo stavbu"} • {fmtDateTimeCZFromIso(r.server_time)}
                 </div>
                 <div className="mt-1 text-xs text-neutral-600">Stavba: {r.site_name || "—"}</div>
               </div>
@@ -259,9 +261,7 @@ async function save(r: Row) {
                   className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                   inputMode="decimal"
                   value={String(r.km ?? 0)}
-                  onChange={(e) =>
-                    updateRow(r.id, { km: Number(e.target.value.replace(/[^\d.]/g, "")) })
-                  }
+                  onChange={(e) => updateRow(r.id, { km: Number(e.target.value.replace(/[^\d.]/g, "")) })}
                   disabled={r.is_paid}
                 />
 
@@ -304,19 +304,18 @@ async function save(r: Row) {
                   </button>
                 )}
 
-                {/* OFFSITE (nákup/sklad/vyřízení) attached to this day + site */}
+                {/* OFFSITE for the same day + site */}
                 {(() => {
                   const day = dayKeyPrague(r.server_time);
                   const key = `${day}__${r.site_id || ""}`;
 
-                  // find existing OFFSITE for same day + same site (fallback: any OFFSITE that day)
-                  const existing = rows.find(
-                    (x) =>
-                      x.type === "OFFSITE" &&
-                      dayKeyPrague(x.server_time) === day &&
-                      ((r.site_id && x.site_id === r.site_id) || (!r.site_id && !x.site_id))
-                  ) ||
-                    rows.find((x) => x.type === "OFFSITE" && dayKeyPrague(x.server_time) === day);
+                  const existing =
+                    rows.find(
+                      (x) =>
+                        x.type === "OFFSITE" &&
+                        dayKeyPrague(x.server_time) === day &&
+                        ((r.site_id && x.site_id === r.site_id) || (!r.site_id && !x.site_id))
+                    ) || rows.find((x) => x.type === "OFFSITE" && dayKeyPrague(x.server_time) === day);
 
                   const draft = newOffsite[key] || { reason: "", hours: "" };
                   const isPaid = r.is_paid;
@@ -325,7 +324,8 @@ async function save(r: Row) {
                     <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
                       <div className="text-sm font-semibold">Mimo stavbu (nákup / sklad / vyřízení)</div>
                       <p className="mt-1 text-xs text-neutral-500">
-                        Přidá se k tomuto dni. Piš sem i „co se dělalo“ mimo stavbu (např. nákup kabelů, vyzvednutí materiálu).
+                        Přidá se k tomuto dni. Piš sem i „co se dělalo“ mimo stavbu (např. nákup kabelů, vyzvednutí
+                        materiálu).
                       </p>
 
                       {existing ? (
@@ -392,9 +392,14 @@ async function save(r: Row) {
                                   const hours = Number(draft.hours || 0);
                                   if (!draft.reason.trim()) throw new Error("Doplň důvod mimo stavbu.");
                                   if (!Number.isFinite(hours) || hours <= 0) throw new Error("Doplň počet hodin (např. 2).");
-                                  await createOffsiteForDay({ day, site_id: r.site_id || null, reason: draft.reason.trim(), hours });
+                                  await createOffsiteForDay({
+                                    day,
+                                    site_id: r.site_id || null,
+                                    reason: draft.reason.trim(),
+                                    hours,
+                                  });
                                   setInfo("Mimo stavbu uloženo.");
-                                  await load(token);
+                                  await load(token!);
                                 } catch (e: any) {
                                   setErr(e.message || "Chyba");
                                 } finally {
@@ -426,11 +431,19 @@ async function save(r: Row) {
                   className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                   inputMode="decimal"
                   value={String(r.offsite_hours ?? 0)}
-                  onChange={(e) =>
-                    updateRow(r.id, { offsite_hours: Number(e.target.value.replace(/[^\d.]/g, "")) })
-                  }
+                  onChange={(e) => updateRow(r.id, { offsite_hours: Number(e.target.value.replace(/[^\d.]/g, "")) })}
                   disabled={r.is_paid}
                 />
+
+                {!r.is_paid && (
+                  <button
+                    className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-50"
+                    onClick={() => save(r)}
+                    disabled={busy === r.id}
+                  >
+                    {busy === r.id ? "Ukládám…" : "Uložit mimo stavbu"}
+                  </button>
+                )}
               </>
             )}
 
@@ -450,14 +463,12 @@ async function save(r: Row) {
                 className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                 inputMode="decimal"
                 value={String(r.material_amount ?? 0)}
-                onChange={(e) =>
-                  updateRow(r.id, { material_amount: Number(e.target.value.replace(/[^\d.]/g, "")) })
-                }
+                onChange={(e) => updateRow(r.id, { material_amount: Number(e.target.value.replace(/[^\d.]/g, "")) })}
                 disabled={r.is_paid}
               />
             </div>
 
-            {!r.is_paid && (
+            {r.type === "OUT" && !r.is_paid && (
               <button
                 className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-50"
                 onClick={() => save(r)}

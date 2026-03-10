@@ -792,10 +792,11 @@ export default function AttendancePage() {
             </div>
 
             <div className="mt-3">
-              <label className="text-sm font-medium text-slate-700">Důvod / co se dělalo</label>
-              <input
+              <label className="text-sm font-medium text-slate-700">Co se dělalo (mimo lokaci)</label>
+              <textarea
                 className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="např. nákup materiálu, sklad..."
+                rows={3}
+                placeholder="např. nákup materiálu pro Beroun, vyzvednutí ve skladu, servis…"
                 value={offsiteReason}
                 onChange={(e) => setOffsiteReason(e.target.value)}
               />

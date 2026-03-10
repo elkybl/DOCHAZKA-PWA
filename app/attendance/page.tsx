@@ -34,6 +34,46 @@ function logout() {
   window.location.href = "/login";
 }
 
+async function fetchJSON(url: string, token: string) {
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { res, text, json };
+}
+
+function extractUser(obj: any): Me | null {
+  const u =
+    obj?.user ??
+    obj?.me ??
+    obj?.profile ??
+    obj?.data?.user ??
+    obj?.data?.me ??
+    obj?.data?.profile ??
+    obj;
+
+  if (!u || typeof u !== "object") return null;
+
+  const name = u.name ?? u.full_name ?? u.username ?? u.email ?? u.phone ?? null;
+
+  const roleVal = u.role ?? u.user_role ?? u.userRole ?? null;
+  const role: "admin" | "user" =
+    roleVal === "admin" || roleVal === "ADMIN" || u.is_admin === true ? "admin" : "user";
+
+  if (!name) return null;
+
+  return {
+    id: String(u.id ?? u.user_id ?? u.uid ?? ""),
+    name: String(name),
+    role,
+    is_programmer: !!(u.is_programmer ?? u.programmer ?? false),
+  };
+}
+
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -42,8 +82,7 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
   const lat1 = toRad(a.lat);
   const lat2 = toRad(b.lat);
   const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
@@ -77,11 +116,6 @@ function pickNearestSite(pos: Pos, sites: Site[], fallbackRadiusM = 250) {
   return best;
 }
 
-function asArray<T = any>(v: any): T[] {
-  if (Array.isArray(v)) return v as T[];
-  return [];
-}
-
 export default function AttendancePage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -95,22 +129,21 @@ export default function AttendancePage() {
   const [pos, setPos] = useState<Pos | null>(null);
   const [nearest, setNearest] = useState<{ site: Site; dist: number } | null>(null);
 
-  // manual override (optional)
+  const [debugMe, setDebugMe] = useState<string | null>(null);
+  const [debugStatus, setDebugStatus] = useState<string | null>(null);
+
   const [manualPickOpen, setManualPickOpen] = useState(false);
   const [manualSiteId, setManualSiteId] = useState<string | null>(null);
 
-  // temporary site request
   const [tempOpen, setTempOpen] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  // optional details at OUT
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [note, setNote] = useState("");
   const [km, setKm] = useState("");
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
 
-  // programmer optional
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
 
@@ -123,6 +156,8 @@ export default function AttendancePage() {
   async function load() {
     setErr(null);
     setInfo(null);
+    setDebugMe(null);
+    setDebugStatus(null);
 
     const t = await getToken();
     if (!t) {
@@ -130,57 +165,51 @@ export default function AttendancePage() {
       return;
     }
 
-    // /api/me
-    const meRes = await fetch("/api/me", { headers: { authorization: `Bearer ${t}` } });
-    if (meRes.status === 401) return logout();
-    const meJson = await meRes.json().catch(() => ({}));
-    if (!meRes.ok) throw new Error(meJson?.error || "Nešlo načíst uživatele.");
+    const meUrls = ["/api/me/profile", "/api/me", "/api/auth/me"];
+    let meObj: Me | null = null;
+    let lastMeDump: any = null;
 
-    // tolerant: me can be in different shapes
-    const meObj =
-      meJson?.me ??
-      meJson?.user ??
-      meJson?.data?.me ??
-      meJson?.data?.user ??
-      meJson;
+    for (const u of meUrls) {
+      const { res, text, json } = await fetchJSON(u, t);
+      if (res.status === 401) return logout();
+      if (!res.ok) {
+        lastMeDump = { url: u, status: res.status, text: (text || "").slice(0, 800) };
+        continue;
+      }
+      const extracted = extractUser(json);
+      lastMeDump = { url: u, status: res.status, json };
+      if (extracted) {
+        meObj = extracted;
+        break;
+      }
+    }
 
-    if (!meObj || !meObj.name) throw new Error("Nešlo načíst uživatele.");
-    setMe(meObj as Me);
+    if (!meObj) {
+      setDebugMe(JSON.stringify(lastMeDump, null, 2));
+      throw new Error("Nešlo načíst uživatele.");
+    }
+    setMe(meObj);
 
-    // /api/sites
-    const sitesRes = await fetch("/api/sites", { headers: { authorization: `Bearer ${t}` } });
-    if (sitesRes.status === 401) return logout();
-    const sitesJson = await sitesRes.json().catch(() => ({}));
-    if (!sitesRes.ok) throw new Error(sitesJson?.error || "Nešlo načíst stavby.");
+    const sitesTry = await fetchJSON("/api/sites", t);
+    if (sitesTry.res.status === 401) return logout();
+    if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nešlo načíst stavby.");
+    const sitesArr = (sitesTry.json?.sites ?? sitesTry.json?.data?.sites ?? sitesTry.json?.data ?? []) as Site[];
+    setSites(Array.isArray(sitesArr) ? sitesArr : []);
 
-    const sitesArr =
-      sitesJson?.sites ??
-      sitesJson?.data?.sites ??
-      sitesJson?.data ??
-      sitesJson;
+    const st = await fetchJSON("/api/attendance/status", t);
+    if (st.res.status === 401) return logout();
+    if (!st.res.ok) {
+      setDebugStatus(JSON.stringify({ status: st.res.status, text: (st.text || "").slice(0, 800) }, null, 2));
+      throw new Error(st.json?.error || "Nešlo načíst stav.");
+    }
 
-    setSites(asArray<Site>(sitesArr));
-
-    // /api/attendance/status
-    const statusRes = await fetch("/api/attendance/status", { headers: { authorization: `Bearer ${t}` } });
-    if (statusRes.status === 401) return logout();
-    const statusJson = await statusRes.json().catch(() => ({}));
-    if (!statusRes.ok) throw new Error(statusJson?.error || "Nešlo načíst stav.");
-
-    const presentVal =
-      statusJson?.present ??
-      statusJson?.is_present ??
-      statusJson?.data?.present ??
-      statusJson?.data?.is_present ??
-      false;
-
+    const j = st.json || {};
+    const presentVal = j.present ?? j.is_present ?? (j.status === "IN") ?? (!!j.open) ?? false;
     const siteNameVal =
-      statusJson?.site_name ??
-      statusJson?.active_site_name ??
-      statusJson?.current_site_name ??
-      statusJson?.data?.site_name ??
-      statusJson?.data?.active_site_name ??
-      statusJson?.data?.current_site_name ??
+      j.site_name ??
+      j.active_site_name ??
+      j.current_site_name ??
+      j.open?.site_name ??
       null;
 
     setPresent(!!presentVal);
@@ -222,20 +251,17 @@ export default function AttendancePage() {
       const t = await getToken();
       if (!t) throw new Error("Chybí přihlášení.");
 
-      // refresh position for best accuracy
       const p = await getPosition().catch(() => null);
       if (p) setPos(p);
 
       let siteId: string | null = manualSiteId;
 
-      // if not manually picked, try nearest within radius
       if (!siteId && p && sites.length) {
         const best = pickNearestSite(p, sites);
         setNearest(best);
         if (best) siteId = best.site.id;
       }
 
-      // if still no site, ask for temporary site request
       if (!siteId) {
         setTempOpen(true);
         setInfo("Nenašla se stavba v dosahu. Zadej dočasný název a odešleme žádost adminovi.");
@@ -278,35 +304,36 @@ export default function AttendancePage() {
       if (!t) throw new Error("Chybí přihlášení.");
 
       const p = pos || (await getPosition().catch(() => null));
+      if (!p) throw new Error("Nepodařilo se získat polohu.");
 
       const name = tempName.trim();
       if (!name) throw new Error("Zadej název dočasné stavby.");
 
-      // request temp site to admin
-      const reqRes = await fetch("/api/sites/requests", {
+      const reqRes = await fetch("/api/sites/pending", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
         body: JSON.stringify({
           name,
-          lat: p?.lat,
-          lng: p?.lng,
-          accuracy_m: p?.accuracy,
+          lat: p.lat,
+          lng: p.lng,
+          radius_m: 200,
         }),
       });
 
       const reqJson = await reqRes.json().catch(() => ({}));
-      if (!reqRes.ok) throw new Error(reqJson?.error || "Nešlo odeslat žádost o stavbu.");
+      if (!reqRes.ok) throw new Error(reqJson?.error || "Nešlo vytvořit dočasnou stavbu.");
 
-      // create IN with null site_id (backend should handle) OR keep as null and rely on admin later
+      const newSiteId = reqJson?.site?.id;
+      if (!newSiteId) throw new Error("Chybí ID nové dočasné stavby.");
+
       const inRes = await fetch("/api/attendance/in", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
         body: JSON.stringify({
-          site_id: null,
-          lat: p?.lat,
-          lng: p?.lng,
-          accuracy_m: p?.accuracy,
-          temp_site_name: name,
+          site_id: newSiteId,
+          lat: p.lat,
+          lng: p.lng,
+          accuracy_m: p.accuracy,
         }),
       });
 
@@ -377,9 +404,7 @@ export default function AttendancePage() {
     }
   }
 
-  const statusChip = present
-    ? `Na směně${activeSiteName ? ` – ${activeSiteName}` : ""}`
-    : "Mimo směnu";
+  const statusChip = present ? `Na směně${activeSiteName ? ` – ${activeSiteName}` : ""}` : "Mimo směnu";
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
@@ -432,6 +457,23 @@ export default function AttendancePage() {
                 </button>
               )}
             </div>
+
+            {(debugMe || debugStatus) && (
+              <div className="mt-3 rounded-xl bg-slate-900 p-3 text-xs text-slate-100">
+                {debugMe && (
+                  <>
+                    <div className="font-semibold">DEBUG /me</div>
+                    <pre className="whitespace-pre-wrap">{debugMe}</pre>
+                  </>
+                )}
+                {debugStatus && (
+                  <>
+                    <div className="mt-2 font-semibold">DEBUG /status</div>
+                    <pre className="whitespace-pre-wrap">{debugStatus}</pre>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -538,10 +580,9 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {/* Manual picker modal */}
       {manualPickOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Vybrat stavbu</div>
             <div className="mt-2 max-h-96 overflow-auto rounded-xl border">
               {sites.map((s) => (
@@ -572,10 +613,9 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Temporary site modal */}
       {tempOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Dočasná stavba</div>
             <div className="mt-1 text-sm text-slate-600">
               Napiš název (např. „Novák – Beroun“). Odešle se žádost adminovi a příchod se uloží jako dočasný.

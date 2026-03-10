@@ -30,6 +30,7 @@ async function getToken(): Promise<string | null> {
 function logout() {
   try {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
   } catch {}
   window.location.href = "/login";
 }
@@ -125,6 +126,7 @@ export default function AttendancePage() {
   const [sites, setSites] = useState<Site[]>([]);
   const [present, setPresent] = useState<boolean>(false);
   const [activeSiteName, setActiveSiteName] = useState<string | null>(null);
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
 
   const [pos, setPos] = useState<Pos | null>(null);
   const [nearest, setNearest] = useState<{ site: Site; dist: number } | null>(null);
@@ -165,6 +167,7 @@ export default function AttendancePage() {
       return;
     }
 
+    // ----- ME -----
     const meUrls = ["/api/me/profile", "/api/me", "/api/auth/me"];
     let meObj: Me | null = null;
     let lastMeDump: any = null;
@@ -190,34 +193,51 @@ export default function AttendancePage() {
     }
     setMe(meObj);
 
+    // ✅ důležité pro admin menu v jiných částech aplikace
+    try {
+      localStorage.setItem("user", JSON.stringify(meObj));
+    } catch {}
+
+    // ----- SITES -----
     const sitesTry = await fetchJSON("/api/sites", t);
     if (sitesTry.res.status === 401) return logout();
     if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nešlo načíst stavby.");
     const sitesArr = (sitesTry.json?.sites ?? sitesTry.json?.data?.sites ?? sitesTry.json?.data ?? []) as Site[];
-    setSites(Array.isArray(sitesArr) ? sitesArr : []);
+    const safeSites = Array.isArray(sitesArr) ? sitesArr : [];
+    setSites(safeSites);
 
+    // ----- STATUS -----
     const st = await fetchJSON("/api/attendance/status", t);
     if (st.res.status === 401) return logout();
     if (!st.res.ok) {
-      setDebugStatus(JSON.stringify({ status: st.res.status, text: (st.text || "").slice(0, 800) }, null, 2));
+      setDebugStatus(
+        JSON.stringify({ status: st.res.status, text: (st.text || "").slice(0, 800) }, null, 2)
+      );
       throw new Error(st.json?.error || "Nešlo načíst stav.");
     }
 
     const j = st.json || {};
+
     const presentVal =
-  j.present ??
-  j.is_present ??
-  (j.status === "IN" ? true : undefined) ??
-  (j.open ? true : undefined) ??
-  false;
+      j.present ??
+      j.is_present ??
+      (j.status === "IN" ? true : undefined) ??
+      (j.open ? true : undefined) ??
+      false;
+
+    const openSiteId =
+      j.open?.site_id ?? j.open?.siteId ?? j.site_id ?? j.active_site_id ?? null;
+
     const siteNameVal =
       j.site_name ??
       j.active_site_name ??
       j.current_site_name ??
       j.open?.site_name ??
+      (openSiteId ? safeSites.find((s) => s.id === openSiteId)?.name : null) ??
       null;
 
     setPresent(!!presentVal);
+    setActiveSiteId(openSiteId ? String(openSiteId) : null);
     setActiveSiteName(siteNameVal);
   }
 
@@ -288,6 +308,7 @@ export default function AttendancePage() {
       if (!res.ok) throw new Error(data?.error || "Nešlo uložit příchod.");
 
       setPresent(true);
+      setActiveSiteId(siteId);
       const s = sites.find((x) => x.id === siteId);
       setActiveSiteName(s?.name || null);
       setInfo(`Příchod uložen${s?.name ? ` – ${s.name}` : ""}.`);
@@ -346,6 +367,7 @@ export default function AttendancePage() {
       if (!inRes.ok) throw new Error(inJson?.error || "Nešlo uložit příchod.");
 
       setPresent(true);
+      setActiveSiteId(String(newSiteId));
       setActiveSiteName(`Dočasná: ${name}`);
       setTempOpen(false);
       setTempName("");
@@ -372,11 +394,33 @@ export default function AttendancePage() {
       if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) throw new Error("Materiál částka je neplatná.");
 
       const p = await getPosition().catch(() => null);
+      if (p) setPos(p);
+
+      // ✅ 1) ručně vybraná, 2) aktivní ze statusu, 3) nearest v radiusu, 4) nearest mimo radius
+      let siteId: string | null = manualSiteId || activeSiteId || null;
+
+      if (!siteId && p && sites.length) {
+        const best = pickNearestSite(p, sites);
+        setNearest(best);
+        if (best) siteId = best.site.id;
+      }
+
+      if (!siteId && p && sites.length) {
+        // fallback: nejbližší i mimo radius
+        let bestAny: { site: Site; dist: number } | null = null;
+        for (const s of sites) {
+          if (s.lat == null || s.lng == null) continue;
+          const dist = haversineMeters(p, { lat: s.lat, lng: s.lng });
+          if (!bestAny || dist < bestAny.dist) bestAny = { site: s, dist };
+        }
+        if (bestAny) siteId = bestAny.site.id;
+      }
 
       const res = await fetch("/api/attendance/out", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
         body: JSON.stringify({
+          site_id: siteId,
           note_work: note.trim() || undefined,
           km: kmVal,
           material_desc: matDesc.trim() || undefined,
@@ -393,6 +437,7 @@ export default function AttendancePage() {
       if (!res.ok) throw new Error(data?.error || "Nešlo uložit odchod.");
 
       setPresent(false);
+      setActiveSiteId(null);
       setActiveSiteName(null);
       setInfo("Odchod uložen.");
       setNote("");
@@ -429,6 +474,14 @@ export default function AttendancePage() {
                 >
                   Odhlásit
                 </button>
+                {me?.role === "admin" && (
+                  <a
+                    href="/admin"
+                    className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                  >
+                    Admin
+                  </a>
+                )}
               </div>
             </div>
 

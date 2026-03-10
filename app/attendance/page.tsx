@@ -204,7 +204,13 @@ export default function AttendancePage() {
     }
 
     const j = st.json || {};
-    const presentVal = j.present ?? j.is_present ?? (j.status === "IN") ?? (!!j.open) ?? false;
+    // Avoid `??` after a boolean expression (TS: "never nullish").
+    const presentVal =
+      (j.present ??
+        j.is_present ??
+        (j.status === "IN" ? true : undefined) ??
+        (j.open ? true : undefined) ??
+        false);
     const siteNameVal =
       j.site_name ??
       j.active_site_name ??

@@ -129,6 +129,14 @@ export default function AttendancePage() {
   const [pos, setPos] = useState<Pos | null>(null);
   const [nearest, setNearest] = useState<{ site: Site; dist: number } | null>(null);
 
+  // Nouzovka (ruční záznam mimo lokaci)
+  const [offsiteOpen, setOffsiteOpen] = useState(false);
+  const [offsiteDay, setOffsiteDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [offsiteFrom, setOffsiteFrom] = useState("08:00");
+  const [offsiteTo, setOffsiteTo] = useState("16:00");
+  const [offsiteReason, setOffsiteReason] = useState("");
+  const [offsiteSiteId, setOffsiteSiteId] = useState<string | null>(null);
+
   const [debugMe, setDebugMe] = useState<string | null>(null);
   const [debugStatus, setDebugStatus] = useState<string | null>(null);
 
@@ -190,6 +198,11 @@ export default function AttendancePage() {
     }
     setMe(meObj);
 
+    // ✅ Admin část aplikace čte localStorage.user.role
+    try {
+      localStorage.setItem("user", JSON.stringify(meObj));
+    } catch {}
+
     const sitesTry = await fetchJSON("/api/sites", t);
     if (sitesTry.res.status === 401) return logout();
     if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nešlo načíst stavby.");
@@ -204,7 +217,6 @@ export default function AttendancePage() {
     }
 
     const j = st.json || {};
-    // Avoid `??` after a boolean expression (TS: "never nullish").
     const presentVal =
       (j.present ??
         j.is_present ??
@@ -231,6 +243,55 @@ export default function AttendancePage() {
     } catch {
       setPos(null);
       setNearest(null);
+    }
+  }
+
+  function hoursFromTimes(from: string, to: string) {
+    const [fh, fm] = from.split(":").map((x) => Number(x));
+    const [th, tm] = to.split(":").map((x) => Number(x));
+    if (![fh, fm, th, tm].every((x) => Number.isFinite(x))) return 0;
+    const mins = th * 60 + tm - (fh * 60 + fm);
+    return Math.max(0, mins / 60);
+  }
+
+  async function submitOffsiteManual() {
+    setBusy(true);
+    setErr(null);
+    setInfo(null);
+    try {
+      const t = await getToken();
+      if (!t) throw new Error("Chybí přihlášení.");
+
+      const day = String(offsiteDay || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("Neplatné datum.");
+
+      const reason = offsiteReason.trim();
+      if (!reason) throw new Error("Doplň důvod / co se dělalo.");
+
+      const h = hoursFromTimes(offsiteFrom, offsiteTo);
+      if (!Number.isFinite(h) || h <= 0) throw new Error("Čas od/do je neplatný.");
+
+      const res = await fetch("/api/attendance/offsite", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+        body: JSON.stringify({
+          day_local: day,
+          site_id: offsiteSiteId,
+          offsite_reason: `MIMO LOKACI – ${reason}`,
+          offsite_hours: h,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo uložit mimo stavbu.");
+
+      setOffsiteOpen(false);
+      setOffsiteReason("");
+      setInfo("Nouzový záznam uložen. Admin ho uvidí.");
+    } catch (e: any) {
+      setErr(e.message || "Chyba");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -519,6 +580,27 @@ export default function AttendancePage() {
                 </a>
               </div>
 
+              {me?.role === "admin" && (
+                <a
+                  href="/admin"
+                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50"
+                >
+                  Admin
+                </a>
+              )}
+
+              <button
+                type="button"
+                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => {
+                  // default site = aktuální vybraná/nejbližší
+                  setOffsiteSiteId(nearest?.site?.id || manualSiteId || null);
+                  setOffsiteOpen(true);
+                }}
+              >
+                Nouzovka: záznam mimo lokaci
+              </button>
+
               <button
                 type="button"
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
@@ -647,6 +729,94 @@ export default function AttendancePage() {
                 onClick={submitTempSiteAndIn}
               >
                 Odeslat a příchod
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {offsiteOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
+            <div className="text-lg font-semibold">Nouzovka: záznam mimo lokaci</div>
+            <div className="mt-1 text-sm text-slate-600">
+              Použij, když jsi zapomněl něco odkliknout nebo jsi byl mimo stavbu (nákup, sklad). Záznam bude vidět adminovi.
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Datum</label>
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteDay}
+                  onChange={(e) => setOffsiteDay(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Stavba</label>
+                <select
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm bg-white relative z-50"
+                  value={offsiteSiteId ?? ""}
+                  onChange={(e) => setOffsiteSiteId(e.target.value || null)}
+                >
+                  <option value="">Bez stavby</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Od</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteFrom}
+                  onChange={(e) => setOffsiteFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Do</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteTo}
+                  onChange={(e) => setOffsiteTo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-sm font-medium text-slate-700">Důvod / co se dělalo</label>
+              <input
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                placeholder="např. nákup materiálu, sklad..."
+                value={offsiteReason}
+                onChange={(e) => setOffsiteReason(e.target.value)}
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => setOffsiteOpen(false)}
+                disabled={busy}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={submitOffsiteManual}
+                disabled={busy}
+              >
+                Uložit
               </button>
             </div>
           </div>

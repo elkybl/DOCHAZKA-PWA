@@ -270,9 +270,6 @@ export default function Page() {
                     />
                   </div>
                 )}
-                  </button>
-                )}
-
                 {/* OFFSITE for the same day + site */}
                 {(() => {
                   const day = dayKeyPrague(r.server_time);

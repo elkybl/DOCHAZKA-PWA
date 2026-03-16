@@ -117,6 +117,14 @@ function pickNearestSite(pos: Pos, sites: Site[], fallbackRadiusM = 250) {
   return best;
 }
 
+function hoursFromTimes(from: string, to: string) {
+  // "HH:MM" -> hours (can be 0.5 etc)
+  const [fh, fm] = from.split(":").map(Number);
+  const [th, tm] = to.split(":").map(Number);
+  const mins = th * 60 + tm - (fh * 60 + fm);
+  return Math.max(0, mins / 60);
+}
+
 export default function AttendancePage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -149,6 +157,14 @@ export default function AttendancePage() {
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
 
+  // ✅ NOUZOVKA
+  const [offsiteOpen, setOffsiteOpen] = useState(false);
+  const [offsiteDay, setOffsiteDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [offsiteFrom, setOffsiteFrom] = useState("08:00");
+  const [offsiteTo, setOffsiteTo] = useState("16:00");
+  const [offsiteSiteId, setOffsiteSiteId] = useState<string | null>(null);
+  const [offsiteText, setOffsiteText] = useState("");
+
   const nearestLabel = useMemo(() => {
     if (!nearest) return null;
     const d = Math.round(nearest.dist);
@@ -167,7 +183,6 @@ export default function AttendancePage() {
       return;
     }
 
-    // ----- ME -----
     const meUrls = ["/api/me/profile", "/api/me", "/api/auth/me"];
     let meObj: Me | null = null;
     let lastMeDump: any = null;
@@ -192,13 +207,10 @@ export default function AttendancePage() {
       throw new Error("Nešlo načíst uživatele.");
     }
     setMe(meObj);
-
-    // ✅ důležité pro admin menu v jiných částech aplikace
     try {
       localStorage.setItem("user", JSON.stringify(meObj));
     } catch {}
 
-    // ----- SITES -----
     const sitesTry = await fetchJSON("/api/sites", t);
     if (sitesTry.res.status === 401) return logout();
     if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nešlo načíst stavby.");
@@ -206,7 +218,6 @@ export default function AttendancePage() {
     const safeSites = Array.isArray(sitesArr) ? sitesArr : [];
     setSites(safeSites);
 
-    // ----- STATUS -----
     const st = await fetchJSON("/api/attendance/status", t);
     if (st.res.status === 401) return logout();
     if (!st.res.ok) {
@@ -217,7 +228,6 @@ export default function AttendancePage() {
     }
 
     const j = st.json || {};
-
     const presentVal =
       j.present ??
       j.is_present ??
@@ -396,7 +406,6 @@ export default function AttendancePage() {
       const p = await getPosition().catch(() => null);
       if (p) setPos(p);
 
-      // ✅ 1) ručně vybraná, 2) aktivní ze statusu, 3) nearest v radiusu, 4) nearest mimo radius
       let siteId: string | null = manualSiteId || activeSiteId || null;
 
       if (!siteId && p && sites.length) {
@@ -406,7 +415,6 @@ export default function AttendancePage() {
       }
 
       if (!siteId && p && sites.length) {
-        // fallback: nejbližší i mimo radius
         let bestAny: { site: Site; dist: number } | null = null;
         for (const s of sites) {
           if (s.lat == null || s.lng == null) continue;
@@ -447,6 +455,45 @@ export default function AttendancePage() {
       setProgHours("");
       setProgNote("");
       setDetailsOpen(false);
+    } catch (e: any) {
+      setErr(e?.message || "Chyba");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ✅ NOUZOVKA submit: uloží OFFSITE na vybraný den+stavbu
+  async function submitNouzovka() {
+    setBusy(true);
+    setErr(null);
+    setInfo(null);
+    try {
+      const t = await getToken();
+      if (!t) throw new Error("Chybí přihlášení.");
+
+      const hours = hoursFromTimes(offsiteFrom, offsiteTo);
+      if (!offsiteDay) throw new Error("Vyber datum.");
+      if (!offsiteFrom || !offsiteTo) throw new Error("Doplň čas Od/Do.");
+      if (!(hours > 0)) throw new Error("Čas Do musí být později než Od.");
+      if (!offsiteText.trim()) throw new Error("Napiš co se dělalo.");
+
+      const res = await fetch("/api/attendance/offsite", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+        body: JSON.stringify({
+          day_local: offsiteDay,
+          site_id: offsiteSiteId,
+          offsite_reason: `MIMO LOKACI – DOPLNĚNÝ DEN – ${offsiteText.trim()}`,
+          offsite_hours: Math.round(hours * 100) / 100,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo uložit nouzový záznam.");
+
+      setInfo("Nouzový záznam uložen. Admin ho uvidí v docházce a ve výplatách.");
+      setOffsiteOpen(false);
+      setOffsiteText("");
     } catch (e: any) {
       setErr(e?.message || "Chyba");
     } finally {
@@ -571,6 +618,15 @@ export default function AttendancePage() {
                 </a>
               </div>
 
+              {/* ✅ NOUZOVKA button */}
+              <button
+                type="button"
+                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => setOffsiteOpen(true)}
+              >
+                Nouzovka: doplnit zapomenutý den mimo lokaci
+              </button>
+
               <button
                 type="button"
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
@@ -638,6 +694,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      {/* Manual pick modal */}
       {manualPickOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
@@ -671,12 +728,13 @@ export default function AttendancePage() {
         </div>
       )}
 
+      {/* Temp site modal */}
       {tempOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Dočasná stavba</div>
             <div className="mt-1 text-sm text-slate-600">
-              Napiš název (např. „Novák – Beroun“). Odešle se žádost adminovi a příchod se uloží jako dočasný.
+              Napiš název (např. „Novák – Beroun“). Vytvoří se dočasná stavba a příchod se na ni uloží.
             </div>
             <input
               className="mt-3 w-full rounded-xl border p-2 text-sm"
@@ -699,6 +757,95 @@ export default function AttendancePage() {
                 onClick={submitTempSiteAndIn}
               >
                 Odeslat a příchod
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NOUZOVKA modal */}
+      {offsiteOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
+            <div className="text-lg font-semibold">Nouzovka: doplnit zapomenutý den</div>
+            <div className="mt-1 text-sm text-slate-600">
+              Použij když jsi zapomněl zapsat den. Uloží se jako záznam “MIMO LOKACI – DOPLNĚNÝ DEN” a admin to uvidí.
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Datum</label>
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteDay}
+                  onChange={(e) => setOffsiteDay(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Stavba</label>
+                <select
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm bg-white relative z-50"
+                  value={offsiteSiteId ?? ""}
+                  onChange={(e) => setOffsiteSiteId(e.target.value || null)}
+                >
+                  <option value="">Bez stavby</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Od</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteFrom}
+                  onChange={(e) => setOffsiteFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Do</label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={offsiteTo}
+                  onChange={(e) => setOffsiteTo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-sm font-medium text-slate-700">Co se dělalo (mimo lokaci)</label>
+              <textarea
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                rows={3}
+                placeholder="např. Beroun – servis rozvaděč, nákup materiálu, vyřízení…"
+                value={offsiteText}
+                onChange={(e) => setOffsiteText(e.target.value)}
+              />
+            </div>
+
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => setOffsiteOpen(false)}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={submitNouzovka}
+              >
+                Uložit
               </button>
             </div>
           </div>

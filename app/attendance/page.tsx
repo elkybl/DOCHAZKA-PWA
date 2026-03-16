@@ -118,7 +118,6 @@ function pickNearestSite(pos: Pos, sites: Site[], fallbackRadiusM = 250) {
 }
 
 function hoursFromTimes(from: string, to: string) {
-  // "HH:MM" -> hours (can be 0.5 etc)
   const [fh, fm] = from.split(":").map(Number);
   const [th, tm] = to.split(":").map(Number);
   const mins = th * 60 + tm - (fh * 60 + fm);
@@ -157,13 +156,14 @@ export default function AttendancePage() {
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
 
-  // ✅ NOUZOVKA
+  // NOUZOVKA
   const [offsiteOpen, setOffsiteOpen] = useState(false);
   const [offsiteDay, setOffsiteDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [offsiteFrom, setOffsiteFrom] = useState("08:00");
   const [offsiteTo, setOffsiteTo] = useState("16:00");
   const [offsiteSiteId, setOffsiteSiteId] = useState<string | null>(null);
   const [offsiteText, setOffsiteText] = useState("");
+  const [offsiteKm, setOffsiteKm] = useState("");
 
   const nearestLabel = useMemo(() => {
     if (!nearest) return null;
@@ -235,8 +235,7 @@ export default function AttendancePage() {
       (j.open ? true : undefined) ??
       false;
 
-    const openSiteId =
-      j.open?.site_id ?? j.open?.siteId ?? j.site_id ?? j.active_site_id ?? null;
+    const openSiteId = j.open?.site_id ?? j.open?.siteId ?? j.site_id ?? j.active_site_id ?? null;
 
     const siteNameVal =
       j.site_name ??
@@ -397,10 +396,10 @@ export default function AttendancePage() {
       const t = await getToken();
       if (!t) throw new Error("Chybí přihlášení.");
 
-      const kmVal = km.trim() ? Number(km) : undefined;
+      const kmVal = km.trim() ? Number(km.replace(",", ".")) : undefined;
       if (km.trim() && (Number.isNaN(kmVal) || (kmVal ?? 0) < 0)) throw new Error("Kilometry jsou neplatné.");
 
-      const matAmt = matAmount.trim() ? Number(matAmount) : undefined;
+      const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : undefined;
       if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) throw new Error("Materiál částka je neplatná.");
 
       const p = await getPosition().catch(() => null);
@@ -433,7 +432,7 @@ export default function AttendancePage() {
           km: kmVal,
           material_desc: matDesc.trim() || undefined,
           material_amount: matAmt,
-          programming_hours: me?.is_programmer && progHours.trim() ? Number(progHours) : undefined,
+          programming_hours: me?.is_programmer && progHours.trim() ? Number(progHours.replace(",", ".")) : undefined,
           programming_note: me?.is_programmer ? (progNote.trim() || undefined) : undefined,
           lat: p?.lat,
           lng: p?.lng,
@@ -462,7 +461,6 @@ export default function AttendancePage() {
     }
   }
 
-  // ✅ NOUZOVKA submit: uloží OFFSITE na vybraný den+stavbu
   async function submitNouzovka() {
     setBusy(true);
     setErr(null);
@@ -477,7 +475,11 @@ export default function AttendancePage() {
       if (!(hours > 0)) throw new Error("Čas Do musí být později než Od.");
       if (!offsiteText.trim()) throw new Error("Napiš co se dělalo.");
 
-      const res = await fetch("/api/attendance/offsite", {
+      const kmVal = offsiteKm.trim() ? Number(offsiteKm.replace(",", ".")) : 0;
+      if (offsiteKm.trim() && (!Number.isFinite(kmVal) || kmVal < 0)) throw new Error("Km jsou neplatné.");
+
+      // 1) OFFSITE (hodiny + práce mimo lokaci)
+      const offRes = await fetch("/api/attendance/offsite", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
         body: JSON.stringify({
@@ -488,12 +490,28 @@ export default function AttendancePage() {
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo uložit nouzový záznam.");
+      const offData = await offRes.json().catch(() => ({}));
+      if (!offRes.ok) throw new Error(offData?.error || "Nešlo uložit nouzový záznam.");
+
+      // 2) pokud jsou km, vytvoříme OUT s km (aby se to počítalo do dopravy)
+      if (kmVal > 0) {
+        const outRes = await fetch("/api/attendance/out", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+          body: JSON.stringify({
+            site_id: offsiteSiteId,
+            km: kmVal,
+            note_work: `DOPLNĚNÝ DEN – KM z nouzovky (${offsiteDay})`,
+          }),
+        });
+        const outData = await outRes.json().catch(() => ({}));
+        if (!outRes.ok) throw new Error(outData?.error || "Nešlo uložit km z nouzovky.");
+      }
 
       setInfo("Nouzový záznam uložen. Admin ho uvidí v docházce a ve výplatách.");
       setOffsiteOpen(false);
       setOffsiteText("");
+      setOffsiteKm("");
     } catch (e: any) {
       setErr(e?.message || "Chyba");
     } finally {
@@ -522,10 +540,7 @@ export default function AttendancePage() {
                   Odhlásit
                 </button>
                 {me?.role === "admin" && (
-                  <a
-                    href="/admin"
-                    className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50"
-                  >
+                  <a className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50" href="/admin">
                     Admin
                   </a>
                 )}
@@ -539,9 +554,7 @@ export default function AttendancePage() {
 
           <div className="mt-4 rounded-2xl border bg-white p-4">
             <div className="text-sm text-slate-600">Auto výběr stavby podle polohy</div>
-            <div className="mt-1 text-base font-medium text-slate-900">
-              {nearestLabel || "Žádná stavba v dosahu"}
-            </div>
+            <div className="mt-1 text-base font-medium text-slate-900">{nearestLabel || "Žádná stavba v dosahu"}</div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -604,21 +617,14 @@ export default function AttendancePage() {
               </button>
 
               <div className="flex gap-2">
-                <a
-                  href="/me/edit"
-                  className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50"
-                >
+                <a href="/me/edit" className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50">
                   Doplnit práci
                 </a>
-                <a
-                  href="/me"
-                  className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50"
-                >
+                <a href="/me" className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50">
                   Moje výdělky
                 </a>
               </div>
 
-              {/* ✅ NOUZOVKA button */}
               <button
                 type="button"
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
@@ -626,66 +632,6 @@ export default function AttendancePage() {
               >
                 Nouzovka: doplnit zapomenutý den mimo lokaci
               </button>
-
-              <button
-                type="button"
-                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => setDetailsOpen((v) => !v)}
-              >
-                {detailsOpen ? "Skrýt doplnění" : "Doplnit teď (volitelné)"}
-              </button>
-
-              {detailsOpen && (
-                <div className="mt-1 grid gap-2">
-                  <textarea
-                    className="w-full rounded-xl border p-2 text-sm"
-                    placeholder="Co se dělalo (volitelné)"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    rows={3}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      className="w-full rounded-xl border p-2 text-sm"
-                      placeholder="KM (volitelné)"
-                      value={km}
-                      onChange={(e) => setKm(e.target.value)}
-                    />
-                    <input
-                      className="w-full rounded-xl border p-2 text-sm"
-                      placeholder="Materiál Kč (volitelné)"
-                      value={matAmount}
-                      onChange={(e) => setMatAmount(e.target.value)}
-                    />
-                  </div>
-                  <input
-                    className="w-full rounded-xl border p-2 text-sm"
-                    placeholder="Materiál popis (volitelné)"
-                    value={matDesc}
-                    onChange={(e) => setMatDesc(e.target.value)}
-                  />
-
-                  {me?.is_programmer && (
-                    <div className="mt-1 grid gap-2 rounded-xl border bg-slate-50 p-2">
-                      <div className="text-xs font-semibold text-slate-700">Programování</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="w-full rounded-xl border p-2 text-sm"
-                          placeholder="Hodiny"
-                          value={progHours}
-                          onChange={(e) => setProgHours(e.target.value)}
-                        />
-                        <input
-                          className="w-full rounded-xl border p-2 text-sm"
-                          placeholder="Poznámka"
-                          value={progNote}
-                          onChange={(e) => setProgNote(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {err && <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-800">{err}</div>}
               {info && <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
@@ -716,11 +662,7 @@ export default function AttendancePage() {
               ))}
             </div>
             <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => setManualPickOpen(false)}
-              >
+              <button type="button" className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" onClick={() => setManualPickOpen(false)}>
                 Zavřít
               </button>
             </div>
@@ -733,9 +675,7 @@ export default function AttendancePage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Dočasná stavba</div>
-            <div className="mt-1 text-sm text-slate-600">
-              Napiš název (např. „Novák – Beroun“). Vytvoří se dočasná stavba a příchod se na ni uloží.
-            </div>
+            <div className="mt-1 text-sm text-slate-600">Napiš název a příchod se uloží na dočasnou stavbu.</div>
             <input
               className="mt-3 w-full rounded-xl border p-2 text-sm"
               placeholder="Název dočasné stavby"
@@ -743,19 +683,10 @@ export default function AttendancePage() {
               onChange={(e) => setTempName(e.target.value)}
             />
             <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => setTempOpen(false)}
-              >
+              <button type="button" className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" onClick={() => setTempOpen(false)}>
                 Zrušit
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                onClick={submitTempSiteAndIn}
-              >
+              <button type="button" disabled={busy} className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={submitTempSiteAndIn}>
                 Odeslat a příchod
               </button>
             </div>
@@ -763,13 +694,13 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ✅ NOUZOVKA modal */}
+      {/* NOUZOVKA modal */}
       {offsiteOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Nouzovka: doplnit zapomenutý den</div>
             <div className="mt-1 text-sm text-slate-600">
-              Použij když jsi zapomněl zapsat den. Uloží se jako záznam “MIMO LOKACI – DOPLNĚNÝ DEN” a admin to uvidí.
+              Uloží se jako “MIMO LOKACI – DOPLNĚNÝ DEN”. Pokud vyplníš km, uloží se i doprava.
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -825,26 +756,28 @@ export default function AttendancePage() {
               <textarea
                 className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
                 rows={3}
-                placeholder="např. Beroun – servis rozvaděč, nákup materiálu, vyřízení…"
+                placeholder="např. Beroun – servis, nákup materiálu…"
                 value={offsiteText}
                 onChange={(e) => setOffsiteText(e.target.value)}
               />
             </div>
 
+            <div className="mt-3">
+              <label className="text-sm font-medium text-slate-700">Kilometry (volitelné)</label>
+              <input
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                inputMode="decimal"
+                placeholder="např. 12.5"
+                value={offsiteKm}
+                onChange={(e) => setOffsiteKm(e.target.value)}
+              />
+            </div>
+
             <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => setOffsiteOpen(false)}
-              >
+              <button type="button" className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" onClick={() => setOffsiteOpen(false)}>
                 Zrušit
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                onClick={submitNouzovka}
-              >
+              <button type="button" disabled={busy} className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={submitNouzovka}>
                 Uložit
               </button>
             </div>

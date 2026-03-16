@@ -72,7 +72,7 @@ export default function Page() {
     setRows((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
 
-  function dayKeyPrague(iso: string) {
+function dayKeyPrague(iso: string) {
     const d = new Date(iso);
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Prague",
@@ -83,7 +83,6 @@ export default function Page() {
     const obj: any = {};
     for (const p of parts) obj[p.type] = p.value;
     return `${obj.year}-${obj.month}-${obj.day}`;
-  }
   }
 
   function setNewOffsiteField(key: string, patch: Partial<{ reason: string; hours: string }>) {

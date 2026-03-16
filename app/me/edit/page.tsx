@@ -84,29 +84,6 @@ export default function Page() {
     for (const p of parts) obj[p.type] = p.value;
     return `${obj.year}-${obj.month}-${obj.day}`;
   }
-
-  async function fillKmFromTrips(r: Row) {
-    setErr(null);
-    setInfo(null);
-    if (!token) return setErr("Nejsi přihlášen.");
-
-    const day = dayKeyPrague(r.server_time);
-
-    setBusy(r.id);
-    try {
-      const res = await fetch(`/api/me/trips-km?day=${day}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo načíst km z knihy jízd.");
-
-      updateRow(r.id, { km: Number(data.km || 0) });
-      setInfo(`Km z knihy jízd doplněno (${data.km} km) pro ${day}.`);
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
-    } finally {
-      setBusy(null);
-    }
   }
 
   function setNewOffsiteField(key: string, patch: Partial<{ reason: string; hours: string }>) {
@@ -293,14 +270,6 @@ export default function Page() {
                     />
                   </div>
                 )}
-
-                {!r.is_paid && (
-                  <button
-                    className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm shadow-sm disabled:opacity-50"
-                    onClick={() => fillKmFromTrips(r)}
-                    disabled={busy === r.id}
-                  >
-                    {busy === r.id ? "Načítám km…" : "Doplnit km z knihy jízd"}
                   </button>
                 )}
 

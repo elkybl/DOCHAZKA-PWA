@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const site_id = body?.site_id as string | undefined;
+  const allow_without_location = !!body?.allow_without_location;
+  const allow_without_location = !!body?.allow_without_location;
   const lat = Number(body?.lat);
   const lng = Number(body?.lng);
   const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
@@ -45,7 +47,8 @@ export async function POST(req: NextRequest) {
   if (programming_hours != null && (!Number.isFinite(programming_hours) || programming_hours < 0 || programming_hours > 24)) {
     return json({ error: "Neplatné hodiny programování." }, { status: 400 });
   }
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return json({ error: "Chybí poloha." }, { status: 400 });
+  const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
+  if (!hasLocation && !allow_without_location) return json({ error: "Chybí poloha." }, { status: 400 });
   if (km != null && (!Number.isFinite(km) || km < 0)) return json({ error: "Km je neplatné." }, { status: 400 });
   if (material_amount != null && (!Number.isFinite(material_amount) || material_amount < 0))
     return json({ error: "Materiál částka je neplatná." }, { status: 400 });
@@ -86,14 +89,17 @@ export async function POST(req: NextRequest) {
 
   if (sErr || !site) return json({ error: "Stavba nenalezena." }, { status: 404 });
 
-  const distance_m = Math.round(haversineMeters({ lat, lng }, { lat: Number(site.lat), lng: Number(site.lng) }));
+  let distance_m: number | null = null;
   const radius_m = Number(site.radius_m || 0);
 
-  if (radius_m > 0 && distance_m > radius_m) {
-    return json(
-      { error: `Jsi mimo radius stavby (${distance_m} m > ${radius_m} m).` },
-      { status: 403 }
-    );
+  if (hasLocation) {
+    distance_m = Math.round(haversineMeters({ lat, lng }, { lat: Number(site.lat), lng: Number(site.lng) }));
+    if (radius_m > 0 && distance_m > radius_m && !allow_without_location) {
+      return json(
+        { error: `Jsi mimo radius stavby (${distance_m} m > ${radius_m} m).` },
+        { status: 403 }
+      );
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -105,8 +111,8 @@ export async function POST(req: NextRequest) {
     server_time: nowIso,
     day_local: dayLocalCZNow(),
 
-    lat,
-    lng,
+    lat: hasLocation ? lat : null,
+    lng: hasLocation ? lng : null,
     accuracy_m,
     distance_m,
 

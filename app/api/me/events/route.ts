@@ -9,8 +9,9 @@ export async function GET(req: NextRequest) {
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
   const url = new URL(req.url);
-  const days = Number(url.searchParams.get("days") || "14");
-  const from = new Date(Date.now() - Math.max(1, Math.min(60, days)) * 86400000).toISOString();
+  const days = Number(url.searchParams.get("days") || "120");
+  const onlyUnpaid = url.searchParams.get("only_unpaid") === "1";
+  const from = new Date(Date.now() - Math.max(1, Math.min(365, days)) * 86400000).toISOString();
 
   const db = supabaseAdmin();
 
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return json({ error: "DB chyba." }, { status: 500 });
 
-  const rows = (data || []).map((r: any) => ({
+  let rows = (data || []).map((r: any) => ({
     id: r.id,
     type: r.type,
     server_time: r.server_time,
@@ -56,5 +57,8 @@ export async function GET(req: NextRequest) {
     is_paid: !!r.is_paid,
   }));
 
+  if (onlyUnpaid) rows = rows.filter((r: any) => !r.is_paid);
+
+  if (onlyUnpaid) rows = rows.filter((r: any) => !r.is_paid);
   return json({ rows });
 }

@@ -443,7 +443,6 @@ export default function AttendancePage() {
           lat: p?.lat,
           lng: p?.lng,
           accuracy_m: p ? Math.round(p.accuracy) : undefined,
-          allow_without_location: true,
         }),
       });
 

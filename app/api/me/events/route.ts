@@ -9,12 +9,12 @@ export async function GET(req: NextRequest) {
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
   const url = new URL(req.url);
-  const days = Number(url.searchParams.get("days") || "365");
-  const onlyUnpaid = url.searchParams.get("only_unpaid") === "1";
-  const from = new Date(Date.now() - Math.max(1, Math.min(365, days)) * 86400000).toISOString();
+  const days = Number(url.searchParams.get("days") || "14");
+  const from = new Date(Date.now() - Math.max(1, Math.min(60, days)) * 86400000).toISOString();
 
   const db = supabaseAdmin();
-  let q = db
+
+  const { data, error } = await db
     .from("attendance_events")
     .select(`
       id,
@@ -37,8 +37,6 @@ export async function GET(req: NextRequest) {
     .in("type", ["OUT", "OFFSITE"])
     .order("server_time", { ascending: false });
 
-  if (onlyUnpaid) q = q.eq("is_paid", false);
-  const { data, error } = await q;
   if (error) return json({ error: "DB chyba." }, { status: 500 });
 
   const rows = (data || []).map((r: any) => ({

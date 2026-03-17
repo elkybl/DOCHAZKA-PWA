@@ -289,7 +289,6 @@ export default function Page() {
               <div className="text-sm font-semibold">Menu</div>
               <div className="mt-3 grid gap-2">
                 <MenuLink href="/attendance">Docházka</MenuLink>
-                <MenuLink href="/trips">Kniha jízd</MenuLink>
                 <MenuLink href="/me/rates">Moje sazby</MenuLink>
                 <MenuLink href="/me/edit">Upravit záznamy</MenuLink>
                 {sheetUrl ? (

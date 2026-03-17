@@ -39,6 +39,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (typeof body.offsite_reason === "string") patch.offsite_reason = body.offsite_reason.trim();
   if (body.offsite_hours !== undefined)
     patch.offsite_hours = body.offsite_hours === null ? null : Number(body.offsite_hours) || 0;
+  if (body.programming_hours !== undefined)
+    patch.programming_hours = body.programming_hours === null ? null : Number(body.programming_hours) || 0;
+  if (typeof body.programming_note === "string" || body.programming_note === null)
+    patch.programming_note = body.programming_note === null ? null : String(body.programming_note).trim();
 
   const db = supabaseAdmin();
   const { error } = await db.from("attendance_events").update(patch).eq("id", id);

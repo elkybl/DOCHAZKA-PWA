@@ -56,7 +56,7 @@ export default function Page() {
     setErr(null);
     setInfo(null);
 
-    const res = await fetch("/api/me/events?days=14", {
+    const res = await fetch("/api/me/events?days=60", {
       headers: { authorization: `Bearer ${t}` },
     });
 

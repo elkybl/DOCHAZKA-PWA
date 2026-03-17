@@ -25,13 +25,11 @@ export async function POST(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
-  const body = await req.json().catch(() => null);
-  const site_id = body?.site_id as string | undefined;
-  const allow_without_location = !!body?.allow_without_location;
-  const allow_without_location = !!body?.allow_without_location;
-  const lat = Number(body?.lat);
-  const lng = Number(body?.lng);
-  const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
+const site_id = body?.site_id as string | undefined;
+const allow_without_location = !!body?.allow_without_location;
+const lat = Number(body?.lat);
+const lng = Number(body?.lng);
+const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
 
   const note_work_raw = (body?.note_work ?? "").toString().trim();
   const note_work = note_work_raw || null;

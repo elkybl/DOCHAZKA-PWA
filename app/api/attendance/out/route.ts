@@ -25,6 +25,11 @@ export async function POST(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
+const session = await getServerSession(authOptions);
+if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
+
+const body = await req.json();
+
 const site_id = body?.site_id as string | undefined;
 const allow_without_location = !!body?.allow_without_location;
 const lat = Number(body?.lat);

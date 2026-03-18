@@ -393,7 +393,7 @@ export default function AttendancePage() {
     }
   }
 
-  async function doOut() {
+  async function doOut(forceWithoutLocation = false) {
     setBusy(true);
     setErr(null);
     setInfo(null);
@@ -407,7 +407,7 @@ export default function AttendancePage() {
       const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : undefined;
       if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) throw new Error("Materiál částka je neplatná.");
 
-      const p = await getPosition().catch(() => null);
+      const p = forceWithoutLocation ? null : await getPosition().catch(() => null);
       if (p) setPos(p);
 
       let siteId: string | null = manualSiteId || activeSiteId || null;
@@ -419,7 +419,6 @@ export default function AttendancePage() {
       }
 
       if (!siteId && p && sites.length) {
-        // fallback: nearest even outside radius
         let bestAny: { site: Site; dist: number } | null = null;
         for (const s of sites) {
           if (s.lat == null || s.lng == null) continue;
@@ -428,6 +427,8 @@ export default function AttendancePage() {
         }
         if (bestAny) siteId = bestAny.site.id;
       }
+
+      if (!siteId) throw new Error("Nepodařilo se určit stavbu pro odchod.");
 
       const res = await fetch("/api/attendance/out", {
         method: "POST",
@@ -443,6 +444,7 @@ export default function AttendancePage() {
           lat: p?.lat,
           lng: p?.lng,
           accuracy_m: p ? Math.round(p.accuracy) : undefined,
+          allow_without_location: forceWithoutLocation,
         }),
       });
 
@@ -452,7 +454,7 @@ export default function AttendancePage() {
       setPresent(false);
       setActiveSiteId(null);
       setActiveSiteName(null);
-      setInfo("Odchod uložen.");
+      setInfo(forceWithoutLocation ? "Odchod uložen bez polohy." : "Odchod uložen.");
       setNote("");
       setKm("");
       setMatDesc("");
@@ -599,14 +601,25 @@ export default function AttendancePage() {
                 PŘÍCHOD
               </button>
 
-              <button
-                type="button"
-                disabled={busy || !present}
-                onClick={doOut}
-                className="w-full rounded-2xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white disabled:opacity-50"
-              >
-                ODCHOD
-              </button>
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  disabled={busy || !present}
+                  onClick={() => doOut(false)}
+                  className="w-full rounded-2xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white disabled:opacity-50"
+                >
+                  ODCHOD
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy || !present}
+                  onClick={() => doOut(true)}
+                  className="w-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50"
+                >
+                  ODCHOD BEZ POLOHY
+                </button>
+              </div>
 
               <div className="flex gap-2">
                 <a

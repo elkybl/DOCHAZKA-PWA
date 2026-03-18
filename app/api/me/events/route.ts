@@ -58,7 +58,5 @@ export async function GET(req: NextRequest) {
   }));
 
   if (onlyUnpaid) rows = rows.filter((r: any) => !r.is_paid);
-
-  if (onlyUnpaid) rows = rows.filter((r: any) => !r.is_paid);
   return json({ rows });
 }

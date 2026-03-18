@@ -29,7 +29,7 @@ export default function AdminHome() {
       <div className="rounded-3xl border bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold">Admin</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Správa staveb, uživatelů, dočasných akcí a vyplácení.
+          Správa staveb, uživatelů, docházky a vyplácení.
         </p>
 
         <div className="mt-5 grid gap-2 sm:grid-cols-2">

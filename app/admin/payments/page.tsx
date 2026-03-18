@@ -3,31 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   user_id: string;
   user_name: string;
-  day: string;
-
-  first_in: string | null;
-  last_out: string | null;
-
+  site_id: string | null;
+  site_name: string | null;
+  from_day: string;
+  to_day: string;
+  days_count: number;
   hours: number;
-  hourly_avg: number;
   hours_pay: number;
-
+  programming_hours: number;
+  programming_pay: number;
   km: number;
-  km_avg: number;
   km_pay: number;
-
   material: number;
   total: number;
-
   paid: boolean;
-
-  sites: string[];
-  segments: any[];
 };
 
 function getToken() {
@@ -41,18 +34,15 @@ function fmt(n: any) {
   return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 }
 
-function hm(iso: string | null) {
-  return fmtTimeCZFromIso(iso ?? null);
-}
-
 export default function Page() {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const [from, setFrom] = useState(() => new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10));
+  const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   const token = useMemo(() => getToken(), []);
@@ -73,7 +63,6 @@ export default function Page() {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba");
-
       setRows(data.rows || []);
     } catch (e: any) {
       setErr(e.message || "Chyba");
@@ -82,28 +71,36 @@ export default function Page() {
     }
   }
 
-  async function pay(user_id: string, day: string) {
+  async function payGroup(r: Row) {
     setErr(null);
     setInfo(null);
     if (!token) return;
 
+    const key = `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
+    setBusyKey(key);
     try {
       const res = await fetch("/api/admin/pay", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ user_id, day }),
+        body: JSON.stringify({
+          user_id: r.user_id,
+          site_id: r.site_id,
+          from_day: r.from_day,
+          to_day: r.to_day,
+        }),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo označit jako zaplaceno.");
 
-      setInfo("Označeno jako zaplaceno.");
+      setInfo(`Označeno jako zaplaceno: ${r.user_name} / ${r.site_name || "Bez akce"}`);
       await load();
     } catch (e: any) {
       setErr(e.message || "Chyba");
+    } finally {
+      setBusyKey(null);
     }
   }
-
 
   useEffect(() => {
     load();
@@ -117,16 +114,12 @@ export default function Page() {
   const sumPaid = paid.reduce((s, r) => s + (Number(r.total) || 0), 0);
 
   return (
-    <main className="space-y-4">
+    <main className="space-y-4 px-3 pb-8">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">Vyplácení</h1>
           <div className="mt-1 text-xs text-neutral-500">
-            Souhrn po dnech a lidech. Detail najdeš v{" "}
-            <Link className="underline" href="/admin/attendance">
-              Admin docházce
-            </Link>
-            .
+            Souhrn po člověku a akci za zvolené období. Jedním klikem označíš celé období jako zaplacené.
           </div>
         </div>
 
@@ -154,10 +147,6 @@ export default function Page() {
             {loading ? "Načítám…" : "Načíst"}
           </button>
 
-          <div className="text-xs text-neutral-500">
-            Export řešíme přes Google Sheet reporty (CSV není potřeba).
-          </div>
-
           <div className="ml-auto text-sm">
             <div className="text-neutral-600">Nezaplaceno:</div>
             <div className="font-semibold">{fmt(sumUnpaid)} Kč</div>
@@ -173,67 +162,64 @@ export default function Page() {
       </div>
 
       <div className="space-y-3">
-        {rows.map((r) => (
-          <div key={`${r.user_id}_${r.day}`} className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">
-                  {r.user_name} • {r.day}
+        {rows.map((r) => {
+          const key = `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
+          return (
+            <div key={key} className="rounded-2xl border bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">
+                    {r.user_name} • {r.site_name || "Bez akce"}
+                  </div>
+                  <div className="mt-1 text-xs text-neutral-600">
+                    Období: <b>{r.from_day}</b> → <b>{r.to_day}</b> • Dní: <b>{r.days_count}</b>
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-neutral-600">
-                  Časy: <b>{hm(r.first_in)}</b> → <b>{hm(r.last_out)}</b> • Intervalů: <b>{r.segments?.length || 0}</b>
-                </div>
-                <div className="mt-1 text-xs text-neutral-600">
-                  Stavby: {r.sites?.length ? r.sites.join(", ") : "—"}
+
+                <div className="flex items-center gap-2">
+                  <div className={`rounded-full px-3 py-1 text-xs ${r.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                    {r.paid ? "Zaplaceno" : "Nezaplaceno"}
+                  </div>
+
+                  {!r.paid && (
+                    <button
+                      onClick={() => payGroup(r)}
+                      disabled={busyKey === key}
+                      className="rounded-xl bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+                    >
+                      {busyKey === key ? "Označuji…" : "Označit období zaplaceno"}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className={`rounded-full px-3 py-1 text-xs ${r.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                  {r.paid ? "Zaplaceno" : "Nezaplaceno"}
+              <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Práce</div>
+                  <div className="mt-1 font-semibold">{fmt(r.hours)} h</div>
+                  <div className="text-xs text-neutral-600">Částka: {fmt(r.hours_pay)} Kč</div>
                 </div>
 
-                {!r.paid && (
-                  <button onClick={() => pay(r.user_id, r.day)} className="rounded-xl bg-black px-4 py-2 text-sm text-white">
-                    Označit zaplaceno
-                  </button>
-                )}
+                <div className="rounded-xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Programování</div>
+                  <div className="mt-1 font-semibold">{fmt(r.programming_hours)} h</div>
+                  <div className="text-xs text-neutral-600">Částka: {fmt(r.programming_pay)} Kč</div>
+                </div>
+
+                <div className="rounded-xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Doprava / materiál</div>
+                  <div className="mt-1">Km: {fmt(r.km)} km • {fmt(r.km_pay)} Kč</div>
+                  <div className="text-xs text-neutral-600">Materiál: {fmt(r.material)} Kč</div>
+                </div>
+
+                <div className="rounded-xl border bg-neutral-50 p-3">
+                  <div className="text-xs text-neutral-600">Celkem k vyplacení</div>
+                  <div className="mt-1 text-base font-semibold">{fmt(r.total)} Kč</div>
+                </div>
               </div>
             </div>
-
-            <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-              <div className="rounded-xl border bg-neutral-50 p-3">
-                <div className="text-xs text-neutral-600">Hodiny</div>
-                <div className="mt-1 font-semibold">
-                  {fmt(r.hours)} h • ~{fmt(r.hourly_avg)} Kč/h
-                </div>
-                <div className="text-xs text-neutral-600">Částka: {fmt(r.hours_pay)} Kč</div>
-              </div>
-
-              <div className="rounded-xl border bg-neutral-50 p-3">
-                <div className="text-xs text-neutral-600">Doprava</div>
-                <div className="mt-1 font-semibold">
-                  {fmt(r.km)} km • ~{fmt(r.km_avg)} Kč/km
-                </div>
-                <div className="text-xs text-neutral-600">Částka: {fmt(r.km_pay)} Kč</div>
-              </div>
-
-              <div className="rounded-xl border bg-neutral-50 p-3">
-                <div className="text-xs text-neutral-600">Materiál</div>
-                <div className="mt-1 font-semibold">{fmt(r.material)} Kč</div>
-                <div className="text-xs text-neutral-600">Celkem: <b>{fmt(r.total)} Kč</b></div>
-              </div>
-            </div>
-
-            <div className="mt-3 text-xs text-neutral-500">
-              Detail rozpisu (intervaly + sazby) je v{" "}
-              <Link className="underline" href="/admin/attendance">
-                Admin docházce
-              </Link>
-              .
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {rows.length === 0 && (
           <div className="rounded-2xl border bg-white p-5 text-sm text-neutral-600 shadow-sm">

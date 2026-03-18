@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Site = { id: string; name: string };
 type User = { id: string; name: string };
@@ -45,8 +46,7 @@ function fmt(n: any) {
   return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 }
 function fmtTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Prague" });
+  return fmtTimeCZFromIso(iso);
 }
 
 export default function AdminAttendancePage() {

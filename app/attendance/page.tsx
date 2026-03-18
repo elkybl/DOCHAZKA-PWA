@@ -581,22 +581,7 @@ Vytvořit dočasnou stavbu
               )}
             </div>
 
-            {false && (
-              <div className="mt-3 rounded-xl bg-slate-900 p-3 text-xs text-slate-100">
-                {debugMe && (
-                  <>
-                    <div className="font-semibold">DEBUG /me</div>
-                    <pre className="whitespace-pre-wrap">{debugMe}</pre>
-                  </>
-                )}
-                {debugStatus && (
-                  <>
-                    <div className="mt-2 font-semibold">DEBUG /status</div>
-                    <pre className="whitespace-pre-wrap">{debugStatus}</pre>
-                  </>
-                )}
-              </div>
-            )}
+
           </div>
         </div>
 

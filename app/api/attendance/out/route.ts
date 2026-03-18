@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZNow, parseReportedLeftAtCZ } from "@/lib/time";
+import { dayLocalCZFromIso, parseReportedLeftAtCZ } from "@/lib/time";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -74,7 +74,6 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
 
-  // je uživatel programátor?
   const { data: me, error: meErr } = await db
     .from("users")
     .select("id,is_programmer")
@@ -88,7 +87,6 @@ export async function POST(req: NextRequest) {
     return json({ error: "Programování smí zadávat jen programátor." }, { status: 403 });
   }
 
-  // OUT jen při otevřeném IN
   const { data: last, error: lastErr } = await db
     .from("attendance_events")
     .select("type,server_time,site_id")
@@ -105,7 +103,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // stavba
   const { data: site, error: sErr } = await db
     .from("sites")
     .select("id,lat,lng,radius_m")
@@ -164,7 +161,7 @@ export async function POST(req: NextRequest) {
     site_id,
     type: "OUT",
     server_time: nowIso,
-    day_local: dayLocalCZNow(),
+    day_local: dayLocalCZFromIso(nowIso),
 
     lat: hasLocation ? lat : null,
     lng: hasLocation ? lng : null,

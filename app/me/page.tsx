@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, SubCard, MenuLink, Pill, Button } from "@/app/components/ui";
+import { Card, SubCard, NabídkaLink, Pill, Button } from "@/app/components/ui";
 
 type Seg = {
   kind: "WORK";
@@ -263,7 +263,7 @@ export default function Page() {
           <div>
             <h1 className="text-lg font-semibold">Moje výdělky</h1>
             <p className="mt-1 text-xs text-neutral-500">
-              Časy i výpočet jsou zaokrouhlené na 30 minut (příchod i odchod). Reálná data v DB se nemění.
+              Zobrazené časy a výpočty jsou zaokrouhlené na 30 minut. Původní záznamy v databázi zůstávají beze změny.
             </p>
           </div>
 
@@ -286,11 +286,11 @@ export default function Page() {
         <div className="mt-4">
           <div className="grid gap-2 sm:grid-cols-2">
             <SubCard>
-              <div className="text-sm font-semibold">Menu</div>
+              <div className="text-sm font-semibold">Nabídka</div>
               <div className="mt-3 grid gap-2">
-                <MenuLink href="/attendance">Docházka</MenuLink>
-                <MenuLink href="/me/rates">Moje sazby</MenuLink>
-                <MenuLink href="/me/edit">Upravit záznamy</MenuLink>
+                <NabídkaLink href="/attendance">Docházka</NabídkaLink>
+                <NabídkaLink href="/me/rates">Moje sazby</NabídkaLink>
+                <NabídkaLink href="/me/edit">Upravit záznamy</NabídkaLink>
                 {sheetUrl ? (
                   <a
                     className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm"
@@ -301,7 +301,7 @@ export default function Page() {
                     Můj výkaz (Google Sheet)
                   </a>
                 ) : (
-                  <MenuLink href="/me#export">Export / výkaz</MenuLink>
+                  <NabídkaLink href="/me#export">Export a výkaz</NabídkaLink>
                 )}
               </div>
             </SubCard>
@@ -328,7 +328,7 @@ export default function Page() {
                   className={`rounded-full border px-3 py-1 text-xs ${mode === "days" ? "bg-black text-white" : "bg-white"}`}
                   onClick={() => setMode("days")}
                 >
-                  Podle dní
+                  Podle dnů
                 </button>
                 <button
                   className={`rounded-full border px-3 py-1 text-xs ${mode === "sites" ? "bg-black text-white" : "bg-white"}`}
@@ -353,7 +353,7 @@ export default function Page() {
               </select>
 
               <div className="mt-2 text-[11px] text-neutral-500">
-                Doprava: pokud zadáš km u odchodu, použijí se km z odchodu. Jinak se bere automaticky kniha jízd (trips).
+                Doprava: pokud zadáte kilometry při odchodu, použijí se tyto hodnoty. Jinak se automaticky použije evidence jízd.
               </div>
             </SubCard>
           </div>
@@ -379,7 +379,7 @@ export default function Page() {
               <div className="mt-3 rounded-2xl border bg-neutral-50 p-4 text-sm">
                 <div className="text-xs text-neutral-600">Poznámka</div>
                 <div className="mt-1 text-xs text-neutral-600">
-                  Km a materiál jsou v uživatelském přehledu vedené po dnech. Pro fakturaci podle stavby použij admin JSON export.
+                  Kilometry a materiál jsou v uživatelském přehledu vedené po dnech. Pro přesné podklady podle stavby použijte export v administraci.
                 </div>
               </div>
             </Card>
@@ -387,7 +387,7 @@ export default function Page() {
 
           {sitesAgg.length === 0 && (
             <Card>
-              <div className="text-sm text-neutral-600">Žádné záznamy pro zvolené filtry.</div>
+              <div className="text-sm text-neutral-600">Pro zvolené filtry nebyly nalezeny žádné záznamy.</div>
             </Card>
           )}
         </div>
@@ -399,7 +399,7 @@ export default function Page() {
                 <div>
                   <div className="text-sm font-semibold">{r.day}</div>
                   <div className="mt-1 text-xs text-neutral-600">
-                    Časy (zaokrouhlené): <b>{timeHM(r.first_in)}</b> → <b>{timeHM(r.last_out)}</b>
+                    Zaokrouhlené časy: <b>{timeHM(r.first_in)}</b> → <b>{timeHM(r.last_out)}</b>
                   </div>
                 </div>
 
@@ -420,7 +420,7 @@ export default function Page() {
                   <div className="text-xs text-neutral-600">Doprava</div>
                   <div className="mt-1 font-semibold">{fmt(r.km, 1)} km</div>
                   <div className="text-xs text-neutral-600">
-                    Částka: {fmt(r.km_pay)} Kč • zdroj: {r.km_source}
+                    Částka: {fmt(r.km_pay)} Kč • zdroj dat: {r.km_source}
                   </div>
                 </SubCard>
 
@@ -443,7 +443,7 @@ export default function Page() {
 
               {(r.segments?.length || r.offsites?.length) ? (
                 <div className="mt-3 rounded-2xl border bg-white p-4">
-                  <div className="text-sm font-semibold">Detail (zaokrouhlené časy)</div>
+                  <div className="text-sm font-semibold">Detail dne (zaokrouhlené časy)</div>
 
                   {r.segments?.length ? (
                     <div className="mt-3 space-y-2">
@@ -500,7 +500,7 @@ export default function Page() {
 
           {filteredRows.length === 0 && (
             <Card>
-              <div className="text-sm text-neutral-600">Žádné záznamy pro zvolené filtry.</div>
+              <div className="text-sm text-neutral-600">Pro zvolené filtry nebyly nalezeny žádné záznamy.</div>
             </Card>
           )}
         </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -13,8 +12,8 @@ function LogoMark() {
         </svg>
       </div>
       <div>
-        <div className="text-lg font-semibold">Docházka & jízdy</div>
-        <div className="text-xs text-neutral-600">rychlá evidence stavby, práce, km a materiálu</div>
+        <div className="text-lg font-semibold">Docházkový systém</div>
+        <div className="text-xs text-neutral-600">Evidence docházky, práce, dopravy a materiálu</div>
       </div>
     </div>
   );
@@ -28,7 +27,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // když už je token, rovnou na docházku
     const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (t) router.push("/attendance");
   }, [router]);
@@ -38,7 +36,7 @@ export default function LoginPage() {
     setInfo(null);
 
     const p = pin.trim();
-    if (!p) return setErr("Zadej PIN.");
+    if (!p) return setErr("Zadejte PIN.");
 
     setLoading(true);
     try {
@@ -49,14 +47,14 @@ export default function LoginPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo se přihlásit.");
+      if (!res.ok) throw new Error(data?.error || "Přihlášení se nepodařilo.");
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      setInfo("Přihlášeno.");
+      setInfo("Přihlášení proběhlo úspěšně.");
       router.push("/attendance");
     } catch (e: any) {
-      setErr(e.message || "Chyba");
+      setErr(e.message || "Došlo k chybě.");
     } finally {
       setLoading(false);
     }
@@ -68,19 +66,8 @@ export default function LoginPage() {
         <LogoMark />
 
         <p className="mt-4 text-sm text-neutral-700">
-          Tahle aplikace slouží na jednoduchou evidenci příchodu/odchodu na stavbě, zapsání práce, kilometrů a materiálu ze svého.
-          Funguje v prohlížeči – stačí internet a telefon.
+          Přihlaste se do systému a spravujte docházku, vykázanou práci, dopravu i materiál jednoduše z telefonu nebo počítače.
         </p>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <button
-            onClick={login}
-            disabled={loading}
-            className="rounded-2xl bg-black px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-          >
-            {loading ? "Přihlašuji…" : "Přihlásit"}
-          </button>
-        </div>
 
         <div className="mt-5">
           <label className="block text-sm text-neutral-700">PIN</label>
@@ -89,13 +76,22 @@ export default function LoginPage() {
             inputMode="numeric"
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 8))}
-            placeholder="např. 2580"
+            placeholder="Např. 2580"
           />
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button
+            onClick={login}
+            disabled={loading}
+            className="rounded-2xl bg-black px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+          >
+            {loading ? "Přihlašování…" : "Přihlásit se"}
+          </button>
         </div>
 
         {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
         {info && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
-
       </div>
     </main>
   );

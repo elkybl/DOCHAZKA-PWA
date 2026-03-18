@@ -176,10 +176,10 @@ function dayKeyPrague(iso: string) {
           <div>
             <h1 className="text-lg font-semibold">Doplnit práci</h1>
             <p className="mt-1 text-xs text-neutral-500">
-              Upravíš jen texty/částky (práce, km, materiál, mimo stavbu). Čas a poloha nejdou.
+              Na této stránce můžete upravit popis práce, kilometry, materiál a činnosti mimo stavbu. Čas a poloha se zpětně nemění.
             </p>
             <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/me">
-              Zpět na Moje výdělky
+              Zpět na přehled výdělků
             </Link>
           </div>
           <button
@@ -193,7 +193,7 @@ function dayKeyPrague(iso: string) {
 
         {!token && (
           <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
-            Nejsem přihlášen (nebo se stránka ještě načítá). Otevři /login.
+            Uživatel není přihlášen. Otevřete přihlašovací stránku.
           </div>
         )}
 
@@ -223,7 +223,7 @@ function dayKeyPrague(iso: string) {
 
             {r.type === "OUT" ? (
               <>
-                <label className="mt-3 block text-sm text-neutral-700">Co se dělalo</label>
+                <label className="mt-3 block text-sm text-neutral-700">Popis práce</label>
                 <textarea
                   className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                   rows={3}
@@ -245,7 +245,7 @@ function dayKeyPrague(iso: string) {
                   <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
                     <div className="text-sm font-semibold">Programování</div>
                     <p className="mt-1 text-xs text-neutral-500">
-                      Pokud jsi dnes programoval, zadej počet hodin. Zbytek dne zůstane jako práce na stavbě.
+                      Pokud byla součástí dne i práce na programování, zadejte počet hodin a případnou poznámku.
                     </p>
 
                     <label className="mt-3 block text-sm text-neutral-700">Hodiny programování</label>
@@ -287,15 +287,14 @@ function dayKeyPrague(iso: string) {
 
                   return (
                     <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
-                      <div className="text-sm font-semibold">Mimo stavbu (nákup / sklad / vyřízení)</div>
+                      <div className="text-sm font-semibold">Činnost mimo stavbu</div>
                       <p className="mt-1 text-xs text-neutral-500">
-                        Přidá se k tomuto dni. Piš sem i „co se dělalo“ mimo stavbu (např. nákup kabelů, vyzvednutí
-                        materiálu).
+                        Tato položka se přidá k danému dni. Uveďte například nákup materiálu, sklad nebo vyřízení související se zakázkou.
                       </p>
 
                       {existing ? (
                         <>
-                          <label className="mt-3 block text-sm text-neutral-700">Důvod / co se dělalo</label>
+                          <label className="mt-3 block text-sm text-neutral-700">Popis činnosti</label>
                           <input
                             className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                             value={existing.offsite_reason}
@@ -322,19 +321,19 @@ function dayKeyPrague(iso: string) {
                               onClick={() => save(existing)}
                               disabled={busy === existing.id}
                             >
-                              {busy === existing.id ? "Ukládám…" : "Uložit mimo stavbu"}
+                              {busy === existing.id ? "Ukládám…" : "Uložit činnost mimo stavbu"}
                             </button>
                           )}
                         </>
                       ) : (
                         <>
-                          <label className="mt-3 block text-sm text-neutral-700">Důvod / co se dělalo</label>
+                          <label className="mt-3 block text-sm text-neutral-700">Popis činnosti</label>
                           <input
                             className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                             value={draft.reason}
                             onChange={(e) => setNewOffsiteField(key, { reason: e.target.value })}
                             disabled={isPaid}
-                            placeholder="např. nákup materiálu, sklad…"
+                            placeholder="Např. nákup materiálu nebo práce ve skladu"
                           />
 
                           <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
@@ -406,7 +405,7 @@ function dayKeyPrague(iso: string) {
                     onClick={() => save(r)}
                     disabled={busy === r.id}
                   >
-                    {busy === r.id ? "Ukládám…" : "Uložit mimo stavbu"}
+                    {busy === r.id ? "Ukládám…" : "Uložit činnost mimo stavbu"}
                   </button>
                 )}
               </>

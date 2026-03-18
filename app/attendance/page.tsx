@@ -138,9 +138,7 @@ export default function AttendancePage() {
   const [pos, setPos] = useState<Pos | null>(null);
   const [nearest, setNearest] = useState<{ site: Site; dist: number } | null>(null);
 
-  const [debugMe, setDebugMe] = useState<string | null>(null);
-  const [debugStatus, setDebugStatus] = useState<string | null>(null);
-
+  
   // manual override (optional)
   const [manualPickOpen, setManualPickOpen] = useState(false);
   const [manualSiteId, setManualSiteId] = useState<string | null>(null);
@@ -181,8 +179,6 @@ export default function AttendancePage() {
   async function load() {
     setErr(null);
     setInfo(null);
-    setDebugMe(null);
-    setDebugStatus(null);
 
     const t = await getToken();
     if (!t) {
@@ -198,11 +194,9 @@ export default function AttendancePage() {
       const { res, text, json } = await fetchJSON(u, t);
       if (res.status === 401) return logout();
       if (!res.ok) {
-        lastMeDump = { url: u, status: res.status, text: (text || "").slice(0, 800) };
         continue;
       }
       const extracted = extractUser(json);
-      lastMeDump = { url: u, status: res.status, json };
       if (extracted) {
         meObj = extracted;
         break;
@@ -210,7 +204,6 @@ export default function AttendancePage() {
     }
 
     if (!meObj) {
-      setDebugMe(JSON.stringify(lastMeDump, null, 2));
       throw new Error("Nešlo načíst uživatele.");
     }
     setMe(meObj);
@@ -228,7 +221,6 @@ export default function AttendancePage() {
     const st = await fetchJSON("/api/attendance/status", t);
     if (st.res.status === 401) return logout();
     if (!st.res.ok) {
-      setDebugStatus(JSON.stringify({ status: st.res.status, text: (st.text || "").slice(0, 800) }, null, 2));
       throw new Error(st.json?.error || "Nešlo načíst stav.");
     }
 
@@ -272,7 +264,7 @@ export default function AttendancePage() {
       try {
         await load();
       } catch (e: any) {
-        setErr(e?.message || "Chyba");
+        setErr(e?.message || "Došlo k chybě.");
       }
     })();
   }, []);
@@ -303,7 +295,7 @@ export default function AttendancePage() {
 
       if (!siteId) {
         setTempOpen(true);
-        setInfo("Nenašla se stavba v dosahu. Zadej dočasný název a odešleme žádost adminovi.");
+  setInfo("V okolí nebyla nalezena aktivní stavba. Můžete vytvořit dočasnou stavbu.");
         return;
       }
 
@@ -329,7 +321,7 @@ export default function AttendancePage() {
       setManualSiteId(null);
       setDetailsOpen(false);
     } catch (e: any) {
-      setErr(e?.message || "Chyba");
+      setErr(e?.message || "Došlo k chybě.");
     } finally {
       setBusy(false);
     }
@@ -385,9 +377,9 @@ export default function AttendancePage() {
       setActiveSiteName(`Dočasná: ${name}`);
       setTempOpen(false);
       setTempName("");
-      setInfo("Příchod uložen jako dočasná stavba. Admin ji potvrdí.");
+setInfo("Příchod byl uložen k dočasné stavbě.");
     } catch (e: any) {
-      setErr(e?.message || "Chyba");
+      setErr(e?.message || "Došlo k chybě.");
     } finally {
       setBusy(false);
     }
@@ -482,7 +474,7 @@ export default function AttendancePage() {
       setManualOutTime("");
       setDetailsOpen(false);
     } catch (e: any) {
-      setErr(e?.message || "Chyba");
+      setErr(e?.message || "Došlo k chybě.");
     } finally {
       setBusy(false);
     }
@@ -524,13 +516,13 @@ export default function AttendancePage() {
       setManualDayNote("");
       setManualDayKm("");
     } catch (e: any) {
-      setErr(e?.message || "Chyba");
+      setErr(e?.message || "Došlo k chybě.");
     } finally {
       setBusy(false);
     }
   }
 
-  const statusChip = present ? `Na směně${activeSiteName ? ` – ${activeSiteName}` : ""}` : "Mimo směnu";
+  const statusChip = present ? `Směna aktivní${activeSiteName ? ` – ${activeSiteName}` : ""}` : "Směna neaktivní";
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
@@ -541,18 +533,18 @@ export default function AttendancePage() {
               <h1 className="text-2xl font-semibold">Docházka</h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                 <span>
-                  Přihlášen: <span className="font-medium text-slate-900">{me?.name || "—"}</span>
+                  Přihlášený uživatel: <span className="font-medium text-slate-900">{me?.name || "—"}</span>
                 </span>
                 <button
                   type="button"
                   className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50"
                   onClick={logout}
                 >
-                  Odhlásit
+Odhlásit se
                 </button>
                 {me?.role === "admin" && (
                   <a href="/admin" className="rounded-lg border bg-white px-2 py-1 text-xs hover:bg-slate-50">
-                    Admin
+Administrace
                   </a>
                 )}
               </div>
@@ -564,9 +556,9 @@ export default function AttendancePage() {
           </div>
 
           <div className="mt-4 rounded-2xl border bg-white p-4">
-            <div className="text-sm text-slate-600">Auto výběr stavby podle polohy</div>
+            <div className="text-sm text-slate-600">Automatický výběr stavby podle polohy</div>
             <div className="mt-1 text-base font-medium text-slate-900">
-              {nearestLabel || "Žádná stavba v dosahu"}
+              {nearestLabel || "V okolí nebyla nalezena aktivní stavba"}
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -575,7 +567,7 @@ export default function AttendancePage() {
                 onClick={() => setManualPickOpen(true)}
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
               >
-                Změnit
+Vybrat jinou stavbu
               </button>
 
               {!nearest && (
@@ -584,12 +576,12 @@ export default function AttendancePage() {
                   onClick={() => setTempOpen(true)}
                   className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 >
-                  Nenalezl jsem stavbu
+Vytvořit dočasnou stavbu
                 </button>
               )}
             </div>
 
-            {(debugMe || debugStatus) && (
+            {false && (
               <div className="mt-3 rounded-xl bg-slate-900 p-3 text-xs text-slate-100">
                 {debugMe && (
                   <>
@@ -617,7 +609,7 @@ export default function AttendancePage() {
                 onClick={doIn}
                 className="w-full rounded-2xl bg-emerald-600 px-4 py-4 text-lg font-semibold text-white disabled:opacity-50"
               >
-                PŘÍCHOD
+Zahájit směnu
               </button>
 
               <div className="grid gap-2">
@@ -627,11 +619,11 @@ export default function AttendancePage() {
                   onClick={() => doOut(false)}
                   className="w-full rounded-2xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white disabled:opacity-50"
                 >
-                  ODCHOD
+Ukončit směnu
                 </button>
 
                 <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3">
-                  <div className="mb-2 text-sm font-semibold text-amber-900">Odchod bez polohy</div>
+                  <div className="mb-2 text-sm font-semibold text-amber-900">Ukončení směny bez polohy</div>
 
                   <label className="mb-1 block text-xs text-amber-800">Čas odchodu</label>
                   <input
@@ -648,7 +640,7 @@ export default function AttendancePage() {
                     onClick={() => doOut(true)}
                     className="w-full rounded-2xl border border-amber-400 bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50"
                   >
-                    ODCHOD BEZ POLOHY
+  Ukončit směnu BEZ POLOHY
                   </button>
                 </div>
               </div>
@@ -658,13 +650,13 @@ export default function AttendancePage() {
                   href="/me/edit"
                   className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50"
                 >
-                  Doplnit práci
+Doplnit práci
                 </a>
                 <a
                   href="/me"
                   className="flex-1 rounded-xl border bg-white px-3 py-2 text-center text-sm hover:bg-slate-50"
                 >
-                  Moje výdělky
+Moje výdělky
                 </a>
               </div>
 
@@ -673,7 +665,7 @@ export default function AttendancePage() {
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 onClick={() => setManualDayOpen(true)}
               >
-                Nouzovka: doplnit zapomenutý den (IN + OUT + KM)
+Doplnit zapomenutý pracovní den
               </button>
 
               <button
@@ -681,14 +673,14 @@ export default function AttendancePage() {
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 onClick={() => setDetailsOpen((v) => !v)}
               >
-                {detailsOpen ? "Skrýt doplnění" : "Doplnit při odchodu (volitelné)"}
+                {detailsOpen ? "Skrýt doplňující údaje" : "Doplnit údaje při odchodu"}
               </button>
 
               {detailsOpen && (
                 <div className="mt-1 grid gap-2">
                   <textarea
                     className="w-full rounded-xl border p-2 text-sm"
-                    placeholder="Co se dělalo (volitelné)"
+                    placeholder="Popis vykonané práce"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     rows={3}
@@ -696,20 +688,20 @@ export default function AttendancePage() {
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       className="w-full rounded-xl border p-2 text-sm"
-                      placeholder="KM (volitelné)"
+                      placeholder="Kilometry"
                       value={km}
                       onChange={(e) => setKm(e.target.value)}
                     />
                     <input
                       className="w-full rounded-xl border p-2 text-sm"
-                      placeholder="Materiál Kč (volitelné)"
+                      placeholder="Materiál v Kč"
                       value={matAmount}
                       onChange={(e) => setMatAmount(e.target.value)}
                     />
                   </div>
                   <input
                     className="w-full rounded-xl border p-2 text-sm"
-                    placeholder="Materiál popis (volitelné)"
+                    placeholder="Popis materiálu"
                     value={matDesc}
                     onChange={(e) => setMatDesc(e.target.value)}
                   />
@@ -726,7 +718,7 @@ export default function AttendancePage() {
                         />
                         <input
                           className="w-full rounded-xl border p-2 text-sm"
-                          placeholder="Poznámka"
+                          placeholder="Poznámka k programování"
                           value={progNote}
                           onChange={(e) => setProgNote(e.target.value)}
                         />
@@ -756,7 +748,7 @@ export default function AttendancePage() {
                   onClick={() => {
                     setManualSiteId(s.id);
                     setManualPickOpen(false);
-                    setInfo(`Vybráno: ${s.name}`);
+                    setInfo(`Vybraná stavba: ${s.name}`);
                   }}
                 >
                   <span>{s.name}</span>
@@ -769,7 +761,7 @@ export default function AttendancePage() {
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 onClick={() => setManualPickOpen(false)}
               >
-                Zavřít
+Zavřít
               </button>
             </div>
           </div>
@@ -781,7 +773,7 @@ export default function AttendancePage() {
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
             <div className="text-lg font-semibold">Dočasná stavba</div>
             <div className="mt-1 text-sm text-slate-600">
-              Napiš název (např. „Novák – Beroun“). Vytvoří se dočasná stavba a příchod se na ni uloží.
+              Zadejte název dočasné stavby. Po uložení se k ní přiřadí příchod.
             </div>
             <input
               className="mt-3 w-full rounded-xl border p-2 text-sm"
@@ -795,7 +787,7 @@ export default function AttendancePage() {
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 onClick={() => setTempOpen(false)}
               >
-                Zrušit
+Zrušit
               </button>
               <button
                 type="button"
@@ -803,7 +795,7 @@ export default function AttendancePage() {
                 className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={submitTempSiteAndIn}
               >
-                Odeslat a příchod
+Uložit a zahájit směnu
               </button>
             </div>
           </div>
@@ -813,9 +805,9 @@ export default function AttendancePage() {
       {manualDayOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
-            <div className="text-lg font-semibold">Nouzovka: doplnit den (bez polohy)</div>
+            <div className="text-lg font-semibold">Doplnění pracovního dne bez polohy</div>
             <div className="mt-1 text-sm text-slate-600">
-              Vytvoří se IN + OUT do docházky. Hodiny jsou z času Od/Do. Km se uloží do OUT jako doprava.
+              Vytvoří se příchod i odchod. Doba práce se vypočítá podle zadaného času od–do a kilometry se uloží jako doprava.
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -894,7 +886,7 @@ export default function AttendancePage() {
                 className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50"
                 onClick={() => setManualDayOpen(false)}
               >
-                Zrušit
+Zrušit
               </button>
               <button
                 type="button"
@@ -902,7 +894,7 @@ export default function AttendancePage() {
                 className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={submitManualDay}
               >
-                Uložit
+Uložit
               </button>
             </div>
           </div>

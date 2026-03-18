@@ -27,9 +27,9 @@ export default function AdminHome() {
   return (
     <main className="space-y-4 px-3">
       <div className="rounded-3xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Admin</h1>
+        <h1 className="text-xl font-semibold">Administrace</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Správa staveb, uživatelů, docházky a vyplácení.
+          Správa staveb, uživatelů, docházky a podkladů pro vyplacení.
         </p>
 
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -39,20 +39,17 @@ export default function AdminHome() {
           <Link className="rounded-2xl border bg-white px-4 py-4 text-sm shadow-sm" href="/admin/users">
             Uživatelé
           </Link>
-
           <Link className="rounded-2xl border bg-white px-4 py-4 text-sm shadow-sm" href="/admin/site-requests">
             Dočasné stavby
           </Link>
-
           <Link className="rounded-2xl border bg-white px-4 py-4 text-sm shadow-sm" href="/admin/attendance">
-            Docházka (detail)
+            Docházka
           </Link>
           <Link className="rounded-2xl border bg-white px-4 py-4 text-sm shadow-sm" href="/admin/payments">
-            Vyplácení + CSV
+            Výplaty a exporty
           </Link>
-
           <Link className="rounded-2xl border bg-white px-4 py-4 text-sm shadow-sm" href="/attendance">
-            Zpět na Docházku
+            Otevřít docházku
           </Link>
         </div>
       </div>

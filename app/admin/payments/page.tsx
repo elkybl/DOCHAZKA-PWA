@@ -62,10 +62,10 @@ export default function Page() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Chyba");
+      if (!res.ok) throw new Error(data?.error || "Došlo k chybě");
       setRows(data.rows || []);
     } catch (e: any) {
-      setErr(e.message || "Chyba");
+      setErr(e.message || "Došlo k chybě");
     } finally {
       setLoading(false);
     }
@@ -91,12 +91,12 @@ export default function Page() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo označit jako zaplaceno.");
+      if (!res.ok) throw new Error(data?.error || "Nepodařilo se označit období jako zaplacené.");
 
-      setInfo(`Označeno jako zaplaceno: ${r.user_name} / ${r.site_name || "Bez akce"}`);
+      setInfo(`Označeno jako zaplacené: ${r.user_name} / ${r.site_name || "Bez přiřazené akce"}`);
       await load();
     } catch (e: any) {
-      setErr(e.message || "Chyba");
+      setErr(e.message || "Došlo k chybě");
     } finally {
       setBusyKey(null);
     }
@@ -117,14 +117,14 @@ export default function Page() {
     <main className="space-y-4 px-3 pb-8">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-semibold">Vyplácení</h1>
+          <h1 className="text-lg font-semibold">Výplaty</h1>
           <div className="mt-1 text-xs text-neutral-500">
-            Souhrn po člověku a akci za zvolené období. Jedním klikem označíš celé období jako zaplacené.
+            Souhrn po pracovníkovi a akci za zvolené období. Jedním kliknutím označíte celé období jako zaplacené.
           </div>
         </div>
 
         <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">
-          Admin menu
+          Administrace
         </Link>
       </div>
 
@@ -144,15 +144,15 @@ export default function Page() {
             disabled={loading}
             className="rounded-xl bg-black px-4 py-3 text-sm text-white disabled:opacity-50"
           >
-            {loading ? "Načítám…" : "Načíst"}
+            {loading ? "Načítání…" : "Načíst přehled"}
           </button>
 
           <div className="ml-auto text-sm">
-            <div className="text-neutral-600">Nezaplaceno:</div>
+            <div className="text-neutral-600">K úhradě:</div>
             <div className="font-semibold">{fmt(sumUnpaid)} Kč</div>
           </div>
           <div className="text-sm">
-            <div className="text-neutral-600">Zaplaceno:</div>
+            <div className="text-neutral-600">Již uhrazeno:</div>
             <div className="font-semibold">{fmt(sumPaid)} Kč</div>
           </div>
         </div>
@@ -169,10 +169,10 @@ export default function Page() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold">
-                    {r.user_name} • {r.site_name || "Bez akce"}
+                    {r.user_name} • {r.site_name || "Bez přiřazené akce"}
                   </div>
                   <div className="mt-1 text-xs text-neutral-600">
-                    Období: <b>{r.from_day}</b> → <b>{r.to_day}</b> • Dní: <b>{r.days_count}</b>
+                    Období: <b>{r.from_day}</b> → <b>{r.to_day}</b> • Dnů: <b>{r.days_count}</b>
                   </div>
                 </div>
 
@@ -187,7 +187,7 @@ export default function Page() {
                       disabled={busyKey === key}
                       className="rounded-xl bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
                     >
-                      {busyKey === key ? "Označuji…" : "Označit období zaplaceno"}
+                      {busyKey === key ? "Označuji…" : "Označit jako zaplacené"}
                     </button>
                   )}
                 </div>
@@ -207,13 +207,13 @@ export default function Page() {
                 </div>
 
                 <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Doprava / materiál</div>
+                  <div className="text-xs text-neutral-600">Doprava a materiál</div>
                   <div className="mt-1">Km: {fmt(r.km)} km • {fmt(r.km_pay)} Kč</div>
                   <div className="text-xs text-neutral-600">Materiál: {fmt(r.material)} Kč</div>
                 </div>
 
                 <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Celkem k vyplacení</div>
+                  <div className="text-xs text-neutral-600">Celkem k úhradě</div>
                   <div className="mt-1 text-base font-semibold">{fmt(r.total)} Kč</div>
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function Page() {
 
         {rows.length === 0 && (
           <div className="rounded-2xl border bg-white p-5 text-sm text-neutral-600 shadow-sm">
-            Žádná data v tomto období.
+            Ve zvoleném období nebyly nalezeny žádné podklady.
           </div>
         )}
       </div>

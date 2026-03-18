@@ -125,23 +125,23 @@ export default function AdminAttendancePage() {
       <div className="rounded-3xl border bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-xs text-neutral-500">Admin</div>
-            <h1 className="text-lg font-semibold">Docházka – přehled po dnech</h1>
-            <div className="mt-2 text-xs text-neutral-600">Práce je sloučená do jedné karty za den/stavbu. Programování je samostatná karta.</div>
+            <div className="text-xs text-neutral-500">Administrace</div>
+            <h1 className="text-lg font-semibold">Docházka – denní přehled</h1>
+            <div className="mt-2 text-xs text-neutral-600">Práce je sloučená do jedné karty za den a stavbu. Programování a činnosti mimo stavbu se zobrazují samostatně.</div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className="rounded-2xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">Zpět do adminu</Link>
-            <button onClick={load} disabled={loading} className="rounded-2xl border bg-white px-4 py-2 text-sm shadow-sm disabled:opacity-50">{loading ? "Načítám…" : "Obnovit"}</button>
+            <Link className="rounded-2xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">Zpět do administrace</Link>
+            <button onClick={load} disabled={loading} className="rounded-2xl border bg-white px-4 py-2 text-sm shadow-sm disabled:opacity-50">{loading ? "Načítání…" : "Obnovit data"}</button>
           </div>
         </div>
 
         <div className="mt-4 grid gap-2 md:grid-cols-4">
           <div><label className="text-xs text-neutral-600">Od</label><input className="mt-1 w-full rounded-2xl border px-3 py-2 text-sm" type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
           <div><label className="text-xs text-neutral-600">Do</label><input className="mt-1 w-full rounded-2xl border px-3 py-2 text-sm" type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
-          <div><label className="text-xs text-neutral-600">Stavba</label><select className="mt-1 w-full rounded-2xl border bg-white px-3 py-2 text-sm" value={siteId} onChange={e => setSiteId(e.target.value)}><option value="">Vše</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+          <div><label className="text-xs text-neutral-600">Stavba</label><select className="mt-1 w-full rounded-2xl border bg-white px-3 py-2 text-sm" value={siteId} onChange={e => setSiteId(e.target.value)}><option value="">Všechny</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
           <div><label className="text-xs text-neutral-600">Uživatel</label><select className="mt-1 w-full rounded-2xl border bg-white px-3 py-2 text-sm" value={userId} onChange={e => setUserId(e.target.value)}><option value="">Všichni</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
         </div>
-        <div className="mt-3"><button onClick={load} className="rounded-2xl bg-black px-4 py-2 text-sm text-white">Filtrovat</button></div>
+        <div className="mt-3"><button onClick={load} className="rounded-2xl bg-black px-4 py-2 text-sm text-white">Použít filtr</button></div>
         {(err || info) && <div className="mt-3 space-y-2">{err && <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}{info && <div className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}</div>}
       </div>
 
@@ -183,13 +183,13 @@ export default function AdminAttendancePage() {
 
             <div className="mt-3 flex justify-end">
               <button className="rounded-xl border px-3 py-2 text-sm hover:bg-red-50 disabled:opacity-50" onClick={() => delRow(r)} disabled={busyId === r.id || r.paid}>
-                {busyId === r.id ? "Mažu…" : (r.sourceKind === "PROGRAM" ? "Smazat programování" : "Smazat tento záznam")}
+                {busyId === r.id ? "Mažu…" : (r.sourceKind === "PROGRAM" ? "Odstranit programování" : "Odstranit záznam")}
               </button>
             </div>
           </div>
         ))}
 
-        {rows.length === 0 && <div className="rounded-3xl border bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">Žádné záznamy.</div>}
+        {rows.length === 0 && <div className="rounded-3xl border bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">Ve zvoleném období nebyly nalezeny žádné záznamy.</div>}
       </div>
     </main>
   );

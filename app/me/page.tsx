@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, SubCard, NabídkaLink, Pill, Button } from "@/app/components/ui";
+import { Card, SubCard, Pill, Button } from "@/app/components/ui";
 
 type Seg = {
   kind: "WORK";

@@ -5,18 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SubCard, Pill, Button } from "@/app/components/ui";
 
-function NabidkaLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  return (
-    <a
-      {...props}
-      className={[
-        "rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm hover:bg-slate-50 block",
-        props.className || "",
-      ].join(" ")}
-    />
-  );
-}
-
 type Seg = {
   kind: "WORK";
   site_id: string | null;
@@ -57,8 +45,8 @@ type DayRow = {
   day: string;
   paid: boolean;
 
-  first_in: string | null; // already rounded
-  last_out: string | null; // already rounded
+  first_in: string | null;
+  last_out: string | null;
 
   hours: number;
   hours_pay: number;
@@ -76,7 +64,31 @@ type DayRow = {
   offsites: Off[];
 };
 
+type SiteAgg = {
+  site_id: string;
+  name: string;
+  hours: number;
+  hours_pay: number;
+  km: number;
+  km_pay: number;
+  material: number;
+  total: number;
+  paid_all: boolean;
+};
+
 const TZ = "Europe/Prague";
+
+function NabidkaLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return (
+    <a
+      {...props}
+      className={[
+        "block rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm hover:bg-slate-50",
+        props.className || "",
+      ].join(" ")}
+    />
+  );
+}
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -97,18 +109,6 @@ function timeHM(iso: string | null) {
     minute: "2-digit",
   });
 }
-
-type SiteAgg = {
-  site_id: string;
-  name: string;
-  hours: number;
-  hours_pay: number;
-  km: number;
-  km_pay: number;
-  material: number;
-  total: number;
-  paid_all: boolean;
-};
 
 export default function Page() {
   const router = useRouter();
@@ -186,11 +186,10 @@ export default function Page() {
         const segs = (r.segments || []).filter((s) => s.site_id === siteFilter);
         const offs = (r.offsites || []).filter((o) => o.site_id === siteFilter);
 
-        // km + material jsou na den – pokud filtruješ stavbu, km/material necháme jen pokud existuje aspoň něco v tom dni pro tu stavbu
         const has = segs.length > 0 || offs.length > 0;
         if (!has) return null;
 
-        const hours_pay = segs.reduce((a, x) => a + x.pay, 0) + offs.reduce((a, x) => a + x.pay, 0);
+        const hoursPay = segs.reduce((a, x) => a + x.pay, 0) + offs.reduce((a, x) => a + x.pay, 0);
         const hours = segs.reduce((a, x) => a + x.hours_rounded, 0) + offs.reduce((a, x) => a + x.hours, 0);
 
         return {
@@ -198,7 +197,7 @@ export default function Page() {
           segments: segs,
           offsites: offs,
           hours: Number(hours.toFixed(2)),
-          hours_pay: Number(hours_pay.toFixed(2)),
+          hours_pay: Number(hoursPay.toFixed(2)),
         } as DayRow;
       })
       .filter(Boolean) as DayRow[];
@@ -208,7 +207,6 @@ export default function Page() {
     const map = new Map<string, SiteAgg>();
 
     for (const r of filteredRows) {
-      // work segments
       for (const s of r.segments || []) {
         if (!s.site_id) continue;
         const key = s.site_id;
@@ -229,7 +227,6 @@ export default function Page() {
         map.set(key, cur);
       }
 
-      // offsites
       for (const o of r.offsites || []) {
         if (!o.site_id) continue;
         const key = o.site_id;
@@ -249,16 +246,8 @@ export default function Page() {
         cur.paid_all = cur.paid_all && r.paid;
         map.set(key, cur);
       }
-
-      // km/material: if filtered by specific site, keep as day-level bucket.
-      // In "sites" mode, it's better to keep km/material on day and let admin invoice endpoint do strict mapping.
-      // Here we just show user's view; we attach km/material to ALL site aggs in that day only when filtering "ALL" is active.
-      if (siteFilter === "ALL") {
-        // attach km/material to a synthetic "Bez stavby" bucket? We'll keep km/material separate in day view instead.
-      }
     }
 
-    // compute totals
     for (const v of map.values()) {
       v.hours = Number(v.hours.toFixed(2));
       v.hours_pay = Number(v.hours_pay.toFixed(2));
@@ -266,7 +255,7 @@ export default function Page() {
     }
 
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredRows, siteFilter]);
+  }, [filteredRows]);
 
   return (
     <main className="space-y-4 px-3">
@@ -300,9 +289,9 @@ export default function Page() {
             <SubCard>
               <div className="text-sm font-semibold">Nabídka</div>
               <div className="mt-3 grid gap-2">
-                <NabídkaLink href="/attendance">Docházka</NabídkaLink>
-                <NabídkaLink href="/me/rates">Moje sazby</NabídkaLink>
-                <NabídkaLink href="/me/edit">Upravit záznamy</NabídkaLink>
+                <NabidkaLink href="/attendance">Docházka</NabidkaLink>
+                <NabidkaLink href="/me/rates">Moje sazby</NabidkaLink>
+                <NabidkaLink href="/me/edit">Upravit záznamy</NabidkaLink>
                 {sheetUrl ? (
                   <a
                     className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm"
@@ -313,7 +302,7 @@ export default function Page() {
                     Můj výkaz (Google Sheet)
                   </a>
                 ) : (
-                  <NabídkaLink href="/me#export">Export a výkaz</NabídkaLink>
+                  <NabidkaLink href="/me#export">Export a výkaz</NabidkaLink>
                 )}
               </div>
             </SubCard>

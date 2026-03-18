@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZNow } from "@/lib/time";
+import { dayLocalCZNow, parseReportedLeftAtCZ } from "@/lib/time";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
 
   const site_id = body?.site_id as string | undefined;
   const allow_without_location = !!body?.allow_without_location;
+  const reported_left_at = (body?.reported_left_at ?? "").toString().trim();
+
   const lat = Number(body?.lat);
   const lng = Number(body?.lng);
   const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
@@ -54,9 +56,12 @@ export async function POST(req: NextRequest) {
 
   const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
 
-  // bez polohy pustíme odchod jen když je explicitně povolený
   if (!hasLocation && !allow_without_location) {
     return json({ error: "Chybí poloha." }, { status: 400 });
+  }
+
+  if (allow_without_location && !reported_left_at) {
+    return json({ error: "Zadej čas odchodu bez polohy." }, { status: 400 });
   }
 
   if (km != null && (!Number.isFinite(km) || km < 0)) {
@@ -69,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
 
-  // zjišťujeme, jestli je uživatel programátor
+  // je uživatel programátor?
   const { data: me, error: meErr } = await db
     .from("users")
     .select("id,is_programmer")
@@ -83,7 +88,7 @@ export async function POST(req: NextRequest) {
     return json({ error: "Programování smí zadávat jen programátor." }, { status: 403 });
   }
 
-  // nejde OUT bez otevřeného IN
+  // OUT jen při otevřeném IN
   const { data: last, error: lastErr } = await db
     .from("attendance_events")
     .select("type,server_time,site_id")
@@ -130,7 +135,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const nowIso = new Date().toISOString();
+  let outInstant = new Date();
+
+  if (allow_without_location && reported_left_at) {
+    const inIso = String(last[0].server_time || "");
+    const parsed = parseReportedLeftAtCZ(reported_left_at, inIso);
+
+    if (!parsed || isNaN(parsed.getTime())) {
+      return json({ error: "Neplatný ručně zadaný čas odchodu." }, { status: 400 });
+    }
+
+    const inTime = new Date(inIso);
+    if (isNaN(inTime.getTime())) {
+      return json({ error: "Neplatný čas příchodu." }, { status: 500 });
+    }
+
+    if (parsed.getTime() < inTime.getTime()) {
+      return json({ error: "Odchod nemůže být dřív než příchod." }, { status: 400 });
+    }
+
+    outInstant = parsed;
+  }
+
+  const nowIso = outInstant.toISOString();
 
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,
@@ -157,5 +184,5 @@ export async function POST(req: NextRequest) {
     return json({ error: `Nešlo uložit odchod: ${error.message}` }, { status: 500 });
   }
 
-  return json({ ok: true, distance_m, allow_without_location });
+  return json({ ok: true, distance_m, allow_without_location, server_time: nowIso });
 }

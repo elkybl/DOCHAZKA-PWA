@@ -156,6 +156,9 @@ export default function AttendancePage() {
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
 
+  // ruční čas odchodu bez polohy
+  const [manualOutTime, setManualOutTime] = useState("");
+
   // programmer optional
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
@@ -187,7 +190,6 @@ export default function AttendancePage() {
       return;
     }
 
-    // ----- ME (robust) -----
     const meUrls = ["/api/me/profile", "/api/me", "/api/auth/me"];
     let meObj: Me | null = null;
     let lastMeDump: any = null;
@@ -216,7 +218,6 @@ export default function AttendancePage() {
       localStorage.setItem("user", JSON.stringify(meObj));
     } catch {}
 
-    // ----- SITES -----
     const sitesTry = await fetchJSON("/api/sites", t);
     if (sitesTry.res.status === 401) return logout();
     if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nešlo načíst stavby.");
@@ -224,7 +225,6 @@ export default function AttendancePage() {
     const safeSites = Array.isArray(sitesArr) ? sitesArr : [];
     setSites(safeSites);
 
-    // ----- STATUS -----
     const st = await fetchJSON("/api/attendance/status", t);
     if (st.res.status === 401) return logout();
     if (!st.res.ok) {
@@ -397,15 +397,24 @@ export default function AttendancePage() {
     setBusy(true);
     setErr(null);
     setInfo(null);
+
     try {
       const t = await getToken();
       if (!t) throw new Error("Chybí přihlášení.");
 
       const kmVal = km.trim() ? Number(km.replace(",", ".")) : undefined;
-      if (km.trim() && (Number.isNaN(kmVal) || (kmVal ?? 0) < 0)) throw new Error("Kilometry jsou neplatné.");
+      if (km.trim() && (Number.isNaN(kmVal) || (kmVal ?? 0) < 0)) {
+        throw new Error("Kilometry jsou neplatné.");
+      }
 
       const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : undefined;
-      if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) throw new Error("Materiál částka je neplatná.");
+      if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) {
+        throw new Error("Materiál částka je neplatná.");
+      }
+
+      if (forceWithoutLocation && !manualOutTime.trim()) {
+        throw new Error("Zadej čas odchodu bez polohy.");
+      }
 
       const p = forceWithoutLocation ? null : await getPosition().catch(() => null);
       if (p) setPos(p);
@@ -430,22 +439,30 @@ export default function AttendancePage() {
 
       if (!siteId) throw new Error("Nepodařilo se určit stavbu pro odchod.");
 
+      const payload: any = {
+        site_id: siteId,
+        note_work: note.trim() || undefined,
+        km: kmVal,
+        material_desc: matDesc.trim() || undefined,
+        material_amount: matAmt,
+        programming_hours:
+          me?.is_programmer && progHours.trim()
+            ? Number(progHours.replace(",", "."))
+            : undefined,
+        programming_note: me?.is_programmer
+          ? (progNote.trim() || undefined)
+          : undefined,
+        lat: p?.lat,
+        lng: p?.lng,
+        accuracy_m: p ? Math.round(p.accuracy) : undefined,
+        allow_without_location: forceWithoutLocation,
+        reported_left_at: forceWithoutLocation ? manualOutTime.trim() : undefined,
+      };
+
       const res = await fetch("/api/attendance/out", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
-        body: JSON.stringify({
-          site_id: siteId,
-          note_work: note.trim() || undefined,
-          km: kmVal,
-          material_desc: matDesc.trim() || undefined,
-          material_amount: matAmt,
-          programming_hours: me?.is_programmer && progHours.trim() ? Number(progHours.replace(",", ".")) : undefined,
-          programming_note: me?.is_programmer ? (progNote.trim() || undefined) : undefined,
-          lat: p?.lat,
-          lng: p?.lng,
-          accuracy_m: p ? Math.round(p.accuracy) : undefined,
-          allow_without_location: forceWithoutLocation,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -455,12 +472,14 @@ export default function AttendancePage() {
       setActiveSiteId(null);
       setActiveSiteName(null);
       setInfo(forceWithoutLocation ? "Odchod uložen bez polohy." : "Odchod uložen.");
+
       setNote("");
       setKm("");
       setMatDesc("");
       setMatAmount("");
       setProgHours("");
       setProgNote("");
+      setManualOutTime("");
       setDetailsOpen(false);
     } catch (e: any) {
       setErr(e?.message || "Chyba");
@@ -611,14 +630,27 @@ export default function AttendancePage() {
                   ODCHOD
                 </button>
 
-                <button
-                  type="button"
-                  disabled={busy || !present}
-                  onClick={() => doOut(true)}
-                  className="w-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50"
-                >
-                  ODCHOD BEZ POLOHY
-                </button>
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3">
+                  <div className="mb-2 text-sm font-semibold text-amber-900">Odchod bez polohy</div>
+
+                  <label className="mb-1 block text-xs text-amber-800">Čas odchodu</label>
+                  <input
+                    type="time"
+                    value={manualOutTime}
+                    onChange={(e) => setManualOutTime(e.target.value)}
+                    disabled={busy || !present}
+                    className="mb-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={busy || !present}
+                    onClick={() => doOut(true)}
+                    className="w-full rounded-2xl border border-amber-400 bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50"
+                  >
+                    ODCHOD BEZ POLOHY
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -711,7 +743,6 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {/* Manual picker modal */}
       {manualPickOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
@@ -745,7 +776,6 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Temporary site modal */}
       {tempOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">
@@ -780,7 +810,6 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* MANUAL DAY modal */}
       {manualDayOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 md:items-center">
           <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow overflow-visible">

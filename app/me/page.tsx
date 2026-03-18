@@ -5,6 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SubCard, Pill, Button } from "@/app/components/ui";
 
+function NabidkaLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return (
+    <a
+      {...props}
+      className={[
+        "rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm hover:bg-slate-50 block",
+        props.className || "",
+      ].join(" ")}
+    />
+  );
+}
+
 type Seg = {
   kind: "WORK";
   site_id: string | null;

@@ -192,16 +192,21 @@ export async function GET(req: NextRequest) {
       programming_rate: number;
       rate_source: "site" | "default";
       pay: number;
+      paid: boolean;
       note_work: string | null;
       programming_note: string | null;
     };
 
     const segments: Seg[] = [];
-    let lastIn: { t: Date; site_id: string | null } | null = null;
+    let lastIn: { t: Date; site_id: string | null; is_paid: boolean } | null = null;
+
+    let paidTotal = 0;
+    let unpaidTotal = 0;
+    let unknownTotal = 0;
 
     for (const e of list) {
       if (e.type === "IN") {
-        lastIn = { t: new Date(e.server_time), site_id: e.site_id };
+        lastIn = { t: new Date(e.server_time), site_id: e.site_id, is_paid: !!e.is_paid };
       } else if (e.type === "OUT" && lastIn) {
         const out = new Date(e.server_time);
 
@@ -223,6 +228,7 @@ export async function GET(req: NextRequest) {
         const sitePay = round2(siteH * r.hourly);
         const pay = round2(sitePay + progPay);
 
+        const segPaid = !!e.is_paid && !!lastIn.is_paid;
         segments.push({
           kind: "WORK",
           site_id: sid,
@@ -244,9 +250,13 @@ export async function GET(req: NextRequest) {
           programming_rate: round2((r as any).prog),
           rate_source: r.source,
           pay,
+          paid: segPaid,
           note_work: e.note_work || null,
           programming_note: (e as any).programming_note || null,
         });
+
+        if (segPaid) paidTotal += pay;
+        else unpaidTotal += pay;
 
         lastIn = null;
       }
@@ -261,6 +271,7 @@ export async function GET(req: NextRequest) {
       hourly_rate: number;
       rate_source: "site" | "default";
       pay: number;
+      paid: boolean;
     };
 
     const offsites: Off[] = [];
@@ -268,6 +279,8 @@ export async function GET(req: NextRequest) {
       const h = toNum(e.offsite_hours, 0);
       if (h <= 0) continue;
       const r = getRate(e.site_id || null);
+      const offPay = round2(h * r.hourly);
+      const offPaid = !!e.is_paid;
       offsites.push({
         kind: "OFFSITE",
         site_id: e.site_id || null,
@@ -276,8 +289,11 @@ export async function GET(req: NextRequest) {
         hours: round2(h),
         hourly_rate: round2(r.hourly),
         rate_source: r.source,
-        pay: round2(h * r.hourly),
+        pay: offPay,
+        paid: offPaid,
       });
+      if (offPaid) paidTotal += offPay;
+      else unpaidTotal += offPay;
     }
 
     const workHours = segments.reduce((s, x) => s + x.hours_rounded, 0);
@@ -306,12 +322,27 @@ export async function GET(req: NextRequest) {
     let kmPay = round2(kmManualPay);
     let km_source: "manual" | "trips" | "none" = kmManualAny ? "manual" : "none";
 
+    for (const o of list.filter((x) => x.type === "OUT")) {
+      const k = toNum(o.km, 0);
+      if (k <= 0) continue;
+      const r = getRate(o.site_id || null);
+      const pay = round2(k * r.km);
+      if (o.is_paid) paidTotal += pay;
+      else unpaidTotal += pay;
+    }
+
     if (!kmManualAny) {
       const tripKm = toNum(tripKmByDay.get(day), 0);
       if (tripKm > 0) {
         km_source = "trips";
         km = round1(tripKm);
         kmPay = round2(tripKm * defaultKm);
+
+        const allPaid = list.length > 0 && list.every((x) => !!x.is_paid);
+        const allUnpaid = list.length > 0 && list.every((x) => !x.is_paid);
+        if (allPaid) paidTotal += kmPay;
+        else if (allUnpaid) unpaidTotal += kmPay;
+        else unknownTotal += kmPay;
       }
     }
 
@@ -323,12 +354,24 @@ export async function GET(req: NextRequest) {
         material += a;
         const desc = (e.material_desc || "").trim();
         materialNotes.push(`${desc ? desc + " – " : ""}${round2(a)} Kč`);
+        if (e.is_paid) paidTotal += round2(a);
+        else unpaidTotal += round2(a);
       }
     }
     material = round2(material);
 
+    paidTotal = round2(paidTotal);
+    unpaidTotal = round2(unpaidTotal);
+    unknownTotal = round2(unknownTotal);
+
     const total = round2(hoursPay + kmPay + material);
-    const paid = list.length > 0 && list.every((x) => x.is_paid);
+    const payment_state: "paid" | "unpaid" | "partial" =
+      unknownTotal > 0 || (paidTotal > 0 && unpaidTotal > 0)
+        ? "partial"
+        : unpaidTotal > 0
+        ? "unpaid"
+        : "paid";
+    const paid = payment_state === "paid";
 
     // header times: rounded UP to 30 (ISO-based)
     const firstInRaw = list.find((x) => x.type === "IN")?.server_time ?? null;
@@ -340,6 +383,10 @@ export async function GET(req: NextRequest) {
     rows.push({
       day,
       paid,
+      payment_state,
+      paid_total: paidTotal,
+      unpaid_total: unpaidTotal,
+      unknown_total: unknownTotal,
 
       first_in: firstInRounded,
       last_out: lastOutRounded,

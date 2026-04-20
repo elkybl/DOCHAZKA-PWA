@@ -26,6 +26,7 @@ type Seg = {
   programming_rate: number;
   rate_source: "site" | "default";
   pay: number;
+  paid: boolean;
   note_work: string | null;
   programming_note: string | null;
 };
@@ -39,11 +40,16 @@ type Off = {
   hourly_rate: number;
   rate_source: "site" | "default";
   pay: number;
+  paid: boolean;
 };
 
 type DayRow = {
   day: string;
   paid: boolean;
+  payment_state?: "paid" | "unpaid" | "partial";
+  paid_total?: number;
+  unpaid_total?: number;
+  unknown_total?: number;
 
   first_in: string | null;
   last_out: string | null;
@@ -110,6 +116,20 @@ function timeHM(iso: string | null) {
   });
 }
 
+function paymentTone(state?: "paid" | "unpaid" | "partial", paid?: boolean) {
+  if (state === "partial") return "neutral" as const;
+  if (state === "paid") return "ok" as const;
+  if (state === "unpaid") return "warn" as const;
+  return paid ? "ok" as const : "warn" as const;
+}
+
+function paymentLabel(state?: "paid" | "unpaid" | "partial", paid?: boolean) {
+  if (state === "partial") return "Částečně zaplaceno";
+  if (state === "paid") return "Zaplaceno";
+  if (state === "unpaid") return "Nezaplaceno";
+  return paid ? "Zaplaceno" : "Nezaplaceno";
+}
+
 export default function Page() {
   const router = useRouter();
   const [rows, setRows] = useState<DayRow[]>([]);
@@ -161,7 +181,7 @@ export default function Page() {
 
   const totals = useMemo(() => {
     const sum = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
-    const unpaid = rows.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const unpaid = rows.reduce((s, r) => s + (Number(r.unpaid_total) || (!r.paid ? Number(r.total) || 0 : 0)), 0);
     return { sum, unpaid };
   }, [rows]);
 
@@ -405,8 +425,14 @@ export default function Page() {
                 </div>
 
                 <div className="text-right">
-                  <Pill tone={r.paid ? "ok" : "warn"}>{r.paid ? "Zaplaceno" : "Nezaplaceno"}</Pill>
+                  <Pill tone={paymentTone(r.payment_state, r.paid)}>{paymentLabel(r.payment_state, r.paid)}</Pill>
                   <div className="mt-2 text-base font-semibold">{fmt(r.total)} Kč</div>
+                  {r.payment_state === "partial" ? (
+                    <div className="mt-1 text-xs text-neutral-600">Nezaplaceno z tohoto dne: {fmt(r.unpaid_total)} Kč</div>
+                  ) : null}
+                  {Number(r.unknown_total) > 0 ? (
+                    <div className="mt-1 text-[11px] text-amber-700">Automatická doprava u smíšeného dne nejde přesně rozdělit na zaplaceno / nezaplaceno.</div>
+                  ) : null}
                 </div>
               </div>
 

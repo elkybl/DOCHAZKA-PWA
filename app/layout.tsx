@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Docházka pro firmy",
-  description: "Profesionální evidence docházky, práce, kilometrů a materiálu.",
+  title: "Docházka / Finish",
+  description: "Evidence docházky, práce, dopravy, materiálu a výplat.",
 };
 
 import "./globals.css";
@@ -8,7 +8,7 @@ import "./globals.css";
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="cs">
-      <body className="bg-neutral-50 text-neutral-900">{children}</body>
+      <body className="text-slate-950">{children}</body>
     </html>
   );
 }

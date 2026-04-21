@@ -11,6 +11,18 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return json({ error: "Neplatný PIN." }, { status: 400 });
 
   const pin = parsed.data.pin;
+  const localAdminPin = process.env.LOCAL_ADMIN_PIN?.trim();
+  const allowLocalAdmin = process.env.ALLOW_LOCAL_ADMIN_LOGIN === "1" || process.env.NODE_ENV !== "production";
+
+  if (allowLocalAdmin && localAdminPin && pin === localAdminPin) {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const token = await signSession({ userId: id, role: "admin", name: "Lokální admin" });
+    return json({
+      token,
+      user: { id, name: "Lokální admin", role: "admin", is_programmer: false, local: true },
+    });
+  }
+
   const db = supabaseAdmin();
 
   const { data: users, error } = await db

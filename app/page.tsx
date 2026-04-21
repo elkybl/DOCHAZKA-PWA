@@ -1,25 +1,39 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="space-y-4">
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
-        <h1 className="text-lg font-semibold">Docházkový systém</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Přehledná evidence docházky, vykázané práce, dopravy a materiálu v jednom systému.
-        </p>
+    <main className="min-h-screen bg-[#f4f7fb] px-4 py-8">
+      <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl flex-col justify-center">
+        <div className="max-w-3xl">
+          <Image
+            src="/ekybl-logo.png"
+            alt="Elektro práce Lukáš Kybl"
+            width={520}
+            height={140}
+            priority
+            className="h-auto w-[320px] max-w-full"
+          />
+          <p className="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Docházka / Finish</p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
+            Profesionální evidence práce pro terén i administraci.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
+            Docházka, akce, doprava, materiál, offsite položky a výplaty v jednom přehledném systému.
+          </p>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/login"
-            className="rounded-xl bg-black px-4 py-3 text-sm text-white shadow-sm"
-          >
-            Přihlásit se
-          </Link>
+          <div className="mt-7">
+            <Link
+              href="/login"
+              className="rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
+            >
+              Přihlásit se
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

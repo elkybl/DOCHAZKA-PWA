@@ -1,29 +1,17 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-function LogoMark() {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-black text-white shadow-sm">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M13 2L3 14h8l-1 8 11-14h-8l0-6z" fill="currentColor" />
-        </svg>
-      </div>
-      <div>
-        <div className="text-lg font-semibold">Docházkový systém</div>
-        <div className="text-xs text-neutral-600">Evidence docházky, práce, dopravy a materiálu</div>
-      </div>
-    </div>
-  );
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const [pin, setPin] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -33,10 +21,11 @@ export default function LoginPage() {
 
   async function login() {
     setErr(null);
-    setInfo(null);
-
     const p = pin.trim();
-    if (!p) return setErr("Zadejte PIN.");
+    if (!p) {
+      setErr("Zadejte PIN.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -51,47 +40,89 @@ export default function LoginPage() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      setInfo("Přihlášení proběhlo úspěšně.");
-      router.push("/attendance");
-    } catch (e: any) {
-      setErr(e.message || "Došlo k chybě.");
+      router.push(data.user?.role === "admin" ? "/admin" : "/attendance");
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e, "Došlo k chybě."));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="mx-auto max-w-xl space-y-4 px-3 py-6">
-      <div className="rounded-3xl border bg-white p-6 shadow-sm">
-        <LogoMark />
+    <main className="min-h-screen bg-[#f4f7fb] px-4 py-6 text-slate-950">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="space-y-6">
+          <div className="inline-flex rounded-lg border border-blue-100 bg-white px-4 py-3 shadow-sm">
+            <Image
+              src="/ekybl-logo.png"
+              alt="Elektro práce Lukáš Kybl"
+              width={480}
+              height={130}
+              priority
+              className="h-auto w-[280px] max-w-full sm:w-[380px]"
+            />
+          </div>
 
-        <p className="mt-4 text-sm text-neutral-700">
-          Přihlaste se do systému a spravujte docházku, vykázanou práci, dopravu i materiál jednoduše z telefonu nebo počítače.
-        </p>
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Docházka / Finish</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+              Přehled práce, výplat a dopravy bez dohadů.
+            </h1>
+            <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
+              Evidence docházky, akcí, materiálu a plateb v jedné aplikaci. Přehledy drží stav konkrétních záznamů, ne jen součty podle data.
+            </p>
+          </div>
 
-        <div className="mt-5">
-          <label className="block text-sm text-neutral-700">PIN</label>
-          <input
-            className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-            inputMode="numeric"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 8))}
-            placeholder="Např. 2580"
-          />
-        </div>
+          <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-white bg-white/80 p-4 shadow-sm">
+              <div className="text-sm font-semibold">Docházka</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Příchody, odchody a ruční opravy.</div>
+            </div>
+            <div className="rounded-lg border border-white bg-white/80 p-4 shadow-sm">
+              <div className="text-sm font-semibold">Výplaty</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Zaplaceno, nezaplaceno i částečně.</div>
+            </div>
+            <div className="rounded-lg border border-white bg-white/80 p-4 shadow-sm">
+              <div className="text-sm font-semibold">Exporty</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Podklady pro kontrolu a účetnictví.</div>
+            </div>
+          </div>
+        </section>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-xl shadow-blue-950/10 sm:p-7">
+          <div>
+            <h2 className="text-xl font-semibold">Přihlášení</h2>
+            <p className="mt-1 text-sm text-slate-600">Zadejte svůj PIN pro přístup do systému.</p>
+          </div>
+
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-slate-700">PIN</label>
+            <input
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-lg tracking-[0.35em] outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 8))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") login();
+              }}
+              placeholder="••••"
+            />
+          </div>
+
           <button
             onClick={login}
             disabled={loading}
-            className="rounded-2xl bg-black px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+            className="mt-5 w-full rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Přihlašování…" : "Přihlásit se"}
+            {loading ? "Přihlašuji…" : "Přihlásit se"}
           </button>
-        </div>
 
-        {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
-        {info && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">{info}</div>}
+          {err && <div className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">{err}</div>}
+
+          <div className="mt-6 border-t pt-4 text-xs leading-5 text-slate-500">
+            Přístupové údaje držte mimo obrazovku a sdílejte je jen interně.
+          </div>
+        </section>
       </div>
     </main>
   );

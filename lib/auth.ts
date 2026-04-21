@@ -9,6 +9,7 @@ export type Session = {
 function getJwtSecret(): Uint8Array {
   const raw =
     process.env.APP_JWT_SECRET ??
+    process.env.AUTH_JWT_SECRET ??
     process.env.JWT_SECRET ??
     process.env.NEXTAUTH_SECRET ??
     "";

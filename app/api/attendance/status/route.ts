@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const inTime = lastIn?.server_time ? toDate(lastIn.server_time).getTime() : 0;
   const outTime = lastOut?.server_time ? toDate(lastOut.server_time).getTime() : 0;
 
-  const isIn = !!lastIn && inTime > outTime;
+  const isIn = !!lastIn && (inTime > outTime || (inTime === outTime && inTime > 0));
 
   return json({
     status: isIn ? "IN" : "OUT",

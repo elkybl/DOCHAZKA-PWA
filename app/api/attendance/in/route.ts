@@ -73,7 +73,15 @@ export async function POST(req: NextRequest) {
     return json({ error: `Jsi mimo radius stavby (${distance_m} m > ${radius_m} m).` }, { status: 403 });
   }
 
-  const nowIso = new Date().toISOString();
+  let now = new Date();
+  if (last?.[0]?.server_time) {
+    const lastTime = new Date(String(last[0].server_time));
+    if (!Number.isNaN(lastTime.getTime()) && now.getTime() <= lastTime.getTime()) {
+      now = new Date(lastTime.getTime() + 1000);
+    }
+  }
+
+  const nowIso = now.toISOString();
 
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,

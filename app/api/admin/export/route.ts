@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate, ceilMinutesTo30 } from "@/lib/time";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 type Ev = {
   user_id: string;
@@ -125,7 +126,8 @@ export async function GET(req: NextRequest) {
 
   const rows: any[] = [];
 
-  for (const [key, list] of byUserDay.entries()) {
+  for (const [key, listRaw] of byUserDay.entries()) {
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
     const [user_id, day] = key.split("__");
     const def = defaultByUser.get(user_id);
     if (!def) continue;

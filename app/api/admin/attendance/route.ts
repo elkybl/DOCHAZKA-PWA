@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 type Ev = {
   user_id: string;
@@ -134,7 +135,7 @@ export async function GET(req: NextRequest) {
     const def = defaultByUser.get(user_id);
     if (!def) continue;
 
-    const list = [...listRaw].sort((a, b) => (a.server_time < b.server_time ? -1 : 1));
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     // “stavby použité”
     const sitesUsed = new Set<string>();

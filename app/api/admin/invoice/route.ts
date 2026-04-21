@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 const TZ = "Europe/Prague";
 
@@ -228,7 +229,7 @@ export async function GET(req: NextRequest) {
 
   // Build day objects per site
   for (const [day, listRaw] of byDay.entries()) {
-    const list = [...listRaw].sort((a, b) => (a.server_time < b.server_time ? -1 : 1));
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     let lastIn: { rawIso: string; rounded: Date; site_id: string | null } | null = null;
 

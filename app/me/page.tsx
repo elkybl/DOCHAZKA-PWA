@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SubCard, Pill, Button } from "@/app/components/ui";
+import { BottomNav } from "@/components/AppNav";
 
 type Seg = {
   kind: "WORK";
@@ -84,6 +84,12 @@ type SiteAgg = {
 
 const TZ = "Europe/Prague";
 
+type ProfileResponse = {
+  user?: {
+    google_sheet_url?: string | null;
+  } | null;
+};
+
 function NabidkaLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   return (
     <a
@@ -101,7 +107,7 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
-function fmt(n: any, max = 2) {
+function fmt(n: unknown, max = 2) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "0";
   return x.toLocaleString("cs-CZ", { maximumFractionDigits: max });
@@ -147,8 +153,8 @@ export default function Page() {
   useEffect(() => {
     if (!token) return;
     fetch("/api/me/profile", { headers: { authorization: `Bearer ${token}` } })
-      .then((r) => r.json().catch(() => ({})))
-      .then((d) => setSheetUrl((d?.user?.google_sheet_url || null) as any))
+      .then((r) => r.json().catch(() => ({} as ProfileResponse)) as Promise<ProfileResponse>)
+      .then((d) => setSheetUrl(d.user?.google_sheet_url || null))
       .catch(() => setSheetUrl(null));
   }, [token]);
 
@@ -167,8 +173,8 @@ export default function Page() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba");
       setRows(data.rows || []);
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Chyba");
     } finally {
       setLoading(false);
     }
@@ -181,7 +187,10 @@ export default function Page() {
 
   const totals = useMemo(() => {
     const sum = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
-    const unpaid = rows.reduce((s, r) => s + (Number(r.unpaid_total) || (!r.paid ? Number(r.total) || 0 : 0)), 0);
+    const unpaid = rows.reduce((s, r) => {
+      if (r.unpaid_total != null) return s + (Number(r.unpaid_total) || 0);
+      return s + (!r.paid ? Number(r.total) || 0 : 0);
+    }, 0);
     return { sum, unpaid };
   }, [rows]);
 
@@ -243,7 +252,7 @@ export default function Page() {
         };
         cur.hours += s.hours_rounded;
         cur.hours_pay += s.pay;
-        cur.paid_all = cur.paid_all && r.paid;
+        cur.paid_all = cur.paid_all && s.paid;
         map.set(key, cur);
       }
 
@@ -263,7 +272,7 @@ export default function Page() {
         };
         cur.hours += o.hours;
         cur.hours_pay += o.pay;
-        cur.paid_all = cur.paid_all && r.paid;
+        cur.paid_all = cur.paid_all && o.paid;
         map.set(key, cur);
       }
     }
@@ -534,6 +543,7 @@ export default function Page() {
       )}
 
       <div className="pb-10" />
+      <BottomNav />
     </main>
   );
 }

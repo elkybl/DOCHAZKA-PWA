@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { json } from "@/lib/http";
 import { toDate, ceilMinutesTo30 } from "@/lib/time";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 type Ev = {
   user_id: string;
@@ -127,7 +128,8 @@ export async function GET(req: NextRequest) {
   const rows: any[] = [];
 
   
-for (const [day, list] of byDay.entries()) {
+for (const [day, listRaw] of byDay.entries()) {
+  const list = [...listRaw].sort(compareAttendanceEventsAsc);
   // Aggregate per action (site) so that one day with two actions becomes two rows.
   type Acc = {
     action: string;

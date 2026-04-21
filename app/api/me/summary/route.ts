@@ -3,6 +3,14 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, ceilMinutesTo30 } from "@/lib/time";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import {
+  applyPaymentAmount,
+  bucketForGroupedFallback,
+  bucketFromPaidFlag,
+  emptyPaymentAllocation,
+  finalizePaymentAllocation,
+} from "@/lib/payment-state";
 
 const TZ = "Europe/Prague";
 
@@ -167,7 +175,7 @@ export async function GET(req: NextRequest) {
   const rows: any[] = [];
 
   for (const [day, listRaw] of byDay.entries()) {
-    const list = [...listRaw].sort((a, b) => (a.server_time < b.server_time ? -1 : 1));
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     type Seg = {
       kind: "WORK";
@@ -200,9 +208,7 @@ export async function GET(req: NextRequest) {
     const segments: Seg[] = [];
     let lastIn: { t: Date; site_id: string | null; is_paid: boolean } | null = null;
 
-    let paidTotal = 0;
-    let unpaidTotal = 0;
-    let unknownTotal = 0;
+    let payment = emptyPaymentAllocation();
 
     for (const e of list) {
       if (e.type === "IN") {
@@ -255,8 +261,7 @@ export async function GET(req: NextRequest) {
           programming_note: (e as any).programming_note || null,
         });
 
-        if (segPaid) paidTotal += pay;
-        else unpaidTotal += pay;
+        payment = applyPaymentAmount(payment, pay, bucketFromPaidFlag(segPaid));
 
         lastIn = null;
       }
@@ -292,8 +297,7 @@ export async function GET(req: NextRequest) {
         pay: offPay,
         paid: offPaid,
       });
-      if (offPaid) paidTotal += offPay;
-      else unpaidTotal += offPay;
+      payment = applyPaymentAmount(payment, offPay, bucketFromPaidFlag(offPaid));
     }
 
     const workHours = segments.reduce((s, x) => s + x.hours_rounded, 0);
@@ -327,8 +331,7 @@ export async function GET(req: NextRequest) {
       if (k <= 0) continue;
       const r = getRate(o.site_id || null);
       const pay = round2(k * r.km);
-      if (o.is_paid) paidTotal += pay;
-      else unpaidTotal += pay;
+      payment = applyPaymentAmount(payment, pay, bucketFromPaidFlag(!!o.is_paid));
     }
 
     if (!kmManualAny) {
@@ -338,11 +341,8 @@ export async function GET(req: NextRequest) {
         km = round1(tripKm);
         kmPay = round2(tripKm * defaultKm);
 
-        const allPaid = list.length > 0 && list.every((x) => !!x.is_paid);
-        const allUnpaid = list.length > 0 && list.every((x) => !x.is_paid);
-        if (allPaid) paidTotal += kmPay;
-        else if (allUnpaid) unpaidTotal += kmPay;
-        else unknownTotal += kmPay;
+        const bucket = bucketForGroupedFallback(list);
+        if (bucket) payment = applyPaymentAmount(payment, kmPay, bucket);
       }
     }
 
@@ -354,24 +354,14 @@ export async function GET(req: NextRequest) {
         material += a;
         const desc = (e.material_desc || "").trim();
         materialNotes.push(`${desc ? desc + " – " : ""}${round2(a)} Kč`);
-        if (e.is_paid) paidTotal += round2(a);
-        else unpaidTotal += round2(a);
+        payment = applyPaymentAmount(payment, round2(a), bucketFromPaidFlag(!!e.is_paid));
       }
     }
     material = round2(material);
 
-    paidTotal = round2(paidTotal);
-    unpaidTotal = round2(unpaidTotal);
-    unknownTotal = round2(unknownTotal);
+    payment = finalizePaymentAllocation(payment);
 
     const total = round2(hoursPay + kmPay + material);
-    const payment_state: "paid" | "unpaid" | "partial" =
-      unknownTotal > 0 || (paidTotal > 0 && unpaidTotal > 0)
-        ? "partial"
-        : unpaidTotal > 0
-        ? "unpaid"
-        : "paid";
-    const paid = payment_state === "paid";
 
     // header times: rounded UP to 30 (ISO-based)
     const firstInRaw = list.find((x) => x.type === "IN")?.server_time ?? null;
@@ -382,11 +372,11 @@ export async function GET(req: NextRequest) {
 
     rows.push({
       day,
-      paid,
-      payment_state,
-      paid_total: paidTotal,
-      unpaid_total: unpaidTotal,
-      unknown_total: unknownTotal,
+      paid: payment.paid,
+      payment_state: payment.payment_state,
+      paid_total: payment.paid_total,
+      unpaid_total: payment.unpaid_total,
+      unknown_total: payment.unknown_total,
 
       first_in: firstInRounded,
       last_out: lastOutRounded,

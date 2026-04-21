@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, fmtTimeCZFromIso, roundToHalfHourCZ, toDate } from "@/lib/time";
+import { compareAttendanceEventsAsc, compareAttendanceEventsDesc } from "@/lib/attendance-order";
 import { czLocalToUtcDate } from "@/lib/time";
 
 const qSchema = z.object({
@@ -110,7 +111,7 @@ if (to) {
 
   // For OUT events, try to match nearest previous IN for same user with server_time < out_time and no OUT in between.
   // We'll do a simple scan per user on sorted ascending list within (from-to) extended.
-  const asc = [...events].sort((a,b)=> (a.server_time < b.server_time ? -1 : 1));
+  const asc = [...events].sort(compareAttendanceEventsAsc);
   const openIn = new Map<string, any>(); // user_id -> last IN
   const enrichedAsc:any[] = [];
   for (const e of asc) {
@@ -127,7 +128,7 @@ if (to) {
     }
   }
 
-  const enriched = enrichedAsc.sort((a,b)=> (a.server_time < b.server_time ? 1 : -1));
+  const enriched = enrichedAsc.sort(compareAttendanceEventsDesc);
 
   const rows = enriched.map((e:any) => {
     const uid = e.user_id as string;

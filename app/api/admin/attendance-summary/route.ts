@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 function toNum(v: any, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     const sid = sidRaw || null;
     const uname = (defByUser.get(uid) as any)?.name || uid;
     const sname = sid ? (siteName.get(sid) || sid) : null;
-    const list = [...listRaw].sort((a, b) => (a.server_time < b.server_time ? -1 : 1));
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     let lastIn: any = null;
     let workHours = 0, workPay = 0, totalKm = 0, kmPay = 0, mat = 0;

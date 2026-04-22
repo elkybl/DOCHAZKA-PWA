@@ -25,6 +25,20 @@ type ProfileResponse = {
   user?: { is_programmer?: boolean | null } | null;
 };
 
+type SummaryRow = {
+  day: string;
+  hours: number;
+  segments?: Array<{ prog_hours?: number; site_hours?: number; hours_rounded?: number }>;
+  offsites?: Array<{ hours?: number }>;
+};
+
+type DayInfo = {
+  hours: number;
+  programming: number;
+  work: number;
+  offsite: number;
+};
+
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -62,6 +76,7 @@ export default function EditWorkPage() {
   const [token, setToken] = useState<string | null>(null);
   const [canProg, setCanProg] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
+  const [dayInfo, setDayInfo] = useState<Record<string, DayInfo>>({});
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -97,6 +112,23 @@ export default function EditWorkPage() {
       return;
     }
     setRows(data.rows || []);
+
+    const summaryRes = await fetch("/api/me/summary?days=180", {
+      headers: { authorization: `Bearer ${currentToken}` },
+    });
+    const summaryData = (await summaryRes.json().catch(() => ({}))) as { rows?: SummaryRow[] };
+    const next: Record<string, DayInfo> = {};
+    for (const day of summaryData.rows || []) {
+      const programming = (day.segments || []).reduce((sum, seg) => sum + (Number(seg.prog_hours) || 0), 0);
+      const offsite = (day.offsites || []).reduce((sum, off) => sum + (Number(off.hours) || 0), 0);
+      next[day.day] = {
+        hours: Number(day.hours) || 0,
+        programming,
+        offsite,
+        work: Math.max(0, (Number(day.hours) || 0) - offsite),
+      };
+    }
+    setDayInfo(next);
   }
 
   useEffect(() => {
@@ -198,7 +230,7 @@ export default function EditWorkPage() {
   }, [rows, query, typeFilter, dayFilter]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    return filteredRows.reduce(
       (sum, row) => ({
         work: sum.work + (row.type === "OUT" ? 1 : 0),
         offsite: sum.offsite + (row.type === "OFFSITE" ? 1 : 0),
@@ -207,7 +239,9 @@ export default function EditWorkPage() {
       }),
       { work: 0, offsite: 0, km: 0, material: 0 }
     );
-  }, [rows]);
+  }, [filteredRows]);
+
+  const activeDayInfo = dayFilter ? dayInfo[dayFilter] : null;
 
   return (
     <AppShell
@@ -221,10 +255,10 @@ export default function EditWorkPage() {
       }
     >
       <section className="grid gap-3 md:grid-cols-4">
-        <Stat label="Práce" value={`${totals.work}`} />
-        <Stat label="Mimo stavbu" value={`${totals.offsite}`} />
+        <Stat label={dayFilter ? "Hodiny dne" : "Záznamy práce"} value={dayFilter ? `${fmt(activeDayInfo?.hours || 0)} h` : `${totals.work}`} />
+        <Stat label="Mimo stavbu" value={dayFilter ? `${fmt(activeDayInfo?.offsite || 0)} h` : `${totals.offsite}`} />
         <Stat label="Kilometry" value={`${fmt(totals.km, 1)} km`} />
-        <Stat label="Materiál" value={`${fmt(totals.material)} Kč`} />
+        <Stat label={canProg ? "Programování" : "Materiál"} value={canProg ? `${fmt(activeDayInfo?.programming || 0)} h` : `${fmt(totals.material)} Kč`} />
       </section>
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -269,6 +303,7 @@ export default function EditWorkPage() {
             updateRow={updateRow}
             save={save}
             createOffsite={createOffsite}
+            dayInfo={dayInfo[dayKeyPrague(row.server_time)]}
           />
         ))}
         {!filteredRows.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy k úpravě.</div> : null}
@@ -286,6 +321,7 @@ function EditCard({
   updateRow,
   save,
   createOffsite,
+  dayInfo,
 }: {
   row: Row;
   canProg: boolean;
@@ -295,6 +331,7 @@ function EditCard({
   updateRow: (id: string, patch: Partial<Row>) => void;
   save: (row: Row) => void;
   createOffsite: (row: Row) => void;
+  dayInfo?: DayInfo;
 }) {
   const day = dayKeyPrague(row.server_time);
   const draftKey = `${day}__${row.site_id || ""}`;
@@ -328,9 +365,14 @@ function EditCard({
 
           {canProg ? (
             <div className="rounded-lg border bg-slate-50 p-3 lg:col-span-2">
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <SmallInfo label="Hodiny dne" value={`${fmt(dayInfo?.hours || 0)} h`} />
+                <SmallInfo label="Práce" value={`${fmt(dayInfo?.work || 0)} h`} />
+                <SmallInfo label="Programování" value={`${fmt(dayInfo?.programming || 0)} h`} />
+              </div>
               <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                 <Field label="Programování h">
-                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} max={dayInfo?.hours || undefined} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
                 </Field>
                 <Field label="Poznámka k programování">
                   <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={row.programming_note || ""} onChange={(e) => updateRow(row.id, { programming_note: e.target.value.slice(0, 500) })} disabled={row.is_paid} />
@@ -392,4 +434,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>;
+}
+
+function SmallInfo({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div></div>;
 }

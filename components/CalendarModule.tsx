@@ -201,7 +201,12 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
     return map;
   }, [items]);
 
-  const selectedItems = byDay.get(selectedDay) || [];
+  const selectedItems = useMemo(() => byDay.get(selectedDay) || [], [byDay, selectedDay]);
+  const selectedUserCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of selectedItems) map.set(item.user_name || "Pracovník", (map.get(item.user_name || "Pracovník") || 0) + 1);
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "cs"));
+  }, [selectedItems]);
 
   function openCreate(day = selectedDay) {
     setForm(initialForm(day, admin && userFilter !== "ALL" ? userFilter : me?.id || ""));
@@ -366,12 +371,13 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
             const active = day === selectedDay;
             const muted = day.slice(0, 7) !== anchor.slice(0, 7) && view === "month";
             return (
-              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-24 rounded-lg border p-2 text-left transition ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
+              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-28 rounded-lg border p-2 text-left transition ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
                 <div className="text-xs font-semibold">{formatDate(day)}</div>
                 <div className="mt-2 space-y-1">
                   {dayItems.slice(0, 3).map((item) => (
                     <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${typeClass(item.type)}`}>
-                      {item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{item.title}
+                      <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} · ` : ""}</span>
+                      {item.title}
                     </div>
                   ))}
                   {dayItems.length > 3 ? <div className="text-[11px] text-slate-500">+{dayItems.length - 3} další</div> : null}
@@ -391,6 +397,15 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
             </div>
             <button className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={() => openCreate(selectedDay)}>Přidat</button>
           </div>
+          {admin && selectedUserCounts.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {selectedUserCounts.map(([name, count]) => (
+                <span key={name} className="rounded-full border bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {name}: {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-4 space-y-3">
             {selectedItems.map((item) => (
               <CalendarCard
@@ -484,8 +499,9 @@ function CalendarCard({ item, admin, busy, onEdit, onDelete, onPatch }: { item: 
             <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(item)}`}>{statusLabel(item)}</span>
           </div>
           <h3 className="mt-2 text-base font-semibold">{item.title}</h3>
-          <div className="mt-1 text-xs text-slate-500">
-            {timeLabel(item)} · {item.user_name || "Pracovník"}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>{timeLabel(item)}</span>
+            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">{item.user_name || "Pracovník"}</span>
           </div>
           {item.location ? <div className="mt-1 text-xs text-slate-500">{item.location}</div> : null}
         </div>

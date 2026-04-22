@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { BottomNav } from "@/components/AppNav";
+import { calendarTypeLabels, type CalendarItemType } from "@/lib/calendar";
 
 type Site = {
   id: string;
@@ -20,6 +21,16 @@ type Me = {
 };
 
 type Pos = { lat: number; lng: number; accuracy: number };
+type CalendarItem = {
+  id: string;
+  type: CalendarItemType;
+  title: string;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  location: string | null;
+};
 type JsonRecord = Record<string, unknown> & {
   error?: string;
   sites?: unknown;
@@ -33,6 +44,7 @@ type JsonRecord = Record<string, unknown> & {
   site_name?: unknown;
   active_site_name?: unknown;
   current_site_name?: unknown;
+  items?: unknown;
 };
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -192,14 +204,15 @@ export default function AttendancePage() {
   const [tempOpen, setTempOpen] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [note, setNote] = useState("");
   const [km, setKm] = useState("");
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
   const [manualOutTime, setManualOutTime] = useState("");
+  const [didProgram, setDidProgram] = useState(false);
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
+  const [todayCalendar, setTodayCalendar] = useState<CalendarItem[]>([]);
 
   const [manualDayOpen, setManualDayOpen] = useState(false);
   const [manualDayDate, setManualDayDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -272,6 +285,10 @@ export default function AttendancePage() {
     setPresent(!!presentVal);
     setActiveSiteId(openSiteId ? String(openSiteId) : null);
     setActiveSiteName(siteNameVal ? String(siteNameVal) : null);
+
+    const day = new Date().toISOString().slice(0, 10);
+    const calendar = await fetchJSON(`/api/calendar?from=${day}&to=${day}`, t);
+    setTodayCalendar(calendar.res.ok && Array.isArray(calendar.json?.items) ? calendar.json.items as CalendarItem[] : []);
   }
 
   async function refreshGeo(sitesList: Site[]) {
@@ -344,7 +361,6 @@ export default function AttendancePage() {
       setActiveSiteName(s?.name || null);
       setInfo(`Docházka zahájena${s?.name ? ` · ${s.name}` : ""}.`);
       setManualSiteId(null);
-      setDetailsOpen(false);
     } catch (e: unknown) {
       setErr(getErrorMessage(e));
     } finally {
@@ -408,11 +424,20 @@ export default function AttendancePage() {
       const t = await getToken();
       if (!t) throw new Error("Chybí přihlášení.");
 
-      const kmVal = km.trim() ? Number(km.replace(",", ".")) : undefined;
-      if (km.trim() && (Number.isNaN(kmVal) || (kmVal ?? 0) < 0)) throw new Error("Kilometry nejsou platné.");
+      if (!note.trim()) throw new Error("Doplňte popis práce před ukončením docházky.");
 
-      const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : undefined;
-      if (matAmount.trim() && (Number.isNaN(matAmt) || (matAmt ?? 0) < 0)) throw new Error("Částka za materiál není platná.");
+      if (!km.trim()) throw new Error("Doplňte kilometry. Pokud žádné nejsou, zadejte 0.");
+      const kmVal = Number(km.replace(",", "."));
+      if (!Number.isFinite(kmVal) || kmVal < 0) throw new Error("Kilometry nejsou platné.");
+
+      if (!matAmount.trim()) throw new Error("Doplňte materiál v Kč. Pokud žádný není, zadejte 0.");
+      const matAmt = Number(matAmount.replace(",", "."));
+      if (!Number.isFinite(matAmt) || matAmt < 0) throw new Error("Částka za materiál není platná.");
+      if (matAmt > 0 && !matDesc.trim()) throw new Error("U materiálu doplňte krátký popis.");
+      if (me?.is_programmer && didProgram) {
+        const ph = Number(progHours.replace(",", "."));
+        if (!Number.isFinite(ph) || ph <= 0) throw new Error("Doplňte počet hodin programování.");
+      }
       if (forceWithoutLocation && !manualOutTime.trim()) throw new Error("Zadejte čas odchodu bez polohy.");
 
       const p = forceWithoutLocation ? null : await getPosition().catch(() => null);
@@ -443,8 +468,8 @@ export default function AttendancePage() {
         km: kmVal,
         material_desc: matDesc.trim() || undefined,
         material_amount: matAmt,
-        programming_hours: me?.is_programmer && progHours.trim() ? Number(progHours.replace(",", ".")) : undefined,
-        programming_note: me?.is_programmer ? progNote.trim() || undefined : undefined,
+        programming_hours: me?.is_programmer && didProgram ? Number(progHours.replace(",", ".")) : undefined,
+        programming_note: me?.is_programmer && didProgram ? progNote.trim() || undefined : undefined,
         lat: p?.lat,
         lng: p?.lng,
         accuracy_m: p ? Math.round(p.accuracy) : undefined,
@@ -469,10 +494,10 @@ export default function AttendancePage() {
       setKm("");
       setMatDesc("");
       setMatAmount("");
+      setDidProgram(false);
       setProgHours("");
       setProgNote("");
       setManualOutTime("");
-      setDetailsOpen(false);
     } catch (e: unknown) {
       setErr(getErrorMessage(e));
     } finally {
@@ -593,9 +618,9 @@ export default function AttendancePage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <a href="/me/edit" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                <div className="text-sm font-semibold">Doplnit práci</div>
-                <div className="mt-1 text-xs leading-5 text-slate-600">Úprava nezaplacených záznamů a offsite položek.</div>
+              <a href="/calendar" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                <div className="text-sm font-semibold">Kalendář</div>
+                <div className="mt-1 text-xs leading-5 text-slate-600">Plán práce, lékař, volno, nemoc a vlastní položky.</div>
               </a>
               <a href="/me" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
                 <div className="text-sm font-semibold">Moje výdělky</div>
@@ -609,40 +634,70 @@ export default function AttendancePage() {
           </div>
 
           <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">Údaje k odchodu</h2>
-                <p className="mt-1 text-xs text-slate-500">Vyplňujte jen to, co se má propsat do výplat a exportu.</p>
+                <h2 className="text-base font-semibold">Ukončení docházky</h2>
+                <p className="mt-1 text-xs text-slate-500">Před odchodem vyplňte práci, kilometry a materiál. Hodnoty jdou do výplat i exportu.</p>
               </div>
-              <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50" onClick={() => setDetailsOpen((v) => !v)}>
-                {detailsOpen ? "Skrýt" : "Zobrazit"}
-              </button>
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinné</span>
             </div>
 
-            {detailsOpen ? (
-              <div className="mt-4 grid gap-3">
-                <textarea className="min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Popis vykonané práce" value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="grid grid-cols-2 gap-3">
-                  <input className="w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Kilometry" value={km} onChange={(e) => setKm(e.target.value)} />
-                  <input className="w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Materiál v Kč" value={matAmount} onChange={(e) => setMatAmount(e.target.value)} />
-                </div>
-                <input className="w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Popis materiálu" value={matDesc} onChange={(e) => setMatDesc(e.target.value)} />
+            <div className="mt-4 grid gap-3">
+              <label className="block text-xs font-semibold text-slate-600">
+                Popis práce
+                <textarea className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Co se dnes dělalo" value={note} onChange={(e) => setNote(e.target.value)} />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-semibold text-slate-600">
+                  Kilometry
+                  <input className="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="0" inputMode="decimal" value={km} onChange={(e) => setKm(e.target.value)} />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600">
+                  Materiál Kč
+                  <input className="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="0" inputMode="decimal" value={matAmount} onChange={(e) => setMatAmount(e.target.value)} />
+                </label>
+              </div>
+              <label className="block text-xs font-semibold text-slate-600">
+                Popis materiálu
+                <input className="mt-1 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" placeholder="Např. kabel, jistič, svorky. Pokud materiál nebyl, nechte prázdné." value={matDesc} onChange={(e) => setMatDesc(e.target.value)} />
+              </label>
 
-                {me?.is_programmer ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-xs font-semibold text-slate-700">Programování</div>
-                    <div className="mt-2 grid grid-cols-2 gap-3">
-                      <input className="w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Hodiny" value={progHours} onChange={(e) => setProgHours(e.target.value)} />
-                      <input className="w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Poznámka" value={progNote} onChange={(e) => setProgNote(e.target.value)} />
+              {me?.is_programmer ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <input type="checkbox" checked={didProgram} onChange={(e) => setDidProgram(e.target.checked)} />
+                    Dnes se programovalo
+                  </label>
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <input className="w-full rounded-lg border border-slate-300 p-3 text-sm disabled:bg-slate-100" placeholder="Hodiny" inputMode="decimal" value={progHours} onChange={(e) => setProgHours(e.target.value)} disabled={!didProgram} />
+                    <input className="w-full rounded-lg border border-slate-300 p-3 text-sm disabled:bg-slate-100" placeholder="Poznámka" value={progNote} onChange={(e) => setProgNote(e.target.value)} disabled={!didProgram} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Dnešní kalendář</div>
+                  <div className="mt-1 text-xs text-slate-500">Práce, volno a osobní položky</div>
+                </div>
+                <a href="/calendar" className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold">Otevřít</a>
+              </div>
+              <div className="mt-3 space-y-2">
+                {todayCalendar.slice(0, 3).map((item) => (
+                  <div key={item.id} className="rounded-lg border bg-white p-3">
+                    <div className="text-xs font-semibold text-slate-500">{calendarTypeLabels[item.type]}</div>
+                    <div className="mt-1 text-sm font-semibold">{item.title}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {item.all_day ? "Celý den" : item.start_time ? `${item.start_time.slice(0, 5)}${item.end_time ? ` - ${item.end_time.slice(0, 5)}` : ""}` : "Bez času"}
+                      {item.location ? ` · ${item.location}` : ""}
                     </div>
                   </div>
-                ) : null}
+                ))}
+                {!todayCalendar.length ? <div className="rounded-lg border bg-white p-3 text-sm text-slate-500">Na dnešek není nic v kalendáři.</div> : null}
               </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Doplňující údaje jsou skryté. Hlavní akce směny zůstávají dostupné bez posouvání obrazovky.
-              </div>
-            )}
+            </div>
 
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <div className="text-sm font-semibold text-amber-900">Ukončení bez polohy</div>
@@ -692,7 +747,7 @@ export default function AttendancePage() {
               Zrušit
             </button>
             <button type="button" disabled={busy} className="rounded-lg bg-blue-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-45" onClick={submitTempSiteAndIn}>
-              Uložit a zahájit směnu
+              Uložit a zahájit docházku
             </button>
           </div>
         </Modal>

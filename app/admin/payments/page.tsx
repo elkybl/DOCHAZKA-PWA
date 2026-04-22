@@ -21,6 +21,21 @@ type Row = {
   material: number;
   total: number;
   paid: boolean;
+  days?: DayDetail[];
+};
+
+type DayDetail = {
+  day: string;
+  hours: number;
+  hours_pay: number;
+  programming_hours: number;
+  programming_pay: number;
+  km: number;
+  km_pay: number;
+  material: number;
+  total: number;
+  note: string;
+  paid: boolean;
 };
 
 function getToken() {
@@ -198,6 +213,37 @@ export default function PaymentsPage() {
                 <Mini label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km`} />
                 <Mini label="Materiál" value={`${fmt(row.material)} Kč`} sub=" " />
               </div>
+
+              {row.days?.length ? (
+                <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-semibold uppercase text-slate-500">Denní rozpis</div>
+                    <div className="text-xs text-slate-500">Kontrola před označením jako zaplaceno</div>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {row.days.map((day) => (
+                      <div key={`${key}_${day.day}`} className="grid gap-2 px-3 py-3 text-sm lg:grid-cols-[110px_1fr_120px] lg:items-center">
+                        <div>
+                          <div className="font-semibold text-slate-950">{day.day}</div>
+                          <div className={`mt-1 text-xs font-medium ${day.paid ? "text-emerald-700" : "text-amber-700"}`}>
+                            {day.paid ? "Zaplaceno" : "K úhradě"}
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          <Mini label="Práce" value={`${fmt(day.hours_pay)} Kč`} sub={`${fmt(day.hours)} h`} />
+                          <Mini label="Programování" value={`${fmt(day.programming_pay)} Kč`} sub={`${fmt(day.programming_hours)} h`} />
+                          <Mini label="Doprava" value={`${fmt(day.km_pay)} Kč`} sub={`${fmt(day.km, 1)} km`} />
+                          <Mini label="Materiál" value={`${fmt(day.material)} Kč`} sub=" " />
+                        </div>
+                        <div className="text-right font-semibold text-slate-950">{fmt(day.total)} Kč</div>
+                        <div className="rounded-lg bg-white p-3 text-sm text-slate-700 lg:col-span-3">
+                          {day.note || "Bez popisu práce"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {!row.paid ? (
                 <div className="mt-4 flex justify-end">

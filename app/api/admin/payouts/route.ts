@@ -22,9 +22,30 @@ type Ev = {
   is_paid: boolean;
 };
 
-function toNum(v: any, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+function toNum(v: unknown, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
 function round1(n: number) { return Math.round(n * 10) / 10; }
+
+type UserRateRow = {
+  id: string;
+  name: string;
+  hourly_rate: number | null;
+  km_rate: number | null;
+  programming_rate: number | null;
+};
+
+type UserSiteRateRow = {
+  user_id: string;
+  site_id: string;
+  hourly_rate: number | null;
+  km_rate: number | null;
+  programming_rate: number | null;
+};
+
+type SiteRow = {
+  id: string;
+  name: string;
+};
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -51,12 +72,12 @@ export async function GET(req: NextRequest) {
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
   const defaultByUser = new Map<string, { name: string; hourly: number; km: number; programming: number }>();
-  for (const u of users || []) {
-    defaultByUser.set((u as any).id, {
-      name: (u as any).name,
-      hourly: toNum((u as any).hourly_rate, 0),
-      km: toNum((u as any).km_rate, 0),
-      programming: toNum((u as any).programming_rate, 0),
+  for (const u of (users || []) as UserRateRow[]) {
+    defaultByUser.set(u.id, {
+      name: u.name,
+      hourly: toNum(u.hourly_rate, 0),
+      km: toNum(u.km_rate, 0),
+      programming: toNum(u.programming_rate, 0),
     });
   }
 
@@ -66,11 +87,11 @@ export async function GET(req: NextRequest) {
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
   const rateMap = new Map<string, { hourly: number; km: number; programming: number }>();
-  for (const r of usrSiteRates || []) {
-    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: toNum((r as any).hourly_rate, 0),
-      km: toNum((r as any).km_rate, 0),
-      programming: toNum((r as any).programming_rate, 0),
+  for (const r of (usrSiteRates || []) as UserSiteRateRow[]) {
+    rateMap.set(`${r.user_id}__${r.site_id}`, {
+      hourly: toNum(r.hourly_rate, 0),
+      km: toNum(r.km_rate, 0),
+      programming: toNum(r.programming_rate, 0),
     });
   }
 
@@ -87,7 +108,7 @@ export async function GET(req: NextRequest) {
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
 
   const siteName = new Map<string, string>();
-  for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
+  for (const s of (sites || []) as SiteRow[]) siteName.set(s.id, s.name);
 
   const { data: evs, error } = await db
     .from("attendance_events")
@@ -124,6 +145,19 @@ export async function GET(req: NextRequest) {
     material: number;
     total: number;
     paid: boolean;
+    days: Array<{
+      day: string;
+      hours: number;
+      hours_pay: number;
+      programming_hours: number;
+      programming_pay: number;
+      km: number;
+      km_pay: number;
+      material: number;
+      total: number;
+      note: string;
+      paid: boolean;
+    }>;
   };
 
   const aggMap = new Map<string, Agg>();
@@ -145,7 +179,8 @@ export async function GET(req: NextRequest) {
     let material = 0;
     let progHours = 0;
     let progPay = 0;
-    let paid = list.length > 0 && list.every((x) => !!x.is_paid);
+    const paid = list.length > 0 && list.every((x) => !!x.is_paid);
+    const notes: string[] = [];
 
     for (const e of list) {
       if (e.type === "IN") {
@@ -164,11 +199,14 @@ export async function GET(req: NextRequest) {
         const ph = toNum(e.programming_hours, 0);
         progHours += ph;
         progPay += ph * rates.programming;
+        if (e.note_work) notes.push(String(e.note_work).trim());
+        if (e.programming_note) notes.push(`Programování: ${String(e.programming_note).trim()}`);
       } else if (e.type === "OFFSITE") {
         const h = toNum(e.offsite_hours, 0);
         workHours += h;
         workPay += h * rates.hourly;
         material += toNum(e.material_amount, 0);
+        if (e.offsite_reason) notes.push(`Mimo stavbu: ${String(e.offsite_reason).trim()}`);
       }
     }
 
@@ -191,6 +229,7 @@ export async function GET(req: NextRequest) {
         material: 0,
         total: 0,
         paid,
+        days: [],
       });
       daySetMap.set(aggKey, new Set());
     }
@@ -208,6 +247,19 @@ export async function GET(req: NextRequest) {
     agg.material += material;
     agg.total += workPay + progPay + kmPay + material;
     agg.paid = agg.paid && paid;
+    agg.days.push({
+      day,
+      hours: round2(workHours),
+      hours_pay: round2(workPay),
+      programming_hours: round2(progHours),
+      programming_pay: round2(progPay),
+      km: round1(km),
+      km_pay: round2(kmPay),
+      material: round2(material),
+      total: round2(workPay + progPay + kmPay + material),
+      note: notes.join(" | "),
+      paid,
+    });
   }
 
   const rows = Array.from(aggMap.values()).map((r) => ({
@@ -221,6 +273,7 @@ export async function GET(req: NextRequest) {
     km_pay: round2(r.km_pay),
     material: round2(r.material),
     total: round2(r.total),
+    days: r.days.sort((a, b) => (a.day < b.day ? -1 : 1)),
   }));
 
   rows.sort((a, b) => {

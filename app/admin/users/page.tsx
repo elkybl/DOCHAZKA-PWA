@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppNav";
 
@@ -15,13 +14,23 @@ type U = {
   created_at: string;
 };
 
+type UserForm = {
+  name: string;
+  pin: string;
+  role: "admin" | "worker";
+  is_active: boolean;
+  google_sheet_url: string;
+  is_programmer: boolean;
+  programming_rate: string;
+};
+
 function token() {
   return localStorage.getItem("token");
 }
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<U[]>([]);
-  const [form, setForm] = useState<any>({
+  const [form, setForm] = useState<UserForm>({
     name: "",
     pin: "",
     role: "worker",
@@ -72,7 +81,16 @@ export default function AdminUsers() {
       return;
     }
 
-    const payload: any = {
+    const payload: {
+      id?: string;
+      name: string;
+      pin?: string;
+      role: "admin" | "worker";
+      is_active: boolean;
+      google_sheet_url: string | null;
+      is_programmer: boolean;
+      programming_rate: number | null;
+    } = {
       name: form.name,
       role: form.role,
       is_active: !!form.is_active,
@@ -150,8 +168,8 @@ export default function AdminUsers() {
       if (!res.ok) throw new Error(data?.error || "Smazání selhalo.");
 
       setUsers((prev) => prev.filter((u) => u.id !== id));
-    } catch (e: any) {
-      setErr(e.message || "Smazání selhalo.");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Smazání selhalo.");
     } finally {
       setDeletingId(null);
     }
@@ -159,17 +177,14 @@ export default function AdminUsers() {
 
   return (
     <AppShell area="mixed" title="Lidé" subtitle="Pracovníci, role, PINy a exporty.">
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Uživatelé</h2>
-            <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/admin">
-              Zpět do Admin menu
-            </Link>
           </div>
 
           {editingId && (
-            <button className="rounded-xl border px-3 py-2 text-sm" onClick={resetForm}>
+            <button className="rounded-lg border px-3 py-2 text-sm" onClick={resetForm}>
               Zrušit edit
             </button>
           )}
@@ -177,14 +192,14 @@ export default function AdminUsers() {
 
         <div className="mt-4 grid gap-2">
           <input
-            className="rounded-xl border px-3 py-2"
+            className="rounded-lg border px-3 py-2"
             placeholder="Jméno"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
 
           <input
-            className="rounded-xl border px-3 py-2"
+            className="rounded-lg border px-3 py-2"
             placeholder={editingId ? "Nový PIN (nepovinné)" : "PIN"}
             inputMode="numeric"
             value={form.pin}
@@ -193,9 +208,9 @@ export default function AdminUsers() {
 
           <div className="grid grid-cols-2 items-center gap-2">
             <select
-              className="rounded-xl border px-3 py-2"
+              className="rounded-lg border px-3 py-2"
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              onChange={(e) => setForm({ ...form, role: e.target.value === "admin" ? "admin" : "worker" })}
             >
               <option value="worker">worker</option>
               <option value="admin">admin</option>
@@ -212,13 +227,13 @@ export default function AdminUsers() {
           </div>
 
           <input
-            className="rounded-xl border px-3 py-2"
+            className="rounded-lg border px-3 py-2"
             placeholder="Google Sheet URL (volitelné – výkaz zaměstnance)"
             value={form.google_sheet_url}
             onChange={(e) => setForm({ ...form, google_sheet_url: e.target.value.slice(0, 500) })}
           />
 
-          <div className="grid gap-2 rounded-2xl border bg-neutral-50 p-4">
+          <div className="grid gap-2 rounded-lg border bg-slate-50 p-4">
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -229,7 +244,7 @@ export default function AdminUsers() {
             </label>
 
             <input
-              className="rounded-xl border bg-white px-3 py-2"
+              className="rounded-lg border bg-white px-3 py-2"
               placeholder="Programovací sazba (Kč/h) – jen pro programátory"
               inputMode="decimal"
               value={form.programming_rate}
@@ -239,21 +254,21 @@ export default function AdminUsers() {
             <div className="text-xs text-neutral-500">Sazbu si může upravit i sám v „Moje sazby“, pokud je programátor.</div>
           </div>
 
-          <button className="rounded-xl bg-black px-4 py-3 text-white" onClick={save}>
+          <button className="rounded-lg bg-slate-950 px-4 py-3 text-white" onClick={save}>
             {editingId ? "Uložit změny" : "Přidat uživatele"}
           </button>
 
-          {err && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-          {msg && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{msg}</div>}
+          {err && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div>}
+          {msg && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{msg}</div>}
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-neutral-700">Seznam</h2>
 
         <div className="mt-3 space-y-2">
           {users.map((u) => (
-            <div key={u.id} className="rounded-xl border p-3">
+            <div key={u.id} className="rounded-lg border border-slate-200 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-medium">{u.name}</div>
@@ -274,12 +289,12 @@ export default function AdminUsers() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="rounded-xl border px-3 py-2 text-sm" onClick={() => edit(u)}>
-                    Edit
+                  <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => edit(u)}>
+                    Upravit
                   </button>
 
                   <button
-                    className="rounded-xl border px-3 py-2 text-sm disabled:opacity-50"
+                    className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() => removeUser(u.id, u.name)}
                     disabled={deletingId === u.id}
                     title="Smazat uživatele"
@@ -292,7 +307,7 @@ export default function AdminUsers() {
           ))}
 
           {users.length === 0 && (
-            <div className="rounded-xl border bg-neutral-50 p-4 text-sm text-neutral-600">
+            <div className="rounded-lg border bg-slate-50 p-4 text-sm text-neutral-600">
               Zatím žádní uživatelé.
             </div>
           )}

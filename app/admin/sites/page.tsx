@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppNav";
 
@@ -14,13 +13,22 @@ type Site = {
   is_active: boolean;
 };
 
+type SiteForm = {
+  name: string;
+  address: string;
+  lat: string;
+  lng: string;
+  radius_m: number | string;
+  is_active: boolean;
+};
+
 function token() {
   return localStorage.getItem("token");
 }
 
 export default function AdminSites() {
   const [sites, setSites] = useState<Site[]>([]);
-  const [form, setForm] = useState<any>({
+  const [form, setForm] = useState<SiteForm>({
     name: "",
     address: "",
     lat: "",
@@ -148,8 +156,8 @@ export default function AdminSites() {
       if (!res.ok) throw new Error(data?.error || "Smazání selhalo.");
 
       setSites((prev) => prev.filter((s) => s.id !== id));
-    } catch (e: any) {
-      setErr(e.message || "Smazání selhalo.");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Smazání selhalo.");
     } finally {
       setDeletingId(null);
     }
@@ -157,17 +165,14 @@ export default function AdminSites() {
 
   return (
     <AppShell area="mixed" title="Stavby" subtitle="Akce, GPS poloha, radius a aktivní stav.">
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Stavby</h2>
-            <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/admin">
-              Zpět do Admin menu
-            </Link>
           </div>
 
           {editingId && (
-            <button className="rounded-xl border px-3 py-2 text-sm" onClick={resetForm}>
+            <button className="rounded-lg border px-3 py-2 text-sm" onClick={resetForm}>
               Zrušit edit
             </button>
           )}
@@ -175,14 +180,14 @@ export default function AdminSites() {
 
         <div className="mt-4 grid gap-2">
           <input
-            className="rounded-xl border px-3 py-2"
+            className="rounded-lg border px-3 py-2"
             placeholder="Název"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
 
           <input
-            className="rounded-xl border px-3 py-2"
+            className="rounded-lg border px-3 py-2"
             placeholder="Adresa (volitelné)"
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -190,13 +195,13 @@ export default function AdminSites() {
 
           <div className="grid grid-cols-2 gap-2">
             <input
-              className="rounded-xl border px-3 py-2"
+              className="rounded-lg border px-3 py-2"
               placeholder="lat"
               value={form.lat}
               onChange={(e) => setForm({ ...form, lat: e.target.value })}
             />
             <input
-              className="rounded-xl border px-3 py-2"
+              className="rounded-lg border px-3 py-2"
               placeholder="lng"
               value={form.lng}
               onChange={(e) => setForm({ ...form, lng: e.target.value })}
@@ -205,7 +210,7 @@ export default function AdminSites() {
 
           <div className="grid grid-cols-2 items-center gap-2">
             <input
-              className="rounded-xl border px-3 py-2"
+              className="rounded-lg border px-3 py-2"
               placeholder="radius m"
               value={form.radius_m}
               onChange={(e) => setForm({ ...form, radius_m: e.target.value })}
@@ -220,21 +225,21 @@ export default function AdminSites() {
             </label>
           </div>
 
-          <button className="rounded-xl bg-black px-4 py-3 text-white" onClick={save}>
+          <button className="rounded-lg bg-slate-950 px-4 py-3 text-white" onClick={save}>
             {editingId ? "Uložit změny" : "Přidat stavbu"}
           </button>
 
-          {err && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-          {msg && <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{msg}</div>}
+          {err && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div>}
+          {msg && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{msg}</div>}
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-neutral-700">Seznam</h2>
 
         <div className="mt-3 space-y-2">
           {sites.map((s) => (
-            <div key={s.id} className="rounded-xl border p-3">
+            <div key={s.id} className="rounded-lg border border-slate-200 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-medium">{s.name}</div>
@@ -245,12 +250,12 @@ export default function AdminSites() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="rounded-xl border px-3 py-2 text-sm" onClick={() => edit(s)}>
-                    Edit
+                  <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => edit(s)}>
+                    Upravit
                   </button>
 
                   <button
-                    className="rounded-xl border px-3 py-2 text-sm disabled:opacity-50"
+                    className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() => removeSite(s.id, s.name)}
                     disabled={deletingId === s.id}
                     title="Smazat stavbu"
@@ -263,7 +268,7 @@ export default function AdminSites() {
           ))}
 
           {sites.length === 0 && (
-            <div className="rounded-xl border bg-neutral-50 p-4 text-sm text-neutral-600">
+            <div className="rounded-lg border bg-slate-50 p-4 text-sm text-neutral-600">
               Zatím žádné stavby.
             </div>
           )}

@@ -342,7 +342,7 @@ export default function AttendancePage() {
       setPresent(true);
       setActiveSiteId(siteId);
       setActiveSiteName(s?.name || null);
-      setInfo(`Směna zahájena${s?.name ? ` · ${s.name}` : ""}.`);
+      setInfo(`Docházka zahájena${s?.name ? ` · ${s.name}` : ""}.`);
       setManualSiteId(null);
       setDetailsOpen(false);
     } catch (e: unknown) {
@@ -392,7 +392,7 @@ export default function AttendancePage() {
       setActiveSiteName(`Dočasná: ${name}`);
       setTempOpen(false);
       setTempName("");
-      setInfo("Směna zahájena na dočasné stavbě.");
+      setInfo("Docházka zahájena na dočasné stavbě.");
     } catch (e: unknown) {
       setErr(getErrorMessage(e));
     } finally {
@@ -464,7 +464,7 @@ export default function AttendancePage() {
       setPresent(false);
       setActiveSiteId(null);
       setActiveSiteName(null);
-      setInfo(forceWithoutLocation ? "Směna ukončena bez polohy." : "Směna ukončena.");
+      setInfo(forceWithoutLocation ? "Docházka ukončena bez polohy." : "Docházka ukončena.");
       setNote("");
       setKm("");
       setMatDesc("");
@@ -523,7 +523,7 @@ export default function AttendancePage() {
     }
   }
 
-  const statusLabel = present ? "Směna běží" : "Připraveno k zahájení";
+  const statusLabel = present ? "Docházka běží" : "Připraveno k zahájení";
   const statusText = present ? activeSiteName || "Aktivní stavba není určena" : selectedSite?.name || "Vyberte stavbu nebo použijte polohu";
 
   return (
@@ -534,7 +534,7 @@ export default function AttendancePage() {
             <Image src="/ekybl-logo.png" alt="Elektro práce Lukáš Kybl" width={190} height={52} className="hidden h-auto w-40 sm:block" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Docházka</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">Směna a práce</h1>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight">Docházka a práce</h1>
               <p className="mt-1 text-sm text-slate-600">
                 Přihlášený uživatel: <span className="font-medium text-slate-900">{me?.name || "—"}</span>
               </p>
@@ -564,7 +564,7 @@ export default function AttendancePage() {
                   <h2 className="mt-4 text-2xl font-semibold">{statusText}</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                     {present
-                      ? "Při ukončení směny můžete doplnit popis práce, kilometry a materiál. Přechod na další akci se při stejném čase uloží odděleně."
+                      ? "Při ukončení docházky můžete doplnit popis práce, kilometry a materiál. Přechod na další akci se při stejném čase uloží odděleně."
                       : "Aplikace vybere nejbližší stavbu podle polohy. Když poloha nesedí, vyberte stavbu ručně."}
                   </p>
                 </div>
@@ -578,10 +578,10 @@ export default function AttendancePage() {
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <ActionButton disabled={busy || present} onClick={doIn}>
-                  Zahájit směnu
+                  Zahájit docházku
                 </ActionButton>
                 <ActionButton disabled={busy || !present} onClick={() => doOut(false)} tone="danger">
-                  Ukončit směnu
+                  Ukončit docházku
                 </ActionButton>
                 <ActionButton disabled={busy} onClick={() => setManualPickOpen(true)} tone="ghost">
                   Vybrat stavbu
@@ -603,7 +603,7 @@ export default function AttendancePage() {
               </a>
               <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
                 <div className="text-sm font-semibold">Doplnit den</div>
-                <div className="mt-1 text-xs leading-5 text-slate-600">Nouzové doplnění směny bez polohy.</div>
+                <div className="mt-1 text-xs leading-5 text-slate-600">Nouzové doplnění docházky bez polohy.</div>
               </button>
             </div>
           </div>

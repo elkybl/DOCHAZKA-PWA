@@ -194,6 +194,7 @@ export async function GET(req: NextRequest) {
   }
 
   rows.sort((a, b) => {
+    if (a.paid !== b.paid) return a.paid ? 1 : -1;
     if (a.day !== b.day) return a.day < b.day ? 1 : -1;
     if (a.user_name !== b.user_name) return a.user_name.localeCompare(b.user_name, "cs");
     const order: any = { WORK: 0, PROGRAM: 1, OFFSITE: 2 };

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fmtDateTimeCZFromIso } from "@/lib/time";
@@ -24,7 +23,7 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
-function numStr(v: any, maxLen: number) {
+function numStr(v: unknown, maxLen: number) {
   return String(v ?? "").replace(/[^\d.-]/g, "").slice(0, maxLen);
 }
 
@@ -121,8 +120,8 @@ export default function SiteRequestsAdminPage() {
 
       setInfo("Stavba aktivována (už není dočasná).");
       await load();
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Chyba");
     } finally {
       setBusy(null);
     }
@@ -147,8 +146,8 @@ export default function SiteRequestsAdminPage() {
       if (!res.ok) throw new Error(data?.error || "Nešlo archivovat.");
       setInfo("Archivováno.");
       await load();
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Chyba");
     } finally {
       setBusy(null);
     }
@@ -163,18 +162,14 @@ export default function SiteRequestsAdminPage() {
 
   return (
     <AppShell area="mixed" title="Žádosti o stavbu" subtitle="Schválení a úprava staveb založených z terénu.">
-      <div className="rounded-3xl border bg-white p-6 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Dočasné stavby</h2>
             <p className="mt-1 text-sm text-neutral-600">
-              Zaměstnanec založí akci z telefonu (GPS). Tady ji upravíš (název, adresa, GPS, radius) a aktivuješ.
+              Pracovník založí akci z telefonu. Tady upravíš název, adresu, GPS a radius.
             </p>
             <div className="mt-2 text-xs text-neutral-500">Čeká: {count}</div>
-
-            <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/admin">
-              Zpět do adminu
-            </Link>
           </div>
 
           <button className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" onClick={load}>
@@ -188,7 +183,7 @@ export default function SiteRequestsAdminPage() {
 
       <div className="space-y-3">
         {rows.map((r) => (
-          <div key={r.id} className="rounded-3xl border bg-white p-6 shadow-sm">
+          <div key={r.id} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-neutral-900">{r.name}</div>
@@ -210,14 +205,14 @@ export default function SiteRequestsAdminPage() {
 
               <div className="flex flex-wrap gap-2">
                 <button
-                  className="rounded-xl bg-black px-4 py-2 text-sm text-white shadow-sm disabled:opacity-50"
+                  className="rounded-lg bg-slate-950 px-4 py-2 text-sm text-white shadow-sm disabled:opacity-50"
                   onClick={() => activate(r.id)}
                   disabled={busy === r.id}
                 >
                   {busy === r.id ? "…" : "Aktivovat"}
                 </button>
                 <button
-                  className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm disabled:opacity-50"
+                  className="rounded-lg border bg-white px-4 py-2 text-sm shadow-sm disabled:opacity-50"
                   onClick={() => archive(r.id)}
                   disabled={busy === r.id}
                 >
@@ -227,28 +222,28 @@ export default function SiteRequestsAdminPage() {
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border bg-neutral-50 p-4">
+              <div className="rounded-lg border bg-slate-50 p-4">
                 <div className="text-xs font-semibold text-neutral-700">Název</div>
                 <input
-                  className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                   value={nameEdit[r.id] ?? ""}
                   onChange={(e) => setNameEdit((p) => ({ ...p, [r.id]: e.target.value.slice(0, 120) }))}
                 />
 
                 <div className="mt-4 text-xs font-semibold text-neutral-700">Adresa / poznámka</div>
                 <input
-                  className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                   value={addrEdit[r.id] ?? ""}
                   onChange={(e) => setAddrEdit((p) => ({ ...p, [r.id]: e.target.value.slice(0, 180) }))}
                 />
               </div>
 
-              <div className="rounded-2xl border bg-neutral-50 p-4">
+              <div className="rounded-lg border bg-slate-50 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <div className="text-xs font-semibold text-neutral-700">Lat</div>
                     <input
-                      className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                      className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                       value={latEdit[r.id] ?? ""}
                       onChange={(e) => setLatEdit((p) => ({ ...p, [r.id]: numStr(e.target.value, 20) }))}
                     />
@@ -256,7 +251,7 @@ export default function SiteRequestsAdminPage() {
                   <div>
                     <div className="text-xs font-semibold text-neutral-700">Lng</div>
                     <input
-                      className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                      className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                       value={lngEdit[r.id] ?? ""}
                       onChange={(e) => setLngEdit((p) => ({ ...p, [r.id]: numStr(e.target.value, 20) }))}
                     />
@@ -265,7 +260,7 @@ export default function SiteRequestsAdminPage() {
 
                 <div className="mt-4 text-xs font-semibold text-neutral-700">Radius (m)</div>
                 <input
-                  className="mt-2 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                   inputMode="numeric"
                   value={radius[r.id] ?? ""}
                   onChange={(e) =>
@@ -280,7 +275,7 @@ export default function SiteRequestsAdminPage() {
         ))}
 
         {rows.length === 0 && (
-          <div className="rounded-3xl border bg-white p-6 text-sm text-neutral-600 shadow-sm">
+          <div className="rounded-lg border bg-white p-6 text-sm text-neutral-600 shadow-sm">
             Žádné dočasné stavby.
           </div>
         )}

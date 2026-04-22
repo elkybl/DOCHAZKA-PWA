@@ -73,6 +73,7 @@ export default function AdminAttendancePage() {
   const [users, setUsers] = useState<User[]>([]);
   const [from, setFrom] = useState(() => initialDateParam("day"));
   const [to, setTo] = useState(() => initialDateParam("day"));
+  const [focusedDay, setFocusedDay] = useState(() => initialDateParam("day"));
   const [siteId, setSiteId] = useState(() => initialDateParam("site_id"));
   const [userId, setUserId] = useState(() => initialDateParam("user_id"));
   const [rows, setRows] = useState<Row[]>([]);
@@ -103,15 +104,17 @@ export default function AdminAttendancePage() {
       .catch(() => setUsers([]));
   }, [router, me]);
 
-  async function load() {
+  async function load(options?: { focusedDay?: string; clearDates?: boolean }) {
     setErr(null);
     setInfo(null);
     const t = getToken();
     if (!t) return;
     const qs = new URLSearchParams();
-    if (from && to && from === to) qs.set("day", from);
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
+    const day = options?.focusedDay ?? focusedDay;
+    if (day) qs.set("day", day);
+    else if (!options?.clearDates && from && to && from === to) qs.set("day", from);
+    if (!options?.clearDates && from) qs.set("from", from);
+    if (!options?.clearDates && to) qs.set("to", to);
     if (siteId) qs.set("site_id", siteId);
     if (userId) qs.set("user_id", userId);
     setLoading(true);
@@ -229,17 +232,15 @@ export default function AdminAttendancePage() {
     <AppShell
       area="mixed"
       title="Docházka"
-      subtitle="Přehled dnů, opravy záznamů, mazání a změna stavby."
+      subtitle={focusedDay ? `Detail dne ${focusedDay}` : "Přehled dnů, opravy záznamů, mazání a změna stavby."}
       actions={
-        <button onClick={load} disabled={loading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-50">
+        <button onClick={() => load()} disabled={loading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-50">
           {loading ? "Načítám" : "Obnovit"}
         </button>
       }
     >
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-4">
-          <Field label="Od"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="Do"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
           <Field label="Stavba">
             <select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
               <option value="">Všechny</option>
@@ -252,8 +253,23 @@ export default function AdminAttendancePage() {
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </Field>
+          <div className="flex items-end gap-2">
+            <button onClick={() => load()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Načíst</button>
+            {focusedDay ? (
+              <button
+                onClick={() => {
+                  setFocusedDay("");
+                  setFrom("");
+                  setTo("");
+                  load({ focusedDay: "", clearDates: true });
+                }}
+                className="rounded-lg border bg-white px-4 py-2 text-sm font-semibold"
+              >
+                Vše
+              </button>
+            ) : null}
+          </div>
         </div>
-        <button onClick={load} className="mt-3 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Použít filtr</button>
         {(err || info) && (
           <div className="mt-3 space-y-2">
             {err && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div>}
@@ -281,7 +297,11 @@ export default function AdminAttendancePage() {
                 <Info label="Čas" value={`${fmtTimeCZFromIso(r.first_in)} → ${fmtTimeCZFromIso(r.last_out)}`} sub={`${fmt(r.hours)} h`} />
                 <Info label="Práce" value={`${fmt(r.pay)} Kč`} sub={`${fmt(r.hourly_rate)} Kč/h`} />
                 <Info label="Doprava / materiál" value={`${fmt(r.km)} km · ${fmt(r.km_pay)} Kč`} sub={`Materiál ${fmt(r.material)} Kč`} />
-                <Info label="Celkem" value={`${fmt(r.total)} Kč`} sub={r.note || "Bez poznámky"} />
+                <Info label="Celkem" value={`${fmt(r.total)} Kč`} sub={r.paid ? "Zaplaceno" : "Nezaplaceno"} />
+              </div>
+              <div className="mt-3 rounded-lg border bg-slate-50 p-3">
+                <div className="text-xs font-medium text-slate-500">Práce</div>
+                <div className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{r.note || "Bez popisu práce"}</div>
               </div>
 
               {isEditing && (

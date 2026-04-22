@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 
 const workerLinks = [
-  { href: "/attendance", label: "Směna" },
+  { href: "/attendance", label: "Docházka" },
   { href: "/me", label: "Moje" },
   { href: "/me/rates", label: "Sazby" },
   { href: "/me/edit", label: "Upravit" },
@@ -36,7 +36,7 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
       ? adminLinks
       : variant === "mixed"
       ? [
-          { href: "/attendance", label: "Směna" },
+          { href: "/attendance", label: "Docházka" },
           { href: "/me", label: "Moje" },
           { href: "/admin", label: "Admin" },
           { href: "/admin/payments", label: "Výplaty" },

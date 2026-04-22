@@ -2,21 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, SubCard, Pill, Button } from "@/app/components/ui";
 import { AppShell } from "@/components/AppNav";
+
+type PaymentState = "paid" | "unpaid" | "partial";
 
 type Seg = {
   kind: "WORK";
   site_id: string | null;
   site_name: string | null;
-
-  in_time_raw: string;
-  out_time_raw: string;
-
   in_time_rounded: string;
   out_time_rounded: string;
-
-  minutes_rounded: number;
   hours_rounded: number;
   site_hours: number;
   prog_hours: number;
@@ -46,26 +41,20 @@ type Off = {
 type DayRow = {
   day: string;
   paid: boolean;
-  payment_state?: "paid" | "unpaid" | "partial";
+  payment_state?: PaymentState;
   paid_total?: number;
   unpaid_total?: number;
   unknown_total?: number;
-
   first_in: string | null;
   last_out: string | null;
-
   hours: number;
   hours_pay: number;
-
   km: number;
   km_pay: number;
   km_source: "manual" | "trips" | "none";
-
   material: number;
   material_notes: string[];
-
   total: number;
-
   segments: Seg[];
   offsites: Off[];
 };
@@ -74,15 +63,10 @@ type SiteAgg = {
   site_id: string;
   name: string;
   hours: number;
-  hours_pay: number;
-  km: number;
-  km_pay: number;
-  material: number;
-  total: number;
-  paid_all: boolean;
+  amount: number;
+  paid: number;
+  unpaid: number;
 };
-
-const TZ = "Europe/Prague";
 
 type ProfileResponse = {
   user?: {
@@ -90,17 +74,7 @@ type ProfileResponse = {
   } | null;
 };
 
-function NabidkaLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  return (
-    <a
-      {...props}
-      className={[
-        "block rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm hover:bg-slate-50",
-        props.className || "",
-      ].join(" ")}
-    />
-  );
-}
+const TZ = "Europe/Prague";
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -114,7 +88,7 @@ function fmt(n: unknown, max = 2) {
 }
 
 function timeHM(iso: string | null) {
-  if (!iso) return "—";
+  if (!iso) return "--:--";
   return new Date(iso).toLocaleTimeString("cs-CZ", {
     timeZone: TZ,
     hour: "2-digit",
@@ -122,18 +96,17 @@ function timeHM(iso: string | null) {
   });
 }
 
-function paymentTone(state?: "paid" | "unpaid" | "partial", paid?: boolean) {
-  if (state === "partial") return "neutral" as const;
-  if (state === "paid") return "ok" as const;
-  if (state === "unpaid") return "warn" as const;
-  return paid ? "ok" as const : "warn" as const;
-}
-
-function paymentLabel(state?: "paid" | "unpaid" | "partial", paid?: boolean) {
-  if (state === "partial") return "Částečně zaplaceno";
+function paymentLabel(state?: PaymentState, paid?: boolean) {
+  if (state === "partial") return "Částečně";
   if (state === "paid") return "Zaplaceno";
   if (state === "unpaid") return "Nezaplaceno";
   return paid ? "Zaplaceno" : "Nezaplaceno";
+}
+
+function paymentClass(state?: PaymentState, paid?: boolean) {
+  if (state === "partial") return "bg-blue-50 text-blue-800 border-blue-100";
+  if (state === "paid" || paid) return "bg-emerald-50 text-emerald-800 border-emerald-100";
+  return "bg-amber-50 text-amber-800 border-amber-100";
 }
 
 export default function Page() {
@@ -141,12 +114,10 @@ export default function Page() {
   const [rows, setRows] = useState<DayRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
-
-  const [days, setDays] = useState<number>(30);
+  const [days, setDays] = useState(30);
   const [mode, setMode] = useState<"days" | "sites">("days");
-  const [siteFilter, setSiteFilter] = useState<string>("ALL");
+  const [siteFilter, setSiteFilter] = useState("ALL");
 
   const token = useMemo(() => getToken(), []);
 
@@ -158,7 +129,7 @@ export default function Page() {
       .catch(() => setSheetUrl(null));
   }, [token]);
 
-  async function load(d: number) {
+  async function load(rangeDays: number) {
     setErr(null);
     if (!token) {
       router.push("/login");
@@ -167,14 +138,14 @@ export default function Page() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/me/summary?days=${d}`, {
+      const res = await fetch(`/api/me/summary?days=${rangeDays}`, {
         headers: { authorization: `Bearer ${token}` },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Chyba");
+      const data = (await res.json().catch(() => ({}))) as { rows?: DayRow[]; error?: string };
+      if (!res.ok) throw new Error(data.error || "Chyba načtení.");
       setRows(data.rows || []);
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Chyba");
+      setErr(e instanceof Error ? e.message : "Chyba načtení.");
     } finally {
       setLoading(false);
     }
@@ -185,364 +156,245 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
 
-  const totals = useMemo(() => {
-    const sum = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
-    const unpaid = rows.reduce((s, r) => {
-      if (r.unpaid_total != null) return s + (Number(r.unpaid_total) || 0);
-      return s + (!r.paid ? Number(r.total) || 0 : 0);
-    }, 0);
-    return { sum, unpaid };
-  }, [rows]);
-
   const siteOptions = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of rows) {
-      for (const s of r.segments || []) {
-        if (s.site_id) m.set(s.site_id, s.site_name || s.site_id);
-      }
-      for (const o of r.offsites || []) {
-        if (o.site_id) m.set(o.site_id, o.site_name || o.site_id);
-      }
+    const sites = new Map<string, string>();
+    for (const row of rows) {
+      for (const seg of row.segments || []) if (seg.site_id) sites.set(seg.site_id, seg.site_name || seg.site_id);
+      for (const off of row.offsites || []) if (off.site_id) sites.set(off.site_id, off.site_name || off.site_id);
     }
-    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    return [...sites.entries()].sort((a, b) => a[1].localeCompare(b[1], "cs"));
   }, [rows]);
 
   const filteredRows = useMemo(() => {
     if (siteFilter === "ALL") return rows;
-
     return rows
-      .map((r) => {
-        const segs = (r.segments || []).filter((s) => s.site_id === siteFilter);
-        const offs = (r.offsites || []).filter((o) => o.site_id === siteFilter);
-
-        const has = segs.length > 0 || offs.length > 0;
-        if (!has) return null;
-
-        const hoursPay = segs.reduce((a, x) => a + x.pay, 0) + offs.reduce((a, x) => a + x.pay, 0);
-        const hours = segs.reduce((a, x) => a + x.hours_rounded, 0) + offs.reduce((a, x) => a + x.hours, 0);
-
-        return {
-          ...r,
-          segments: segs,
-          offsites: offs,
-          hours: Number(hours.toFixed(2)),
-          hours_pay: Number(hoursPay.toFixed(2)),
-        } as DayRow;
+      .map((row) => {
+        const segments = (row.segments || []).filter((seg) => seg.site_id === siteFilter);
+        const offsites = (row.offsites || []).filter((off) => off.site_id === siteFilter);
+        if (!segments.length && !offsites.length) return null;
+        const hours = segments.reduce((sum, x) => sum + x.hours_rounded, 0) + offsites.reduce((sum, x) => sum + x.hours, 0);
+        const hoursPay = segments.reduce((sum, x) => sum + x.pay, 0) + offsites.reduce((sum, x) => sum + x.pay, 0);
+        return { ...row, segments, offsites, hours, hours_pay: hoursPay };
       })
-      .filter(Boolean) as DayRow[];
+      .filter((row): row is DayRow => !!row);
   }, [rows, siteFilter]);
+
+  const totals = useMemo(() => {
+    return filteredRows.reduce(
+      (sum, row) => ({
+        total: sum.total + (Number(row.total) || 0),
+        paid: sum.paid + (Number(row.paid_total) || 0),
+        unpaid: sum.unpaid + (Number(row.unpaid_total) || 0),
+        unknown: sum.unknown + (Number(row.unknown_total) || 0),
+        hours: sum.hours + (Number(row.hours) || 0),
+      }),
+      { total: 0, paid: 0, unpaid: 0, unknown: 0, hours: 0 }
+    );
+  }, [filteredRows]);
 
   const sitesAgg = useMemo(() => {
     const map = new Map<string, SiteAgg>();
-
-    for (const r of filteredRows) {
-      for (const s of r.segments || []) {
-        if (!s.site_id) continue;
-        const key = s.site_id;
-        const cur = map.get(key) || {
-          site_id: key,
-          name: s.site_name || key,
+    for (const row of filteredRows) {
+      for (const item of [...(row.segments || []), ...(row.offsites || [])]) {
+        if (!item.site_id) continue;
+        const current = map.get(item.site_id) || {
+          site_id: item.site_id,
+          name: item.site_name || item.site_id,
           hours: 0,
-          hours_pay: 0,
-          km: 0,
-          km_pay: 0,
-          material: 0,
-          total: 0,
-          paid_all: true,
+          amount: 0,
+          paid: 0,
+          unpaid: 0,
         };
-        cur.hours += s.hours_rounded;
-        cur.hours_pay += s.pay;
-        cur.paid_all = cur.paid_all && s.paid;
-        map.set(key, cur);
-      }
-
-      for (const o of r.offsites || []) {
-        if (!o.site_id) continue;
-        const key = o.site_id;
-        const cur = map.get(key) || {
-          site_id: key,
-          name: o.site_name || key,
-          hours: 0,
-          hours_pay: 0,
-          km: 0,
-          km_pay: 0,
-          material: 0,
-          total: 0,
-          paid_all: true,
-        };
-        cur.hours += o.hours;
-        cur.hours_pay += o.pay;
-        cur.paid_all = cur.paid_all && o.paid;
-        map.set(key, cur);
+        const hours = "hours_rounded" in item ? item.hours_rounded : item.hours;
+        current.hours += Number(hours) || 0;
+        current.amount += Number(item.pay) || 0;
+        if (item.paid) current.paid += Number(item.pay) || 0;
+        else current.unpaid += Number(item.pay) || 0;
+        map.set(item.site_id, current);
       }
     }
-
-    for (const v of map.values()) {
-      v.hours = Number(v.hours.toFixed(2));
-      v.hours_pay = Number(v.hours_pay.toFixed(2));
-      v.total = Number((v.hours_pay + v.km_pay + v.material).toFixed(2));
-    }
-
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...map.values()].sort((a, b) => b.amount - a.amount);
   }, [filteredRows]);
 
   return (
-    <AppShell area="auto" title="Moje výdělky" subtitle="Přehled práce a plateb podle skutečných záznamů.">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <AppShell
+      area="auto"
+      title="Moje výdělky"
+      subtitle="Přehled práce, plateb, dopravy a materiálu."
+      actions={
+        <>
+          {sheetUrl ? (
+            <a className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm" href={sheetUrl} target="_blank" rel="noreferrer">
+              Výkaz
+            </a>
+          ) : null}
+          <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50" onClick={() => load(days)} disabled={loading}>
+            {loading ? "Načítám" : "Obnovit"}
+          </button>
+        </>
+      }
+    >
+      <section className="grid gap-3 md:grid-cols-4">
+        <MoneyStat label="Celkem" value={totals.total} />
+        <MoneyStat label="Zaplaceno" value={totals.paid} tone="paid" />
+        <MoneyStat label="Nezaplaceno" value={totals.unpaid} tone="unpaid" />
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium text-slate-500">Odpracováno</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-950">{fmt(totals.hours)} h</div>
+          {totals.unknown > 0 ? <div className="mt-2 text-xs text-amber-700">Nerozřazeno {fmt(totals.unknown)} Kč</div> : null}
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[180px_220px_1fr]">
+          <label className="block text-xs font-medium text-slate-600">
+            Období
+            <select className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+              <option value={14}>14 dní</option>
+              <option value={30}>30 dní</option>
+              <option value={60}>60 dní</option>
+              <option value={90}>90 dní</option>
+              <option value={180}>180 dní</option>
+            </select>
+          </label>
+
           <div>
-            <h2 className="text-lg font-semibold">Souhrn</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              Zobrazené časy a výpočty jsou zaokrouhlené na 30 minut. Původní záznamy v databázi zůstávají beze změny.
-            </p>
+            <div className="text-xs font-medium text-slate-600">Zobrazení</div>
+            <div className="mt-2 grid grid-cols-2 rounded-lg border bg-slate-50 p-1">
+              <button className={`rounded-md px-3 py-2 text-xs font-semibold ${mode === "days" ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setMode("days")}>
+                Dny
+              </button>
+              <button className={`rounded-md px-3 py-2 text-xs font-semibold ${mode === "sites" ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setMode("sites")}>
+                Stavby
+              </button>
+            </div>
           </div>
 
-          <Button onClick={() => load(days)} disabled={loading}>
-            {loading ? "Načítám…" : "Obnovit"}
-          </Button>
+          <label className="block text-xs font-medium text-slate-600">
+            Stavba
+            <select className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
+              <option value="ALL">Všechny stavby</option>
+              {siteOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+      </section>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <SubCard>
-            <div className="text-xs text-neutral-600">Celkem</div>
-            <div className="mt-1 text-base font-semibold">{fmt(totals.sum)} Kč</div>
-          </SubCard>
-          <SubCard>
-            <div className="text-xs text-neutral-600">Nezaplaceno</div>
-            <div className="mt-1 text-base font-semibold">{fmt(totals.unpaid)} Kč</div>
-          </SubCard>
-        </div>
-
-        <div className="mt-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <SubCard>
-              <div className="text-sm font-semibold">Nabídka</div>
-              <div className="mt-3 grid gap-2">
-                <NabidkaLink href="/attendance">Docházka</NabidkaLink>
-                <NabidkaLink href="/me/rates">Moje sazby</NabidkaLink>
-                <NabidkaLink href="/me/edit">Upravit záznamy</NabidkaLink>
-                {sheetUrl ? (
-                  <a
-                    className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-sm"
-                    href={sheetUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Můj výkaz (Google Sheet)
-                  </a>
-                ) : (
-                  <NabidkaLink href="/me#export">Export a výkaz</NabidkaLink>
-                )}
-              </div>
-            </SubCard>
-
-            <SubCard>
-              <div className="text-sm font-semibold">Filtry</div>
-
-              <label className="mt-3 block text-xs text-neutral-600">Období</label>
-              <select
-                className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-              >
-                <option value={14}>14 dní</option>
-                <option value={30}>30 dní</option>
-                <option value={60}>60 dní</option>
-                <option value={90}>90 dní</option>
-                <option value={180}>180 dní</option>
-              </select>
-
-              <label className="mt-3 block text-xs text-neutral-600">Zobrazení</label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  className={`rounded-full border px-3 py-1 text-xs ${mode === "days" ? "bg-black text-white" : "bg-white"}`}
-                  onClick={() => setMode("days")}
-                >
-                  Podle dnů
-                </button>
-                <button
-                  className={`rounded-full border px-3 py-1 text-xs ${mode === "sites" ? "bg-black text-white" : "bg-white"}`}
-                  onClick={() => setMode("sites")}
-                >
-                  Podle staveb
-                </button>
-              </div>
-
-              <label className="mt-3 block text-xs text-neutral-600">Stavba</label>
-              <select
-                className="mt-2 w-full rounded-2xl border bg-white px-4 py-3 text-sm"
-                value={siteFilter}
-                onChange={(e) => setSiteFilter(e.target.value)}
-              >
-                <option value="ALL">Vše</option>
-                {siteOptions.map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-
-              <div className="mt-2 text-[11px] text-neutral-500">
-                Doprava: pokud zadáte kilometry při odchodu, použijí se tyto hodnoty. Jinak se automaticky použije evidence jízd.
-              </div>
-            </SubCard>
-          </div>
-        </div>
-
-        {err && <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div>}
-      </Card>
+      {err ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}
 
       {mode === "sites" ? (
-        <div className="space-y-3">
-          {sitesAgg.map((s) => (
-            <Card key={s.site_id}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+        <section className="mt-4 grid gap-3 lg:grid-cols-2">
+          {sitesAgg.map((site) => (
+            <div key={site.site_id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-semibold">{s.name}</div>
-                  <div className="mt-1 text-xs text-neutral-600">
-                    {fmt(s.hours)} h • {fmt(s.hours_pay)} Kč
-                  </div>
+                  <div className="font-semibold">{site.name}</div>
+                  <div className="mt-1 text-xs text-slate-500">{fmt(site.hours)} h</div>
                 </div>
-                <Pill tone={s.paid_all ? "ok" : "warn"}>{s.paid_all ? "Zaplaceno" : "Nezaplaceno"}</Pill>
-              </div>
-
-              <div className="mt-3 rounded-2xl border bg-neutral-50 p-4 text-sm">
-                <div className="text-xs text-neutral-600">Poznámka</div>
-                <div className="mt-1 text-xs text-neutral-600">
-                  Kilometry a materiál jsou v uživatelském přehledu vedené po dnech. Pro přesné podklady podle stavby použijte export v administraci.
-                </div>
-              </div>
-            </Card>
-          ))}
-
-          {sitesAgg.length === 0 && (
-            <Card>
-              <div className="text-sm text-neutral-600">Pro zvolené filtry nebyly nalezeny žádné záznamy.</div>
-            </Card>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredRows.map((r) => (
-            <Card key={r.day}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">{r.day}</div>
-                  <div className="mt-1 text-xs text-neutral-600">
-                    Zaokrouhlené časy: <b>{timeHM(r.first_in)}</b> → <b>{timeHM(r.last_out)}</b>
-                  </div>
-                </div>
-
                 <div className="text-right">
-                  <Pill tone={paymentTone(r.payment_state, r.paid)}>{paymentLabel(r.payment_state, r.paid)}</Pill>
-                  <div className="mt-2 text-base font-semibold">{fmt(r.total)} Kč</div>
-                  {r.payment_state === "partial" ? (
-                    <div className="mt-1 text-xs text-neutral-600">Nezaplaceno z tohoto dne: {fmt(r.unpaid_total)} Kč</div>
-                  ) : null}
-                  {Number(r.unknown_total) > 0 ? (
-                    <div className="mt-1 text-[11px] text-amber-700">Automatická doprava u smíšeného dne nejde přesně rozdělit na zaplaceno / nezaplaceno.</div>
-                  ) : null}
+                  <div className="text-lg font-semibold">{fmt(site.amount)} Kč</div>
+                  <div className="mt-1 text-xs text-amber-700">Nezaplaceno {fmt(site.unpaid)} Kč</div>
                 </div>
               </div>
-
-              <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-                <SubCard>
-                  <div className="text-xs text-neutral-600">Hodiny (zaok.)</div>
-                  <div className="mt-1 font-semibold">{fmt(r.hours)} h</div>
-                  <div className="text-xs text-neutral-600">Částka: {fmt(r.hours_pay)} Kč</div>
-                </SubCard>
-
-                <SubCard>
-                  <div className="text-xs text-neutral-600">Doprava</div>
-                  <div className="mt-1 font-semibold">{fmt(r.km, 1)} km</div>
-                  <div className="text-xs text-neutral-600">
-                    Částka: {fmt(r.km_pay)} Kč • zdroj dat: {r.km_source}
-                  </div>
-                </SubCard>
-
-                <SubCard>
-                  <div className="text-xs text-neutral-600">Materiál</div>
-                  <div className="mt-1 font-semibold">{fmt(r.material)} Kč</div>
-                </SubCard>
-              </div>
-
-              {r.material_notes?.length ? (
-                <div className="mt-3 rounded-2xl border bg-white p-4 text-sm">
-                  <div className="text-sm font-semibold">Materiál</div>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-700">
-                    {r.material_notes.map((x, i) => (
-                      <li key={i}>{x}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {(r.segments?.length || r.offsites?.length) ? (
-                <div className="mt-3 rounded-2xl border bg-white p-4">
-                  <div className="text-sm font-semibold">Detail dne (zaokrouhlené časy)</div>
-
-                  {r.segments?.length ? (
-                    <div className="mt-3 space-y-2">
-                      {r.segments.map((s, i) => (
-                        <div key={i} className="rounded-2xl border bg-neutral-50 p-4 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold">{s.site_name || "—"}</div>
-                            <div className="text-xs text-neutral-600">
-                              {timeHM(s.in_time_rounded)} → {timeHM(s.out_time_rounded)} • {fmt(s.hours_rounded)} h
-                            </div>
-                          </div>
-                          {s.note_work ? <div className="mt-2 text-sm text-neutral-700">{s.note_work}</div> : null}
-
-                          {s.prog_hours > 0 ? (
-                            <div className="mt-2 rounded-xl bg-white p-3 text-xs text-neutral-700">
-                              <div>
-                                Stavba: {fmt(s.site_hours)} h • {fmt(s.hourly_rate)} Kč/h • {fmt(s.site_pay)} Kč
-                              </div>
-                              <div className="mt-1">
-                                Programování: {fmt(s.prog_hours)} h • {fmt(s.programming_rate)} Kč/h • {fmt(s.prog_pay)} Kč
-                                {s.programming_note ? ` — ${s.programming_note}` : ""}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="mt-2 text-xs text-neutral-600">
-                            Sazba: {fmt(s.hourly_rate)} Kč/h ({s.rate_source}) • Částka: {fmt(s.pay)} Kč
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {r.offsites?.length ? (
-                    <div className="mt-3 space-y-2">
-                      {r.offsites.map((o, i) => (
-                        <div key={i} className="rounded-2xl border bg-amber-50 p-4 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold">Mimo stavbu</div>
-                            <div className="text-xs text-neutral-700">{fmt(o.hours)} h</div>
-                          </div>
-                          <div className="mt-1 text-sm text-neutral-700">{o.reason}</div>
-                          <div className="mt-2 text-xs text-neutral-700">
-                            Sazba: {fmt(o.hourly_rate)} Kč/h ({o.rate_source}) • Částka: {fmt(o.pay)} Kč
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </Card>
+            </div>
           ))}
-
-          {filteredRows.length === 0 && (
-            <Card>
-              <div className="text-sm text-neutral-600">Pro zvolené filtry nebyly nalezeny žádné záznamy.</div>
-            </Card>
-          )}
-        </div>
+          {!sitesAgg.length ? <EmptyState /> : null}
+        </section>
+      ) : (
+        <section className="mt-4 space-y-3">
+          {filteredRows.map((row) => (
+            <DayCard key={row.day} row={row} />
+          ))}
+          {!filteredRows.length ? <EmptyState /> : null}
+        </section>
       )}
-
-      <div className="pb-10" />
     </AppShell>
   );
+}
+
+function MoneyStat({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "paid" | "unpaid" }) {
+  const cls =
+    tone === "paid"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+      : tone === "unpaid"
+      ? "border-amber-200 bg-amber-50 text-amber-950"
+      : "border-blue-200 bg-blue-50 text-blue-950";
+  return (
+    <div className={`rounded-lg border p-4 shadow-sm ${cls}`}>
+      <div className="text-xs font-medium opacity-75">{label}</div>
+      <div className="mt-2 text-2xl font-semibold">{fmt(value)} Kč</div>
+    </div>
+  );
+}
+
+function DayCard({ row }: { row: DayRow }) {
+  const items = [...(row.segments || []), ...(row.offsites || [])];
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold">{row.day}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            {timeHM(row.first_in)} - {timeHM(row.last_out)} · {fmt(row.hours)} h
+          </div>
+        </div>
+        <div className="text-right">
+          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${paymentClass(row.payment_state, row.paid)}`}>
+            {paymentLabel(row.payment_state, row.paid)}
+          </span>
+          <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        <MiniStat label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={`${fmt(row.hours)} h`} />
+        <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km`} />
+        <MiniStat label="Materiál" value={`${fmt(row.material)} Kč`} sub={row.material_notes?.[0] || "Bez materiálu"} />
+        <MiniStat label="Nezaplaceno" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : " "} />
+      </div>
+
+      {items.length ? (
+        <div className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-100">
+          {items.map((item, index) => (
+            <div key={index} className="p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">
+                    {item.kind === "WORK" ? item.site_name || "Bez stavby" : "Mimo stavbu"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {item.kind === "WORK" ? `${timeHM(item.in_time_rounded)} - ${timeHM(item.out_time_rounded)}` : `${fmt(item.hours)} h`}
+                  </div>
+                </div>
+                <div className="text-right text-sm font-semibold">{fmt(item.pay)} Kč</div>
+              </div>
+              {"note_work" in item && item.note_work ? <div className="mt-2 text-sm text-slate-700">{item.note_work}</div> : null}
+              {"reason" in item && item.reason ? <div className="mt-2 text-sm text-slate-700">{item.reason}</div> : null}
+              {"prog_hours" in item && item.prog_hours > 0 ? (
+                <div className="mt-2 text-xs text-slate-500">Programování {fmt(item.prog_hours)} h · {fmt(item.prog_pay)} Kč</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function MiniStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-1 font-semibold">{value}</div>
+      <div className="mt-1 truncate text-xs text-slate-500">{sub}</div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy pro vybrané filtry.</div>;
 }

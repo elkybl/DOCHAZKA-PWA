@@ -102,7 +102,7 @@ export function AppShell({
             <Link href="/attendance" className="flex min-w-0 items-center gap-3">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white">
                 <Image
-                  src="/ekybl-logo.png"
+                  src="/ekybl-icon.png"
                   alt="Elektro práce Lukáš Kybl"
                   width={96}
                   height={56}

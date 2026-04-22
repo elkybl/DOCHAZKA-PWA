@@ -7,6 +7,9 @@ import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 
 function toNum(v: any, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
+function isDay(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
+function startOfDayIso(v: string) { return isDay(v) ? `${v}T00:00:00.000Z` : v; }
+function endOfDayIso(v: string) { return isDay(v) ? `${v}T23:59:59.999Z` : v; }
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -23,6 +26,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const from = url.searchParams.get("from") || new Date(Date.now() - 14 * 86400000).toISOString();
   const to = url.searchParams.get("to") || new Date().toISOString();
+  const day = url.searchParams.get("day");
   const siteId = url.searchParams.get("site_id");
   const userId = url.searchParams.get("user_id");
 
@@ -51,7 +55,9 @@ export async function GET(req: NextRequest) {
   const siteName = new Map<string, string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  let query = db.from("attendance_events").select("id,user_id,site_id,type,server_time,day_local,note_work,km,programming_hours,programming_note,offsite_reason,offsite_hours,material_desc,material_amount,is_paid").gte("server_time", from).lte("server_time", to).order("server_time", { ascending: true });
+  let query = db.from("attendance_events").select("id,user_id,site_id,type,server_time,day_local,note_work,km,programming_hours,programming_note,offsite_reason,offsite_hours,material_desc,material_amount,is_paid").order("server_time", { ascending: true });
+  if (day && isDay(day)) query = query.eq("day_local", day);
+  else query = query.gte("server_time", startOfDayIso(from)).lte("server_time", endOfDayIso(to));
   if (siteId) query = query.eq("site_id", siteId);
   if (userId) query = query.eq("user_id", userId);
   const { data: evs, error } = await query;

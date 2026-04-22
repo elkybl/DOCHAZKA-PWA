@@ -109,6 +109,7 @@ export default function AdminAttendancePage() {
     const t = getToken();
     if (!t) return;
     const qs = new URLSearchParams();
+    if (from && to && from === to) qs.set("day", from);
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
     if (siteId) qs.set("site_id", siteId);

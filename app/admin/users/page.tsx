@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AppShell } from "@/components/AppNav";
 
 type U = {
   id: string;
@@ -157,11 +158,11 @@ export default function AdminUsers() {
   }
 
   return (
-    <main className="space-y-4">
+    <AppShell area="mixed" title="Lidé" subtitle="Pracovníci, role, PINy a exporty.">
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Uživatelé</h1>
+            <h2 className="text-lg font-semibold">Uživatelé</h2>
             <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/admin">
               Zpět do Admin menu
             </Link>
@@ -297,6 +298,6 @@ export default function AdminUsers() {
           )}
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

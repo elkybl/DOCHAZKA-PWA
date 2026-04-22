@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fmtDateTimeCZFromIso } from "@/lib/time";
+import { AppShell } from "@/components/AppNav";
 
 type Row = {
   id: string;
@@ -161,11 +162,11 @@ export default function SiteRequestsAdminPage() {
   const count = useMemo(() => rows.length, [rows.length]);
 
   return (
-    <main className="space-y-4 px-3">
+    <AppShell area="mixed" title="Žádosti o stavbu" subtitle="Schválení a úprava staveb založených z terénu.">
       <div className="rounded-3xl border bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Dočasné stavby</h1>
+            <h2 className="text-xl font-semibold">Dočasné stavby</h2>
             <p className="mt-1 text-sm text-neutral-600">
               Zaměstnanec založí akci z telefonu (GPS). Tady ji upravíš (název, adresa, GPS, radius) a aktivuješ.
             </p>
@@ -284,6 +285,6 @@ export default function SiteRequestsAdminPage() {
           </div>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

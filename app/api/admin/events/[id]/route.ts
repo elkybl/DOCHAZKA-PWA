@@ -31,6 +31,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   if (typeof body.note_work === "string") patch.note_work = body.note_work.trim();
   if (body.km !== undefined) patch.km = body.km === null ? null : Number(body.km) || 0;
+  if (body.site_id !== undefined) patch.site_id = body.site_id ? String(body.site_id) : null;
 
   if (typeof body.material_desc === "string") patch.material_desc = body.material_desc.trim();
   if (body.material_amount !== undefined)

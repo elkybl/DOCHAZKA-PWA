@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/AppNav";
 
 type Site = { id: string; name: string };
 type Row = { site_id: string; hourly_rate: number | null; km_rate: number | null; programming_rate?: number | null };
@@ -105,11 +106,11 @@ export default function Page() {
   }, []);
 
   return (
-    <main className="space-y-4">
+    <AppShell area="auto" title="Moje sazby" subtitle="Hodinové sazby a doprava.">
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Moje sazby</h1>
+            <h2 className="text-lg font-semibold">Nastavení</h2>
             <p className="mt-1 text-xs text-neutral-500">
               Nastav si default sazby a případně sazby pro konkrétní stavby (přebijí default).
             </p>
@@ -226,6 +227,6 @@ export default function Page() {
           })}
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SubCard, Pill, Button } from "@/app/components/ui";
-import { BottomNav } from "@/components/AppNav";
+import { AppShell } from "@/components/AppNav";
 
 type Seg = {
   kind: "WORK";
@@ -287,11 +287,11 @@ export default function Page() {
   }, [filteredRows]);
 
   return (
-    <main className="space-y-4 px-3">
+    <AppShell area="auto" title="Moje výdělky" subtitle="Přehled práce a plateb podle skutečných záznamů.">
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Moje výdělky</h1>
+            <h2 className="text-lg font-semibold">Souhrn</h2>
             <p className="mt-1 text-xs text-neutral-500">
               Zobrazené časy a výpočty jsou zaokrouhlené na 30 minut. Původní záznamy v databázi zůstávají beze změny.
             </p>
@@ -543,7 +543,6 @@ export default function Page() {
       )}
 
       <div className="pb-10" />
-      <BottomNav />
-    </main>
+    </AppShell>
   );
 }

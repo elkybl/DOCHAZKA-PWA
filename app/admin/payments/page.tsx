@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/AppNav";
 
 type Row = {
   user_id: string;
@@ -114,7 +115,7 @@ export default function Page() {
   const sumPaid = paid.reduce((s, r) => s + (Number(r.total) || 0), 0);
 
   return (
-    <main className="space-y-4 px-3 pb-8">
+    <AppShell area="mixed" title="Výplaty" subtitle="Souhrny podle pracovníka, stavby a období.">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">Výplaty</h1>
@@ -123,9 +124,7 @@ export default function Page() {
           </div>
         </div>
 
-        <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">
-          Administrace
-        </Link>
+        <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">Administrace</Link>
       </div>
 
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -227,6 +226,6 @@ export default function Page() {
           </div>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

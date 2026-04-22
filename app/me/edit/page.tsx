@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fmtDateTimeCZFromIso } from "@/lib/time";
+import { AppShell } from "@/components/AppNav";
 
 type Row = {
   id: string;
@@ -170,11 +171,11 @@ function dayKeyPrague(iso: string) {
   }, [token]);
 
   return (
-    <main className="space-y-4">
+    <AppShell area="auto" title="Upravit záznamy" subtitle="Doplnění práce, kilometrů, materiálu a činností mimo stavbu.">
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Doplnit práci</h1>
+            <h2 className="text-lg font-semibold">Doplnit práci</h2>
             <p className="mt-1 text-xs text-neutral-500">
               Na této stránce můžete upravit popis práce, kilometry, materiál a činnosti mimo stavbu. Čas a poloha se zpětně nemění.
             </p>
@@ -450,6 +451,6 @@ function dayKeyPrague(iso: string) {
           </div>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

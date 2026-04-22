@@ -1,10 +1,21 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { BottomNav } from "@/components/AppNav";
+import { AppShell } from "@/components/AppNav";
+
+type Risk = {
+  code: string;
+  title: string;
+  user_id: string;
+  user_name: string;
+  site_id: string | null;
+  site_name: string | null;
+  day: string;
+  detail: string;
+  severity: "low" | "medium" | "high";
+};
 
 type Dashboard = {
   summary: {
@@ -15,15 +26,7 @@ type Dashboard = {
     risk_count: number;
     same_time_transitions: number;
   };
-  risks: Array<{
-    code: string;
-    title: string;
-    user_name: string;
-    site_name: string | null;
-    day: string;
-    detail: string;
-    severity: "low" | "medium" | "high";
-  }>;
+  risks: Risk[];
 };
 
 function getUser() {
@@ -43,17 +46,25 @@ function fmt(n: unknown) {
   return x.toLocaleString("cs-CZ", { maximumFractionDigits: 0 });
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Nepodařilo se načíst administraci.";
+function riskUrl(risk: Risk) {
+  const qs = new URLSearchParams({ day: risk.day, user_id: risk.user_id });
+  if (risk.site_id) qs.set("site_id", risk.site_id);
+  return `/admin/attendance?${qs.toString()}`;
 }
 
-const links = [
-  { href: "/admin/attendance", title: "Docházka", desc: "Denní přehled, detail směn a opravy záznamů." },
-  { href: "/admin/payments", title: "Výplaty", desc: "Neuhrazené položky, částečné platby a označení úhrad." },
-  { href: "/admin/sites", title: "Stavby", desc: "Správa akcí, adres, polohy a radiusu." },
-  { href: "/admin/users", title: "Uživatelé", desc: "Pracovníci, role, PINy, sazby a exporty." },
-  { href: "/admin/site-requests", title: "Dočasné stavby", desc: "Schvalování nových akcí z terénu." },
-  { href: "/trips", title: "Jízdy", desc: "Evidence a kontrola dopravy." },
+const adminLinks = [
+  { href: "/admin/attendance", title: "Docházka", desc: "Dny, směny, opravy, mazání a změna stavby." },
+  { href: "/admin/payments", title: "Výplaty", desc: "Neuhrazené částky a označení plateb." },
+  { href: "/admin/sites", title: "Stavby", desc: "Akce, GPS, radius a aktivní stav." },
+  { href: "/admin/users", title: "Lidé", desc: "Pracovníci, role, PINy a sazby." },
+  { href: "/admin/site-requests", title: "Žádosti o stavbu", desc: "Nové stavby založené z terénu." },
+];
+
+const workerLinks = [
+  { href: "/attendance", title: "Moje směna", desc: "Příchod, odchod a doplnění práce." },
+  { href: "/me", title: "Moje výdělky", desc: "Osobní přehled zaplaceno / nezaplaceno." },
+  { href: "/me/edit", title: "Moje úpravy", desc: "Doplnění práce, kilometrů a materiálu." },
+  { href: "/me/rates", title: "Moje sazby", desc: "Hodinovky a sazby podle stavby." },
 ];
 
 export default function AdminHome() {
@@ -71,10 +82,10 @@ export default function AdminHome() {
     try {
       const res = await fetch("/api/admin/dashboard", { headers: { authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nepodařilo se načíst dashboard.");
+      if (!res.ok) throw new Error(data?.error || "Nepodařilo se načíst administraci.");
       setDashboard(data);
     } catch (e: unknown) {
-      setErr(getErrorMessage(e));
+      setErr(e instanceof Error ? e.message : "Nepodařilo se načíst administraci.");
     } finally {
       setLoading(false);
     }
@@ -94,93 +105,103 @@ export default function AdminHome() {
   const summary = dashboard?.summary;
 
   return (
-    <main className="min-h-screen bg-[#f4f7fb] px-4 pb-24 pt-5 text-slate-950 md:pb-6">
-      <div className="mx-auto max-w-6xl space-y-5">
-        <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <Image src="/ekybl-logo.png" alt="Elektro práce Lukáš Kybl" width={210} height={56} className="hidden h-auto w-44 sm:block" />
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Administrace</p>
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight">Přehled provozu</h1>
-                <p className="mt-1 text-sm text-slate-600">Rychlá kontrola směn, výplat, dočasných staveb a rizikových záznamů.</p>
-              </div>
+    <AppShell
+      area="mixed"
+      title="Administrace"
+      subtitle="Provoz, směny, výplaty a správa dat."
+      actions={
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-50"
+        >
+          {loading ? "Načítám" : "Obnovit"}
+        </button>
+      }
+    >
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Metric label="Pracovníci" value={summary?.active_users ?? 0} href="/admin/users" />
+        <Metric label="Otevřené směny" value={summary?.open_shifts ?? 0} href="/admin/attendance" tone={(summary?.open_shifts ?? 0) > 0 ? "blue" : "neutral"} />
+        <Metric label="Žádosti" value={summary?.pending_sites ?? 0} href="/admin/site-requests" tone={(summary?.pending_sites ?? 0) > 0 ? "amber" : "neutral"} />
+        <Metric label="Nezaplaceno" value={summary?.unpaid_events ?? 0} href="/admin/payments" tone={(summary?.unpaid_events ?? 0) > 0 ? "amber" : "neutral"} />
+        <Metric label="Rizika" value={summary?.risk_count ?? 0} href="/admin/attendance" tone={(summary?.risk_count ?? 0) > 0 ? "red" : "neutral"} />
+      </section>
+
+      {err ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}
+
+      <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_430px]">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold">Moje práce</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {workerLinks.map((item) => (
+                <MenuCard key={item.href} {...item} />
+              ))}
             </div>
-            <button
-              type="button"
-              onClick={load}
-              disabled={loading}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              {loading ? "Načítám…" : "Obnovit"}
-            </button>
-          </div>
-        </header>
-
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Metric label="Aktivní pracovníci" value={summary?.active_users ?? 0} href="/admin/users" />
-          <Metric label="Otevřené směny" value={summary?.open_shifts ?? 0} href="/admin/attendance" tone={(summary?.open_shifts ?? 0) > 0 ? "blue" : "neutral"} />
-          <Metric label="Dočasné stavby" value={summary?.pending_sites ?? 0} href="/admin/site-requests" tone={(summary?.pending_sites ?? 0) > 0 ? "amber" : "neutral"} />
-          <Metric label="Nezaplacené eventy" value={summary?.unpaid_events ?? 0} href="/admin/payments" tone={(summary?.unpaid_events ?? 0) > 0 ? "amber" : "neutral"} />
-          <Metric label="Rizika ke kontrole" value={summary?.risk_count ?? 0} href="/admin/attendance" tone={(summary?.risk_count ?? 0) > 0 ? "red" : "neutral"} />
-        </section>
-
-        {err ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}
-
-        <section className="grid gap-4 lg:grid-cols-[1fr_420px]">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {links.map((item) => (
-              <Link
-                key={item.href}
-                className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
-                href={item.href}
-              >
-                <div className="text-base font-semibold">{item.title}</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">{item.desc}</div>
-              </Link>
-            ))}
           </div>
 
-          <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold">Rizikové záznamy</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Kontroly, které mohou ovlivnit docházku, výplaty nebo export.</p>
-              </div>
-              {summary?.same_time_transitions ? (
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
-                  {summary.same_time_transitions} stejný čas
-                </span>
-              ) : null}
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold">Správa</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {adminLinks.map((item) => (
+                <MenuCard key={item.href} {...item} />
+              ))}
             </div>
+          </div>
+        </div>
 
-            <div className="mt-4 space-y-3">
-              {dashboard?.risks?.length ? (
-                dashboard.risks.map((risk, index) => (
-                  <div key={`${risk.code}-${risk.day}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-sm font-semibold">{risk.title}</div>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${riskClass(risk.severity)}`}>
-                        {risk.severity === "high" ? "Vysoké" : risk.severity === "medium" ? "Střední" : "Nízké"}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      {risk.user_name} · {risk.site_name || "Bez stavby"} · {risk.day}
-                    </div>
-                    <div className="mt-2 text-xs leading-5 text-slate-700">{risk.detail}</div>
+        <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Rizika</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Klik otevře konkrétní den v docházce.</p>
+            </div>
+            {summary?.same_time_transitions ? (
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
+                {summary.same_time_transitions} čas
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {dashboard?.risks?.length ? (
+              dashboard.risks.map((risk, index) => (
+                <Link
+                  key={`${risk.code}-${risk.day}-${index}`}
+                  href={riskUrl(risk)}
+                  className="block rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-200 hover:bg-blue-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-sm font-semibold">{risk.title}</div>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${riskClass(risk.severity)}`}>
+                      {risk.severity === "high" ? "Vysoké" : risk.severity === "medium" ? "Střední" : "Nízké"}
+                    </span>
                   </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Žádná hlavní rizika v posledních záznamech.
-                </div>
-              )}
-            </div>
-          </aside>
-        </section>
-      </div>
-      <BottomNav variant="admin" />
-    </main>
+                  <div className="mt-1 text-xs text-slate-600">
+                    {risk.user_name} · {risk.site_name || "Bez stavby"} · {risk.day}
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-slate-700">{risk.detail}</div>
+                </Link>
+              ))
+            ) : (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                Bez rizikových záznamů.
+              </div>
+            )}
+          </div>
+        </aside>
+      </section>
+    </AppShell>
+  );
+}
+
+function MenuCard({ href, title, desc }: { href: string; title: string; desc: string }) {
+  return (
+    <Link className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40" href={href}>
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="mt-1 text-xs leading-5 text-slate-600">{desc}</div>
+    </Link>
   );
 }
 

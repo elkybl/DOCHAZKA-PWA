@@ -98,7 +98,9 @@ export async function GET(req: NextRequest) {
   const risks: Array<{
     code: string;
     title: string;
+    user_id: string;
     user_name: string;
+    site_id: string | null;
     site_name: string | null;
     day: string;
     detail: string;
@@ -114,7 +116,9 @@ export async function GET(req: NextRequest) {
     risks.push({
       code: input.code,
       title: riskTitle(input.code),
+      user_id: input.event.user_id,
       user_name: userName.get(input.event.user_id) || input.event.user_id,
+      site_id: input.event.site_id,
       site_name: input.event.site_id ? siteName.get(input.event.site_id) || input.event.site_id : null,
       day: input.event.day_local || dayLocalCZFromIso(input.event.server_time),
       detail: input.detail,

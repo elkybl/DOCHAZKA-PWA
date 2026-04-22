@@ -7,6 +7,8 @@ type User = { id: string; name: string };
 
 type CalendarItem = {
   id: string;
+  source?: "calendar" | "attendance";
+  readonly?: boolean;
   user_id: string;
   user_name?: string;
   type: CalendarItemType;
@@ -117,14 +119,16 @@ function timeLabel(item: CalendarItem) {
 }
 
 function statusLabel(item: CalendarItem) {
+  if (item.source === "attendance") return "Skutečná docházka";
   if (item.approved_at) return "Schváleno";
   if (item.attendance_status === "confirmed") return "Docházka potvrzena";
   if (item.attendance_status === "checked_in") return "Probíhá";
   if (item.seen_confirmed) return "Viděno";
-  return "Nové";
+  return "�ek� na potvrzen�";
 }
 
 function statusClass(item: CalendarItem) {
+  if (item.source === "attendance") return "bg-slate-950 text-white border-slate-950";
   if (item.approved_at) return "bg-emerald-50 text-emerald-800 border-emerald-100";
   if (item.attendance_status === "confirmed") return "bg-blue-50 text-blue-800 border-blue-100";
   if (item.attendance_status === "checked_in") return "bg-slate-950 text-white border-slate-950";
@@ -375,7 +379,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
                 <div className="text-xs font-semibold">{formatDate(day)}</div>
                 <div className="mt-2 space-y-1">
                   {dayItems.slice(0, 3).map((item) => (
-                    <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${typeClass(item.type)}`}>
+                    <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${item.source === "attendance" ? "border-slate-300 bg-slate-100" : typeClass(item.type)}`}>
                       <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} · ` : ""}</span>
                       {item.title}
                     </div>
@@ -412,6 +416,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
                 key={item.id}
                 item={item}
                 admin={admin}
+                currentUserId={me?.id || ""}
                 busy={busy === item.id}
                 onEdit={() => openEdit(item)}
                 onDelete={() => deleteItem(item)}
@@ -488,14 +493,18 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
   );
 }
 
-function CalendarCard({ item, admin, busy, onEdit, onDelete, onPatch }: { item: CalendarItem; admin: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onPatch: (patch: Record<string, unknown>) => void }) {
+function CalendarCard({ item, admin, currentUserId, busy, onEdit, onDelete, onPatch }: { item: CalendarItem; admin: boolean; currentUserId: string; busy: boolean; onEdit: () => void; onDelete: () => void; onPatch: (patch: Record<string, unknown>) => void }) {
   const work = isWorkRelated(item.type);
+  const canAcknowledge = item.user_id === currentUserId;
+  const readOnly = !!item.readonly || item.source === "attendance";
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${typeClass(item.type)}`}>{calendarTypeLabels[item.type]}</span>
+            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${readOnly ? "border-slate-300 bg-slate-100 text-slate-800" : typeClass(item.type)}`}>
+              {readOnly ? "Docházka" : calendarTypeLabels[item.type]}
+            </span>
             <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(item)}`}>{statusLabel(item)}</span>
           </div>
           <h3 className="mt-2 text-base font-semibold">{item.title}</h3>
@@ -512,12 +521,12 @@ function CalendarCard({ item, admin, busy, onEdit, onDelete, onPatch }: { item: 
       </div>
       {item.notes ? <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{item.notes}</div> : null}
       <div className="mt-3 flex flex-wrap justify-end gap-2">
-        {!item.seen_confirmed ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ seen_confirmed: true })}>Viděno</button> : null}
-        {work && !item.check_in_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ check_in_at: new Date().toISOString() })}>Příchod</button> : null}
-        {work && item.check_in_at && !item.check_out_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ check_out_at: new Date().toISOString() })}>Odchod</button> : null}
-        {admin && !item.approved_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ approved: true })}>Schválit</button> : null}
-        <button className="rounded-lg border px-3 py-2 text-sm" onClick={onEdit}>Upravit</button>
-        <button className="rounded-lg border px-3 py-2 text-sm hover:bg-red-50" disabled={busy} onClick={onDelete}>Smazat</button>
+        {!readOnly && !item.seen_confirmed && canAcknowledge ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ seen_confirmed: true })}>Viděno</button> : null}
+        {!readOnly && work && !item.check_in_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ check_in_at: new Date().toISOString() })}>Příchod</button> : null}
+        {!readOnly && work && item.check_in_at && !item.check_out_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ check_out_at: new Date().toISOString() })}>Odchod</button> : null}
+        {!readOnly && admin && !item.approved_at ? <button className="rounded-lg border px-3 py-2 text-sm" disabled={busy} onClick={() => onPatch({ approved: true })}>Schválit</button> : null}
+        {!readOnly ? <button className="rounded-lg border px-3 py-2 text-sm" onClick={onEdit}>Upravit</button> : null}
+        {!readOnly ? <button className="rounded-lg border px-3 py-2 text-sm hover:bg-red-50" disabled={busy} onClick={onDelete}>Smazat</button> : null}
       </div>
     </article>
   );
@@ -535,3 +544,5 @@ function Mini({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+

@@ -50,6 +50,9 @@ export async function PATCH(req: NextRequest, ctx: Params) {
   }
 
   if ("seen_confirmed" in data) {
+    if (existing.data.user_id !== session.userId) {
+      return json({ error: "Viděno může potvrdit jen přiřazený pracovník." }, { status: 403 });
+    }
     patch.seen_confirmed = !!data.seen_confirmed;
     patch.seen_at = data.seen_confirmed ? new Date().toISOString() : null;
   }

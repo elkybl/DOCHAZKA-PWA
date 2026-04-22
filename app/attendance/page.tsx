@@ -631,6 +631,19 @@ export default function AttendancePage() {
                 <div className="mt-1 text-xs leading-5 text-slate-600">Nouzové doplnění docházky bez polohy.</div>
               </button>
             </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_180px_180px] md:items-end">
+                <div>
+                  <div className="text-sm font-semibold text-amber-900">Ukončení bez polohy</div>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">Použijte jen při výpadku GPS nebo dodatečném odchodu.</p>
+                </div>
+                <input type="time" value={manualOutTime} onChange={(e) => setManualOutTime(e.target.value)} disabled={busy || !present} className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
+                <button type="button" disabled={busy || !present} onClick={() => doOut(true)} className="rounded-lg border border-amber-400 bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-45">
+                  Ukončit bez polohy
+                </button>
+              </div>
+            </div>
           </div>
 
           <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -699,14 +712,6 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <div className="text-sm font-semibold text-amber-900">Ukončení bez polohy</div>
-              <p className="mt-1 text-xs leading-5 text-amber-800">Použijte jen při výpadku GPS nebo dodatečném odchodu.</p>
-              <input type="time" value={manualOutTime} onChange={(e) => setManualOutTime(e.target.value)} disabled={busy || !present} className="mt-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
-              <button type="button" disabled={busy || !present} onClick={() => doOut(true)} className="mt-3 w-full rounded-lg border border-amber-400 bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-45">
-                Ukončit bez polohy
-              </button>
-            </div>
           </aside>
         </section>
 

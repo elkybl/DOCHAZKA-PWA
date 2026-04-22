@@ -2,9 +2,22 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 import { calendarCreateSchema, normalizeCalendarPayload } from "@/lib/calendar";
+import { dayLocalCZFromIso, hm, toDate } from "@/lib/time";
 
 type UserRow = { id: string; name: string };
+type AttendanceEventRow = {
+  user_id: string;
+  site_id: string | null;
+  type: "IN" | "OUT" | "OFFSITE";
+  server_time: string;
+  day_local: string | null;
+  note_work: string | null;
+  offsite_reason: string | null;
+  offsite_hours: number | null;
+  sites?: { name?: string | null } | null;
+};
 
 function dateParam(value: string | null, fallback: string) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
@@ -18,6 +31,16 @@ function plusDays(days: number) {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function timeForCalendar(iso: string | null) {
+  if (!iso) return null;
+  const value = hm(iso);
+  return /^\d{2}:\d{2}$/.test(value) ? value : null;
 }
 
 async function requireSession(req: NextRequest) {
@@ -60,18 +83,146 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return json({ error: "DB chyba kalendáře. Je potřeba spustit migraci calendar_items." }, { status: 500 });
 
-  const userIds = [...new Set((data || []).map((row) => String((row as { user_id: string }).user_id)))];
+  const attendanceItems = await loadAttendanceItems({
+    db,
+    from,
+    to,
+    type,
+    status,
+    role: session.role,
+    sessionUserId: session.userId,
+    requestedUser,
+  });
+
+  const userIds = [
+    ...new Set([
+      ...(data || []).map((row) => String((row as { user_id: string }).user_id)),
+      ...attendanceItems.map((row) => String(row.user_id)),
+    ]),
+  ];
   const names = new Map<string, string>();
   if (userIds.length) {
     const users = await db.from("users").select("id,name").in("id", userIds);
     for (const u of (users.data || []) as UserRow[]) names.set(u.id, u.name);
   }
 
-  return json({
-    items: (data || []).map((row) => ({
+  const items = [
+    ...(data || []).map((row) => ({
       ...row,
+      source: "calendar",
+      readonly: false,
       user_name: names.get(String((row as { user_id: string }).user_id)) || "Neznámý pracovník",
     })),
+    ...attendanceItems.map((row) => ({
+      ...row,
+      user_name: names.get(String(row.user_id)) || "Neznámý pracovník",
+    })),
+  ].sort((a, b) => {
+    if (String(a.date) !== String(b.date)) return String(a.date).localeCompare(String(b.date));
+    return String(a.start_time || "").localeCompare(String(b.start_time || ""));
+  });
+
+  return json({ items });
+}
+
+async function loadAttendanceItems({
+  db,
+  from,
+  to,
+  type,
+  status,
+  role,
+  sessionUserId,
+  requestedUser,
+}: {
+  db: ReturnType<typeof supabaseAdmin>;
+  from: string;
+  to: string;
+  type: string | null;
+  status: string | null;
+  role: "admin" | "worker";
+  sessionUserId: string;
+  requestedUser: string | null;
+}) {
+  if ((type && type !== "work_shift") || (status && status !== "done")) return [];
+
+  let evQuery = db
+    .from("attendance_events")
+    .select("user_id,site_id,type,server_time,day_local,note_work,offsite_reason,offsite_hours,sites:site_id(name)")
+    .gte("day_local", from)
+    .lte("day_local", to)
+    .in("type", ["IN", "OUT", "OFFSITE"])
+    .order("day_local", { ascending: true })
+    .order("server_time", { ascending: true });
+
+  if (role !== "admin") evQuery = evQuery.eq("user_id", sessionUserId);
+  else if (requestedUser) evQuery = evQuery.eq("user_id", requestedUser);
+
+  const evResult = await evQuery;
+  if (evResult.error) return [];
+
+  const byUserDaySite = new Map<string, AttendanceEventRow[]>();
+  for (const event of (evResult.data || []) as AttendanceEventRow[]) {
+    const day = event.day_local || dayLocalCZFromIso(event.server_time);
+    if (!day) continue;
+    const key = `${event.user_id}__${day}__${event.site_id || "none"}`;
+    byUserDaySite.set(key, [...(byUserDaySite.get(key) || []), { ...event, day_local: day }]);
+  }
+
+  return Array.from(byUserDaySite.entries()).map(([key, listRaw]) => {
+    const [userId, day, siteIdRaw] = key.split("__");
+    const list = [...listRaw].sort(compareAttendanceEventsAsc);
+    const siteName = list.find((event) => event.sites?.name)?.sites?.name || null;
+    let lastIn: AttendanceEventRow | null = null;
+    let firstIn: string | null = null;
+    let lastOut: string | null = null;
+    let hours = 0;
+    const notes: string[] = [];
+
+    for (const event of list) {
+      if (event.type === "IN") {
+        lastIn = event;
+        if (!firstIn) firstIn = event.server_time;
+      } else if (event.type === "OUT") {
+        lastOut = event.server_time;
+        if (lastIn) {
+          const diff = (toDate(event.server_time).getTime() - toDate(lastIn.server_time).getTime()) / 3600000;
+          if (Number.isFinite(diff) && diff > 0) hours += diff;
+          lastIn = null;
+        }
+        if (event.note_work?.trim()) notes.push(event.note_work.trim());
+      } else if (event.type === "OFFSITE") {
+        const offHours = Number(event.offsite_hours) || 0;
+        if (offHours > 0) hours += offHours;
+        if (event.offsite_reason?.trim()) notes.push(`Mimo stavbu: ${event.offsite_reason.trim()}`);
+      }
+    }
+
+    return {
+      id: `attendance:${userId}:${day}:${siteIdRaw}`,
+      source: "attendance",
+      readonly: true,
+      user_id: userId,
+      type: "work_shift",
+      title: siteName ? `Docházka · ${siteName}` : "Docházka",
+      date: day,
+      start_time: timeForCalendar(firstIn),
+      end_time: timeForCalendar(lastOut),
+      all_day: false,
+      location: siteName,
+      notes: notes.join("\n") || null,
+      planned_hours: null,
+      actual_hours: round2(hours),
+      status: "done",
+      seen_confirmed: true,
+      seen_at: null,
+      attendance_status: "confirmed",
+      check_in_at: firstIn,
+      check_out_at: lastOut,
+      attendance_note: null,
+      approved_by: null,
+      approved_at: null,
+    };
   });
 }
 

@@ -53,6 +53,11 @@ function dayKeyPrague(iso: string) {
   return `${out.year}-${out.month}-${out.day}`;
 }
 
+function initialDayParam() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("day") || "";
+}
+
 export default function EditWorkPage() {
   const [token, setToken] = useState<string | null>(null);
   const [canProg, setCanProg] = useState(false);
@@ -62,10 +67,12 @@ export default function EditWorkPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "work" | "offsite">("all");
+  const [dayFilter, setDayFilter] = useState("");
   const [draftOffsite, setDraftOffsite] = useState<Record<string, { reason: string; hours: string }>>({});
 
   useEffect(() => {
     setToken(getToken());
+    setDayFilter(initialDayParam());
   }, []);
 
   useEffect(() => {
@@ -182,12 +189,13 @@ export default function EditWorkPage() {
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
+      .filter((row) => (dayFilter ? dayKeyPrague(row.server_time) === dayFilter : true))
       .filter((row) => (typeFilter === "all" ? true : typeFilter === "work" ? row.type === "OUT" : row.type === "OFFSITE"))
       .filter((row) => {
         if (!q) return true;
         return `${row.site_name || ""} ${row.note_work || ""} ${row.offsite_reason || ""}`.toLowerCase().includes(q);
       });
-  }, [rows, query, typeFilter]);
+  }, [rows, query, typeFilter, dayFilter]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -204,7 +212,7 @@ export default function EditWorkPage() {
   return (
     <AppShell
       area="auto"
-      title="Upravit záznamy"
+      title={dayFilter ? `Upravit den ${dayFilter}` : "Upravit záznamy"}
       subtitle="Doplnění práce, dopravy, materiálu a činností mimo stavbu."
       actions={
         <button onClick={() => load()} disabled={!token || !!busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
@@ -220,7 +228,7 @@ export default function EditWorkPage() {
       </section>
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+        <div className="grid gap-3 md:grid-cols-[220px_180px_1fr]">
           <div>
             <div className="text-xs font-medium text-slate-600">Typ</div>
             <div className="mt-2 grid grid-cols-3 rounded-lg border bg-slate-50 p-1">
@@ -232,10 +240,19 @@ export default function EditWorkPage() {
             </div>
           </div>
           <label className="block text-xs font-medium text-slate-600">
+            Den
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={dayFilter} onChange={(e) => setDayFilter(e.target.value)} />
+          </label>
+          <label className="block text-xs font-medium text-slate-600">
             Hledat
             <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Stavba nebo popis" />
           </label>
         </div>
+        {dayFilter ? (
+          <button className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold" onClick={() => setDayFilter("")}>
+            Zobrazit všechny dny
+          </button>
+        ) : null}
         {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
         {info ? <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div> : null}
       </section>

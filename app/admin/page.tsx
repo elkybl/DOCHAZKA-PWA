@@ -53,6 +53,7 @@ function riskUrl(risk: Risk) {
 }
 
 const adminLinks = [
+  { href: "/admin/calendar", title: "Kalendář", desc: "Plán práce, absencí, potvrzení a schvalování." },
   { href: "/admin/attendance", title: "Docházka", desc: "Dny, směny, opravy, mazání a změna stavby." },
   { href: "/admin/payments", title: "Výplaty", desc: "Neuhrazené částky a označení plateb." },
   { href: "/admin/sites", title: "Stavby", desc: "Akce, GPS, radius a aktivní stav." },

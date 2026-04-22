@@ -347,6 +347,9 @@ function DayCard({ row }: { row: DayRow }) {
             {paymentLabel(row.payment_state, row.paid)}
           </span>
           <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
+          <a className="mt-2 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50" href={`/me/edit?day=${row.day}`}>
+            Upravit den
+          </a>
         </div>
       </div>
 

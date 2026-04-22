@@ -8,13 +8,14 @@ import { useState } from "react";
 
 const workerLinks = [
   { href: "/attendance", label: "Docházka" },
+  { href: "/calendar", label: "Kalendář" },
   { href: "/me", label: "Moje" },
   { href: "/me/rates", label: "Sazby" },
-  { href: "/me/edit", label: "Upravit" },
 ];
 
 const adminLinks = [
   { href: "/admin", label: "Admin" },
+  { href: "/admin/calendar", label: "Kalendář" },
   { href: "/admin/attendance", label: "Přehled" },
   { href: "/admin/payments", label: "Výplaty" },
   { href: "/admin/users", label: "Lidé" },
@@ -37,9 +38,9 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
       : variant === "mixed"
       ? [
           { href: "/attendance", label: "Docházka" },
+          { href: "/calendar", label: "Kalendář" },
           { href: "/me", label: "Moje" },
           { href: "/admin", label: "Admin" },
-          { href: "/admin/payments", label: "Výplaty" },
         ]
       : workerLinks;
 

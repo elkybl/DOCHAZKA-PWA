@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
 
@@ -29,22 +28,27 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
-function fmt(n: any) {
+function fmt(n: unknown, max = 2) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "0";
-  return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
+  return x.toLocaleString("cs-CZ", { maximumFractionDigits: max });
 }
 
-export default function Page() {
+function keyOf(r: Row) {
+  return `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
+}
+
+export default function PaymentsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-
   const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [status, setStatus] = useState<"unpaid" | "all" | "paid">("unpaid");
+  const [query, setQuery] = useState("");
 
   const token = useMemo(() => getToken(), []);
 
@@ -61,43 +65,40 @@ export default function Page() {
       const res = await fetch(`/api/admin/payouts?from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`, {
         headers: { authorization: `Bearer ${token}` },
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Došlo k chybě");
+      const data = (await res.json().catch(() => ({}))) as { rows?: Row[]; error?: string };
+      if (!res.ok) throw new Error(data.error || "Došlo k chybě.");
       setRows(data.rows || []);
-    } catch (e: any) {
-      setErr(e.message || "Došlo k chybě");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Došlo k chybě.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function payGroup(r: Row) {
+  async function payGroup(row: Row) {
     setErr(null);
     setInfo(null);
     if (!token) return;
 
-    const key = `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
+    const key = keyOf(row);
     setBusyKey(key);
     try {
       const res = await fetch("/api/admin/pay", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          user_id: r.user_id,
-          site_id: r.site_id,
-          from_day: r.from_day,
-          to_day: r.to_day,
+          user_id: row.user_id,
+          site_id: row.site_id,
+          from_day: row.from_day,
+          to_day: row.to_day,
         }),
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nepodařilo se označit období jako zaplacené.");
-
-      setInfo(`Označeno jako zaplacené: ${r.user_name} / ${r.site_name || "Bez přiřazené akce"}`);
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Nepodařilo se označit jako zaplacené.");
+      setInfo(`${row.user_name} / ${row.site_name || "Bez stavby"} označeno jako zaplacené.`);
       await load();
-    } catch (e: any) {
-      setErr(e.message || "Došlo k chybě");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Došlo k chybě.");
     } finally {
       setBusyKey(null);
     }
@@ -108,124 +109,125 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const unpaid = rows.filter((r) => !r.paid);
-  const paid = rows.filter((r) => r.paid);
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (sum, row) => ({
+        unpaid: sum.unpaid + (!row.paid ? Number(row.total) || 0 : 0),
+        paid: sum.paid + (row.paid ? Number(row.total) || 0 : 0),
+        hours: sum.hours + (Number(row.hours) || 0) + (Number(row.programming_hours) || 0),
+        km: sum.km + (Number(row.km) || 0),
+      }),
+      { unpaid: 0, paid: 0, hours: 0, km: 0 }
+    );
+  }, [rows]);
 
-  const sumUnpaid = unpaid.reduce((s, r) => s + (Number(r.total) || 0), 0);
-  const sumPaid = paid.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows
+      .filter((row) => (status === "all" ? true : status === "paid" ? row.paid : !row.paid))
+      .filter((row) => {
+        if (!q) return true;
+        return `${row.user_name} ${row.site_name || ""}`.toLowerCase().includes(q);
+      });
+  }, [rows, status, query]);
 
   return (
-    <AppShell area="mixed" title="Výplaty" subtitle="Souhrny podle pracovníka, stavby a období.">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Výplaty</h1>
-          <div className="mt-1 text-xs text-neutral-500">
-            Souhrn po pracovníkovi a akci za zvolené období. Jedním kliknutím označíte celé období jako zaplacené.
-          </div>
-        </div>
+    <AppShell
+      area="mixed"
+      title="Výplaty"
+      subtitle="Souhrny podle pracovníka, stavby a období."
+      actions={
+        <button onClick={load} disabled={loading} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
+          {loading ? "Načítám" : "Obnovit"}
+        </button>
+      }
+    >
+      <section className="grid gap-3 md:grid-cols-4">
+        <Money label="K úhradě" value={totals.unpaid} tone="unpaid" />
+        <Money label="Uhrazeno" value={totals.paid} tone="paid" />
+        <Metric label="Hodiny" value={`${fmt(totals.hours)} h`} />
+        <Metric label="Doprava" value={`${fmt(totals.km, 1)} km`} />
+      </section>
 
-        <Link className="rounded-xl border bg-white px-4 py-2 text-sm shadow-sm" href="/admin">Administrace</Link>
-      </div>
-
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
+      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[160px_160px_220px_1fr]">
+          <Field label="Od"><input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+          <Field label="Do"><input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
           <div>
-            <label className="block text-sm text-neutral-700">Od</label>
-            <input className="mt-1 rounded-xl border px-3 py-2" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm text-neutral-700">Do</label>
-            <input className="mt-1 rounded-xl border px-3 py-2" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </div>
-
-          <button
-            onClick={load}
-            disabled={loading}
-            className="rounded-xl bg-black px-4 py-3 text-sm text-white disabled:opacity-50"
-          >
-            {loading ? "Načítání…" : "Načíst přehled"}
-          </button>
-
-          <div className="ml-auto text-sm">
-            <div className="text-neutral-600">K úhradě:</div>
-            <div className="font-semibold">{fmt(sumUnpaid)} Kč</div>
-          </div>
-          <div className="text-sm">
-            <div className="text-neutral-600">Již uhrazeno:</div>
-            <div className="font-semibold">{fmt(sumPaid)} Kč</div>
-          </div>
-        </div>
-
-        {err && <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-        {info && <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
-      </div>
-
-      <div className="space-y-3">
-        {rows.map((r) => {
-          const key = `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
-          return (
-            <div key={key} className="rounded-2xl border bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">
-                    {r.user_name} • {r.site_name || "Bez přiřazené akce"}
-                  </div>
-                  <div className="mt-1 text-xs text-neutral-600">
-                    Období: <b>{r.from_day}</b> → <b>{r.to_day}</b> • Dnů: <b>{r.days_count}</b>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className={`rounded-full px-3 py-1 text-xs ${r.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                    {r.paid ? "Zaplaceno" : "Nezaplaceno"}
-                  </div>
-
-                  {!r.paid && (
-                    <button
-                      onClick={() => payGroup(r)}
-                      disabled={busyKey === key}
-                      className="rounded-xl bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
-                    >
-                      {busyKey === key ? "Označuji…" : "Označit jako zaplacené"}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Práce</div>
-                  <div className="mt-1 font-semibold">{fmt(r.hours)} h</div>
-                  <div className="text-xs text-neutral-600">Částka: {fmt(r.hours_pay)} Kč</div>
-                </div>
-
-                <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Programování</div>
-                  <div className="mt-1 font-semibold">{fmt(r.programming_hours)} h</div>
-                  <div className="text-xs text-neutral-600">Částka: {fmt(r.programming_pay)} Kč</div>
-                </div>
-
-                <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Doprava a materiál</div>
-                  <div className="mt-1">Km: {fmt(r.km)} km • {fmt(r.km_pay)} Kč</div>
-                  <div className="text-xs text-neutral-600">Materiál: {fmt(r.material)} Kč</div>
-                </div>
-
-                <div className="rounded-xl border bg-neutral-50 p-3">
-                  <div className="text-xs text-neutral-600">Celkem k úhradě</div>
-                  <div className="mt-1 text-base font-semibold">{fmt(r.total)} Kč</div>
-                </div>
-              </div>
+            <div className="text-xs font-medium text-slate-600">Stav</div>
+            <div className="mt-2 grid grid-cols-3 rounded-lg border bg-slate-50 p-1">
+              {(["unpaid", "all", "paid"] as const).map((item) => (
+                <button key={item} className={`rounded-md px-2 py-2 text-xs font-semibold ${status === item ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setStatus(item)}>
+                  {item === "unpaid" ? "K úhradě" : item === "paid" ? "Uhrazeno" : "Vše"}
+                </button>
+              ))}
             </div>
+          </div>
+          <Field label="Hledat">
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pracovník nebo stavba" />
+          </Field>
+        </div>
+        <button onClick={load} className="mt-3 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Načíst období</button>
+        {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+        {info ? <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div> : null}
+      </section>
+
+      <section className="mt-4 space-y-3">
+        {filtered.map((row) => {
+          const key = keyOf(row);
+          return (
+            <article key={key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold">{row.user_name}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {row.site_name || "Bez stavby"} · {row.from_day} - {row.to_day} · {row.days_count} d.
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${row.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                    {row.paid ? "Zaplaceno" : "K úhradě"}
+                  </span>
+                  <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                <Mini label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={`${fmt(row.hours)} h`} />
+                <Mini label="Programování" value={`${fmt(row.programming_pay)} Kč`} sub={`${fmt(row.programming_hours)} h`} />
+                <Mini label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km`} />
+                <Mini label="Materiál" value={`${fmt(row.material)} Kč`} sub=" " />
+              </div>
+
+              {!row.paid ? (
+                <div className="mt-4 flex justify-end">
+                  <button onClick={() => payGroup(row)} disabled={busyKey === key} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                    {busyKey === key ? "Ukládám" : "Označit jako zaplacené"}
+                  </button>
+                </div>
+              ) : null}
+            </article>
           );
         })}
-
-        {rows.length === 0 && (
-          <div className="rounded-2xl border bg-white p-5 text-sm text-neutral-600 shadow-sm">
-            Ve zvoleném období nebyly nalezeny žádné podklady.
-          </div>
-        )}
-      </div>
+        {!filtered.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné položky.</div> : null}
+      </section>
     </AppShell>
   );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block text-xs font-medium text-slate-600">{label}{children}</label>;
+}
+
+function Money({ label, value, tone }: { label: string; value: number; tone: "paid" | "unpaid" }) {
+  const cls = tone === "paid" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950";
+  return <div className={`rounded-lg border p-4 shadow-sm ${cls}`}><div className="text-xs font-medium opacity-75">{label}</div><div className="mt-2 text-2xl font-semibold">{fmt(value)} Kč</div></div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>;
+}
+
+function Mini({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return <div className="rounded-lg border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div><div className="mt-1 text-xs text-slate-500">{sub}</div></div>;
 }

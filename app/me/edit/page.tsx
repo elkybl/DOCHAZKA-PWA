@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { fmtDateTimeCZFromIso } from "@/lib/time";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppNav";
+import { fmtDateTimeCZFromIso } from "@/lib/time";
 
 type Row = {
   id: string;
@@ -11,446 +10,369 @@ type Row = {
   server_time: string;
   site_id: string | null;
   site_name: string | null;
-
-  // OUT
   note_work: string;
   km: number;
   programming_hours: number;
   programming_note: string;
-
-  // OFFSITE
   offsite_reason: string;
   offsite_hours: number;
-
-  // shared
   material_desc: string;
   material_amount: number;
   is_paid: boolean;
 };
 
-export default function Page() {
+type ProfileResponse = {
+  user?: { is_programmer?: boolean | null } | null;
+};
+
+function getToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+function fmt(n: unknown, max = 2) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "0";
+  return x.toLocaleString("cs-CZ", { maximumFractionDigits: max });
+}
+
+function onlyNumber(value: string) {
+  return value.replace(/[^\d.,]/g, "").replace(",", ".");
+}
+
+function dayKeyPrague(iso: string) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const out: Record<string, string> = {};
+  for (const part of parts) out[part.type] = part.value;
+  return `${out.year}-${out.month}-${out.day}`;
+}
+
+export default function EditWorkPage() {
   const [token, setToken] = useState<string | null>(null);
   const [canProg, setCanProg] = useState(false);
-
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-
-  // for days where OFFSITE doesn't exist yet (key: day__siteId)
-  const [newOffsite, setNewOffsite] = useState<Record<string, { reason: string; hours: string }>>({});
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "work" | "offsite">("all");
+  const [draftOffsite, setDraftOffsite] = useState<Record<string, { reason: string; hours: string }>>({});
 
   useEffect(() => {
-    const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    setToken(t);
+    setToken(getToken());
   }, []);
 
   useEffect(() => {
     if (!token) return;
     fetch("/api/me/profile", { headers: { authorization: `Bearer ${token}` } })
-      .then((r) => r.json().catch(() => ({})))
-      .then((d) => setCanProg(!!d?.user?.is_programmer))
+      .then((r) => r.json().catch(() => ({} as ProfileResponse)) as Promise<ProfileResponse>)
+      .then((data) => setCanProg(!!data.user?.is_programmer))
       .catch(() => setCanProg(false));
   }, [token]);
 
-  async function load(t: string) {
+  async function load(currentToken = token) {
     setErr(null);
     setInfo(null);
+    if (!currentToken) return;
 
-    const res = await fetch("/api/me/events?days=120&only_unpaid=1&only_unpaid=1", {
-      headers: { authorization: `Bearer ${t}` },
+    const res = await fetch("/api/me/events?days=120&only_unpaid=1", {
+      headers: { authorization: `Bearer ${currentToken}` },
     });
-
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as { rows?: Row[]; error?: string };
     if (!res.ok) {
-      setErr(data?.error || "Chyba");
+      setErr(data.error || "Chyba načtení.");
       return;
     }
-    setRows((data.rows || []) as Row[]);
+    setRows(data.rows || []);
   }
+
+  useEffect(() => {
+    if (token) load(token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   function updateRow(id: string, patch: Partial<Row>) {
-    setRows((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
-function dayKeyPrague(iso: string) {
-    const d = new Date(iso);
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Prague",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(d);
-    const obj: any = {};
-    for (const p of parts) obj[p.type] = p.value;
-    return `${obj.year}-${obj.month}-${obj.day}`;
-  }
-
-  function setNewOffsiteField(key: string, patch: Partial<{ reason: string; hours: string }>) {
-    setNewOffsite((prev) => ({
-      ...prev,
-      [key]: { reason: prev[key]?.reason ?? "", hours: prev[key]?.hours ?? "", ...patch },
-    }));
-  }
-
-  async function createOffsiteForDay(opts: { day: string; site_id: string | null; reason: string; hours: number }) {
-    if (!token) {
-      setErr("Nejsi přihlášen.");
+  async function save(row: Row) {
+    if (!token) return;
+    if (row.is_paid) {
+      setErr("Zaplacený záznam nelze upravit.");
       return;
     }
+
+    setBusy(row.id);
     setErr(null);
     setInfo(null);
-    const res = await fetch("/api/attendance/offsite", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        day_local: opts.day,
-        site_id: opts.site_id,
-        offsite_reason: opts.reason,
-        offsite_hours: opts.hours,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Nešlo uložit mimo stavbu.");
-  }
-
-  async function save(r: Row) {
-    setErr(null);
-    setInfo(null);
-
-    if (!token) {
-      setErr("Nejsi přihlášen.");
-      return;
-    }
-    if (r.is_paid) {
-      setErr("Zaplacené záznamy nejdou upravit.");
-      return;
-    }
-
-    setBusy(r.id);
     try {
-      const payload: any = { id: r.id };
-
-      if (r.type === "OUT") {
-        payload.note_work = r.note_work;
-        payload.km = Number(r.km || 0);
-
+      const payload: Record<string, string | number> = { id: row.id };
+      if (row.type === "OUT") {
+        payload.note_work = row.note_work || "";
+        payload.km = Number(row.km || 0);
         if (canProg) {
-          payload.programming_hours = Number(r.programming_hours || 0);
-          payload.programming_note = r.programming_note || "";
+          payload.programming_hours = Number(row.programming_hours || 0);
+          payload.programming_note = row.programming_note || "";
         }
       } else {
-        payload.offsite_reason = r.offsite_reason;
-        payload.offsite_hours = Number(r.offsite_hours || 0);
+        payload.offsite_reason = row.offsite_reason || "";
+        payload.offsite_hours = Number(row.offsite_hours || 0);
       }
-
-      payload.material_desc = r.material_desc;
-      payload.material_amount = Number(r.material_amount || 0);
+      payload.material_desc = row.material_desc || "";
+      payload.material_amount = Number(row.material_amount || 0);
 
       const res = await fetch("/api/attendance/edit", {
         method: "PATCH",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo uložit.");
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Nešlo uložit.");
 
       setInfo("Uloženo.");
-      await load(token!);
-    } catch (e: any) {
-      setErr(e.message || "Chyba");
+      await load(token);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Chyba uložení.");
     } finally {
       setBusy(null);
     }
   }
 
-  useEffect(() => {
+  async function createOffsite(row: Row) {
     if (!token) return;
-    load(token);
-  }, [token]);
+    const day = dayKeyPrague(row.server_time);
+    const key = `${day}__${row.site_id || ""}`;
+    const draft = draftOffsite[key] || { reason: "", hours: "" };
+    const hours = Number(onlyNumber(draft.hours));
+    if (!draft.reason.trim()) return setErr("Doplň popis činnosti mimo stavbu.");
+    if (!Number.isFinite(hours) || hours <= 0) return setErr("Doplň počet hodin.");
+
+    setBusy(row.id);
+    setErr(null);
+    setInfo(null);
+    try {
+      const res = await fetch("/api/attendance/offsite", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          day_local: day,
+          site_id: row.site_id || null,
+          offsite_reason: draft.reason.trim(),
+          offsite_hours: hours,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Nešlo uložit mimo stavbu.");
+      setInfo("Mimo stavbu uloženo.");
+      setDraftOffsite((prev) => ({ ...prev, [key]: { reason: "", hours: "" } }));
+      await load(token);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Chyba uložení.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows
+      .filter((row) => (typeFilter === "all" ? true : typeFilter === "work" ? row.type === "OUT" : row.type === "OFFSITE"))
+      .filter((row) => {
+        if (!q) return true;
+        return `${row.site_name || ""} ${row.note_work || ""} ${row.offsite_reason || ""}`.toLowerCase().includes(q);
+      });
+  }, [rows, query, typeFilter]);
+
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (sum, row) => ({
+        work: sum.work + (row.type === "OUT" ? 1 : 0),
+        offsite: sum.offsite + (row.type === "OFFSITE" ? 1 : 0),
+        km: sum.km + (Number(row.km) || 0),
+        material: sum.material + (Number(row.material_amount) || 0),
+      }),
+      { work: 0, offsite: 0, km: 0, material: 0 }
+    );
+  }, [rows]);
 
   return (
-    <AppShell area="auto" title="Upravit záznamy" subtitle="Doplnění práce, kilometrů, materiálu a činností mimo stavbu.">
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
+    <AppShell
+      area="auto"
+      title="Upravit záznamy"
+      subtitle="Doplnění práce, dopravy, materiálu a činností mimo stavbu."
+      actions={
+        <button onClick={() => load()} disabled={!token || !!busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
+          Obnovit
+        </button>
+      }
+    >
+      <section className="grid gap-3 md:grid-cols-4">
+        <Stat label="Práce" value={`${totals.work}`} />
+        <Stat label="Mimo stavbu" value={`${totals.offsite}`} />
+        <Stat label="Kilometry" value={`${fmt(totals.km, 1)} km`} />
+        <Stat label="Materiál" value={`${fmt(totals.material)} Kč`} />
+      </section>
+
+      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[220px_1fr]">
           <div>
-            <h2 className="text-lg font-semibold">Doplnit práci</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              Na této stránce můžete upravit popis práce, kilometry, materiál a činnosti mimo stavbu. Čas a poloha se zpětně nemění.
-            </p>
-            <Link className="mt-2 inline-block text-xs text-neutral-600 underline" href="/me">
-              Zpět na přehled výdělků
-            </Link>
+            <div className="text-xs font-medium text-slate-600">Typ</div>
+            <div className="mt-2 grid grid-cols-3 rounded-lg border bg-slate-50 p-1">
+              {(["all", "work", "offsite"] as const).map((item) => (
+                <button key={item} className={`rounded-md px-2 py-2 text-xs font-semibold ${typeFilter === item ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setTypeFilter(item)}>
+                  {item === "all" ? "Vše" : item === "work" ? "Práce" : "Mimo"}
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            className="rounded-xl border px-3 py-2 text-sm"
-            onClick={() => token && load(token)}
-            disabled={!token}
-          >
-            Obnovit
-          </button>
+          <label className="block text-xs font-medium text-slate-600">
+            Hledat
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Stavba nebo popis" />
+          </label>
         </div>
+        {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+        {info ? <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div> : null}
+      </section>
 
-        {!token && (
-          <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
-            Uživatel není přihlášen. Otevřete přihlašovací stránku.
-          </div>
-        )}
-
-        {err && <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-        {info && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
-      </div>
-
-      <div className="space-y-3">
-        {rows.map((r) => (
-          <div key={r.id} className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="text-sm font-semibold">
-                  {r.type === "OUT" ? "Odchod" : "Mimo stavbu"} • {fmtDateTimeCZFromIso(r.server_time)}
-                </div>
-                <div className="mt-1 text-xs text-neutral-600">Stavba: {r.site_name || "—"}</div>
-              </div>
-
-              <div
-                className={`rounded-full px-3 py-1 text-xs ${
-                  r.is_paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
-                }`}
-              >
-                {r.is_paid ? "Zaplaceno" : "Nezaplaceno"}
-              </div>
-            </div>
-
-            {r.type === "OUT" ? (
-              <>
-                <label className="mt-3 block text-sm text-neutral-700">Popis práce</label>
-                <textarea
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                  rows={3}
-                  value={r.note_work}
-                  onChange={(e) => updateRow(r.id, { note_work: e.target.value })}
-                  disabled={r.is_paid}
-                />
-
-                <label className="mt-3 block text-sm text-neutral-700">Km</label>
-                <input
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                  inputMode="decimal"
-                  value={String(r.km ?? 0)}
-                  onChange={(e) => updateRow(r.id, { km: Number(e.target.value.replace(/[^\d.]/g, "")) })}
-                  disabled={r.is_paid}
-                />
-
-                {canProg && (
-                  <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
-                    <div className="text-sm font-semibold">Programování</div>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      Pokud byla součástí dne i práce na programování, zadejte počet hodin a případnou poznámku.
-                    </p>
-
-                    <label className="mt-3 block text-sm text-neutral-700">Hodiny programování</label>
-                    <input
-                      className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                      inputMode="decimal"
-                      value={String(r.programming_hours ?? 0)}
-                      onChange={(e) =>
-                        updateRow(r.id, { programming_hours: Number(e.target.value.replace(/[^\d.]/g, "")) })
-                      }
-                      disabled={r.is_paid}
-                    />
-
-                    <label className="mt-3 block text-sm text-neutral-700">Poznámka k programování</label>
-                    <input
-                      className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                      value={r.programming_note}
-                      onChange={(e) => updateRow(r.id, { programming_note: e.target.value.slice(0, 500) })}
-                      disabled={r.is_paid}
-                      placeholder="např. Loxone, Home Assistant…"
-                    />
-                  </div>
-                )}
-                {/* OFFSITE for the same day + site */}
-                {(() => {
-                  const day = dayKeyPrague(r.server_time);
-                  const key = `${day}__${r.site_id || ""}`;
-
-                  const existing =
-                    rows.find(
-                      (x) =>
-                        x.type === "OFFSITE" &&
-                        dayKeyPrague(x.server_time) === day &&
-                        ((r.site_id && x.site_id === r.site_id) || (!r.site_id && !x.site_id))
-                    ) || rows.find((x) => x.type === "OFFSITE" && dayKeyPrague(x.server_time) === day);
-
-                  const draft = newOffsite[key] || { reason: "", hours: "" };
-                  const isPaid = r.is_paid;
-
-                  return (
-                    <div className="mt-4 rounded-2xl border bg-neutral-50 p-4">
-                      <div className="text-sm font-semibold">Činnost mimo stavbu</div>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Tato položka se přidá k danému dni. Uveďte například nákup materiálu, sklad nebo vyřízení související se zakázkou.
-                      </p>
-
-                      {existing ? (
-                        <>
-                          <label className="mt-3 block text-sm text-neutral-700">Popis činnosti</label>
-                          <input
-                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                            value={existing.offsite_reason}
-                            onChange={(e) => updateRow(existing.id, { offsite_reason: e.target.value })}
-                            disabled={existing.is_paid}
-                          />
-
-                          <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
-                          <input
-                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                            inputMode="decimal"
-                            value={String(existing.offsite_hours ?? 0)}
-                            onChange={(e) =>
-                              updateRow(existing.id, {
-                                offsite_hours: Number(e.target.value.replace(/[^\d.]/g, "")),
-                              })
-                            }
-                            disabled={existing.is_paid}
-                          />
-
-                          {!existing.is_paid && (
-                            <button
-                              className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
-                              onClick={() => save(existing)}
-                              disabled={busy === existing.id}
-                            >
-                              {busy === existing.id ? "Ukládám…" : "Uložit činnost mimo stavbu"}
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <label className="mt-3 block text-sm text-neutral-700">Popis činnosti</label>
-                          <input
-                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                            value={draft.reason}
-                            onChange={(e) => setNewOffsiteField(key, { reason: e.target.value })}
-                            disabled={isPaid}
-                            placeholder="Např. nákup materiálu nebo práce ve skladu"
-                          />
-
-                          <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
-                          <input
-                            className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                            inputMode="decimal"
-                            value={draft.hours}
-                            onChange={(e) => setNewOffsiteField(key, { hours: e.target.value.replace(/[^\d.]/g, "") })}
-                            disabled={isPaid}
-                            placeholder="např. 2"
-                          />
-
-                          {!isPaid && (
-                            <button
-                              className="mt-3 w-full rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
-                              disabled={busy === r.id}
-                              onClick={async () => {
-                                try {
-                                  setBusy(r.id);
-                                  const hours = Number(draft.hours || 0);
-                                  if (!draft.reason.trim()) throw new Error("Doplň důvod mimo stavbu.");
-                                  if (!Number.isFinite(hours) || hours <= 0) throw new Error("Doplň počet hodin (např. 2).");
-                                  await createOffsiteForDay({
-                                    day,
-                                    site_id: r.site_id || null,
-                                    reason: draft.reason.trim(),
-                                    hours,
-                                  });
-                                  setInfo("Mimo stavbu uloženo.");
-                                  await load(token!);
-                                } catch (e: any) {
-                                  setErr(e.message || "Chyba");
-                                } finally {
-                                  setBusy(null);
-                                }
-                              }}
-                            >
-                              Přidat mimo stavbu
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
-              </>
-            ) : (
-              <>
-                <label className="mt-3 block text-sm text-neutral-700">Důvod</label>
-                <input
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                  value={r.offsite_reason}
-                  onChange={(e) => updateRow(r.id, { offsite_reason: e.target.value })}
-                  disabled={r.is_paid}
-                />
-
-                <label className="mt-3 block text-sm text-neutral-700">Hodiny</label>
-                <input
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                  inputMode="decimal"
-                  value={String(r.offsite_hours ?? 0)}
-                  onChange={(e) => updateRow(r.id, { offsite_hours: Number(e.target.value.replace(/[^\d.]/g, "")) })}
-                  disabled={r.is_paid}
-                />
-
-                {!r.is_paid && (
-                  <button
-                    className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-50"
-                    onClick={() => save(r)}
-                    disabled={busy === r.id}
-                  >
-                    {busy === r.id ? "Ukládám…" : "Uložit činnost mimo stavbu"}
-                  </button>
-                )}
-              </>
-            )}
-
-            <div className="mt-4 rounded-2xl border bg-neutral-50 p-3">
-              <div className="text-sm font-medium text-neutral-700">Materiál ze svého</div>
-
-              <label className="mt-2 block text-sm text-neutral-700">Popis</label>
-              <input
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                value={r.material_desc}
-                onChange={(e) => updateRow(r.id, { material_desc: e.target.value })}
-                disabled={r.is_paid}
-              />
-
-              <label className="mt-2 block text-sm text-neutral-700">Částka (Kč)</label>
-              <input
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
-                inputMode="decimal"
-                value={String(r.material_amount ?? 0)}
-                onChange={(e) => updateRow(r.id, { material_amount: Number(e.target.value.replace(/[^\d.]/g, "")) })}
-                disabled={r.is_paid}
-              />
-            </div>
-
-            {r.type === "OUT" && !r.is_paid && (
-              <button
-                className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-50"
-                onClick={() => save(r)}
-                disabled={busy === r.id}
-              >
-                {busy === r.id ? "Ukládám…" : "Uložit změny"}
-              </button>
-            )}
-          </div>
+      <section className="mt-4 space-y-3">
+        {filteredRows.map((row) => (
+          <EditCard
+            key={row.id}
+            row={row}
+            canProg={canProg}
+            busy={busy}
+            draftOffsite={draftOffsite}
+            setDraftOffsite={setDraftOffsite}
+            updateRow={updateRow}
+            save={save}
+            createOffsite={createOffsite}
+          />
         ))}
-
-        {rows.length === 0 && (
-          <div className="rounded-2xl border bg-white p-5 text-sm text-neutral-600 shadow-sm">
-            Zatím žádné záznamy k úpravě.
-          </div>
-        )}
-      </div>
+        {!filteredRows.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy k úpravě.</div> : null}
+      </section>
     </AppShell>
   );
+}
+
+function EditCard({
+  row,
+  canProg,
+  busy,
+  draftOffsite,
+  setDraftOffsite,
+  updateRow,
+  save,
+  createOffsite,
+}: {
+  row: Row;
+  canProg: boolean;
+  busy: string | null;
+  draftOffsite: Record<string, { reason: string; hours: string }>;
+  setDraftOffsite: React.Dispatch<React.SetStateAction<Record<string, { reason: string; hours: string }>>>;
+  updateRow: (id: string, patch: Partial<Row>) => void;
+  save: (row: Row) => void;
+  createOffsite: (row: Row) => void;
+}) {
+  const day = dayKeyPrague(row.server_time);
+  const draftKey = `${day}__${row.site_id || ""}`;
+  const draft = draftOffsite[draftKey] || { reason: "", hours: "" };
+
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold">{row.type === "OUT" ? "Práce" : "Mimo stavbu"}</div>
+          <div className="mt-1 text-xs text-slate-500">{fmtDateTimeCZFromIso(row.server_time)} · {row.site_name || "Bez stavby"}</div>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${row.is_paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+          {row.is_paid ? "Zaplaceno" : "Nezaplaceno"}
+        </span>
+      </div>
+
+      {row.type === "OUT" ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_220px]">
+          <Field label="Popis práce">
+            <textarea className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" rows={4} value={row.note_work || ""} onChange={(e) => updateRow(row.id, { note_work: e.target.value })} disabled={row.is_paid} />
+          </Field>
+          <div className="space-y-3">
+            <Field label="Kilometry">
+              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.km ?? 0)} onChange={(e) => updateRow(row.id, { km: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+            </Field>
+            <Field label="Materiál Kč">
+              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+            </Field>
+          </div>
+
+          {canProg ? (
+            <div className="rounded-lg border bg-slate-50 p-3 lg:col-span-2">
+              <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+                <Field label="Programování h">
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+                </Field>
+                <Field label="Poznámka k programování">
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={row.programming_note || ""} onChange={(e) => updateRow(row.id, { programming_note: e.target.value.slice(0, 500) })} disabled={row.is_paid} />
+                </Field>
+              </div>
+            </div>
+          ) : null}
+
+          {!row.is_paid ? (
+            <div className="rounded-lg border bg-blue-50/50 p-3 lg:col-span-2">
+              <div className="grid gap-3 md:grid-cols-[1fr_160px_auto]">
+                <Field label="Mimo stavbu">
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={draft.reason} onChange={(e) => setDraftOffsite((prev) => ({ ...prev, [draftKey]: { ...draft, reason: e.target.value } }))} placeholder="Nákup, sklad, administrativa" />
+                </Field>
+                <Field label="Hodiny">
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={draft.hours} onChange={(e) => setDraftOffsite((prev) => ({ ...prev, [draftKey]: { ...draft, hours: onlyNumber(e.target.value) } }))} />
+                </Field>
+                <button className="self-end rounded-lg border bg-white px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-50" disabled={busy === row.id} onClick={() => createOffsite(row)}>
+                  Přidat
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_180px]">
+          <Field label="Popis">
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.offsite_reason || ""} onChange={(e) => updateRow(row.id, { offsite_reason: e.target.value })} disabled={row.is_paid} />
+          </Field>
+          <Field label="Hodiny">
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.offsite_hours ?? 0)} onChange={(e) => updateRow(row.id, { offsite_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+          </Field>
+          <Field label="Materiál Kč">
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+          </Field>
+        </div>
+      )}
+
+      <div className="mt-3">
+        <Field label="Materiál popis">
+          <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.material_desc || ""} onChange={(e) => updateRow(row.id, { material_desc: e.target.value })} disabled={row.is_paid} />
+        </Field>
+      </div>
+
+      {!row.is_paid ? (
+        <div className="mt-4 flex justify-end">
+          <button onClick={() => save(row)} disabled={busy === row.id} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {busy === row.id ? "Ukládám" : "Uložit změny"}
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block text-xs font-medium text-slate-600">{label}{children}</label>;
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>;
 }

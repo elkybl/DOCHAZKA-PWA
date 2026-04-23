@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { useState } from "react";
 const workerLinks = [
   { href: "/attendance", label: "Docházka" },
   { href: "/calendar", label: "Kalendář" },
-  { href: "/me", label: "Moje" },
+  { href: "/me", label: "Moje výdělky" },
   { href: "/me/rates", label: "Sazby" },
 ];
 
@@ -36,16 +36,16 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
     variant === "admin"
       ? adminLinks
       : variant === "mixed"
-      ? [
-          { href: "/attendance", label: "Docházka" },
-          { href: "/calendar", label: "Kalendář" },
-          { href: "/me", label: "Moje" },
-          { href: "/admin", label: "Admin" },
-        ]
-      : workerLinks;
+        ? [
+            { href: "/attendance", label: "Docházka" },
+            { href: "/calendar", label: "Kalendář" },
+            { href: "/me", label: "Moje" },
+            { href: "/admin", label: "Admin" },
+          ]
+        : workerLinks;
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-12px_28px_rgba(15,23,42,0.10)] backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
         {links.map((link) => {
           const active = isActivePath(pathname, link.href);
@@ -53,8 +53,8 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-lg px-2 py-2 text-center text-xs font-semibold transition ${
-                active ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"
+              className={`rounded-xl px-2 py-2 text-center text-xs font-semibold transition ${
+                active ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
               {link.label}
@@ -96,60 +96,59 @@ export function AppShell({
   const showWorker = resolvedArea === "worker" || resolvedArea === "mixed";
 
   return (
-    <main className="min-h-screen bg-[#f4f7fb] px-3 pb-24 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-24 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-5 rounded-lg border border-white bg-white/90 p-3 shadow-sm shadow-slate-200/70 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link href="/attendance" className="flex min-w-0 items-center gap-3">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white">
-                <Image
-                  src="/ekybl-icon.png"
-                  alt="Elektro práce Lukáš Kybl"
-                  width={96}
-                  height={56}
-                  className="h-9 w-auto object-contain"
-                />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold leading-tight text-slate-950">Docházka</span>
-                <span className="block text-xs text-slate-500">Elektro práce Lukáš Kybl</span>
-              </span>
-            </Link>
+        <header className="mb-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+          <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <Link href="/attendance" className="flex min-w-0 items-center gap-4">
+                <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <Image
+                    src="/ekybl-logo.png"
+                    alt="Lukáš Kýbl"
+                    width={420}
+                    height={150}
+                    className="h-12 w-auto object-contain sm:h-14"
+                    priority
+                  />
+                </div>
+              </Link>
 
-            <nav className="hidden flex-wrap items-center gap-1 md:flex">
-              {showWorker &&
-                workerLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      isActivePath(pathname, link.href) ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              {showAdmin && <span className="mx-1 h-6 w-px bg-slate-200" />}
-              {showAdmin &&
-                [...adminLinks, ...adminMoreLinks].map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      isActivePath(pathname, link.href) ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-            </nav>
+              <nav className="hidden flex-wrap items-center gap-2 md:flex">
+                {showWorker &&
+                  workerLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        isActivePath(pathname, link.href) ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                {showAdmin && <span className="mx-1 h-6 w-px bg-slate-200" />}
+                {showAdmin &&
+                  [...adminLinks, ...adminMoreLinks].map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        isActivePath(pathname, link.href) ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+              </nav>
+            </div>
           </div>
 
           {(title || subtitle || actions) && (
-            <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-slate-100 pt-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 px-4 py-5 sm:px-5">
               <div>
-                {title ? <h1 className="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{title}</h1> : null}
-                {subtitle ? <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p> : null}
+                {title ? <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h1> : null}
+                {subtitle ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p> : null}
               </div>
               {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
             </div>

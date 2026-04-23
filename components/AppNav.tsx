@@ -102,13 +102,13 @@ export function AppShell({
           <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link href="/attendance" className="flex min-w-0 items-center gap-4">
-                <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <div className="flex h-20 w-[300px] items-center overflow-hidden rounded-[22px] border border-slate-200 bg-white px-3 shadow-sm sm:h-24 sm:w-[360px]">
                   <Image
                     src="/ekybl-logo.png"
                     alt="Lukáš Kýbl"
-                    width={420}
-                    height={150}
-                    className="h-12 w-auto object-contain sm:h-14"
+                    width={1400}
+                    height={900}
+                    className="h-full w-full scale-[1.9] object-cover object-center"
                     priority
                   />
                 </div>
@@ -162,3 +162,4 @@ export function AppShell({
     </main>
   );
 }
+

@@ -50,16 +50,16 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#ffffff_48%,#f4f7fb_100%)] px-4 py-6 text-slate-950">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.04fr_0.96fr]">
-        <section className="space-y-6">
-          <div className="inline-flex rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:items-center">
+        <section className="space-y-6 lg:pr-6">
+          <div className="flex h-28 w-full max-w-[520px] items-center overflow-hidden rounded-[28px] border border-slate-200 bg-white px-4 shadow-[0_24px_80px_rgba(15,23,42,0.12)] sm:h-32">
             <Image
               src="/ekybl-logo.png"
               alt="Lukáš Kýbl"
-              width={760}
-              height={260}
+              width={1400}
+              height={900}
               priority
-              className="h-auto w-[360px] max-w-full sm:w-[520px]"
+              className="h-full w-full scale-[1.8] object-cover object-center"
             />
           </div>
 
@@ -90,7 +90,7 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] sm:p-7">
+        <section className="justify-self-start rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] sm:p-7 lg:w-full lg:max-w-[520px]">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Přihlášení</div>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">Vstup do systému</h2>

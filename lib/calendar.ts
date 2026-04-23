@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const calendarItemTypes = [
   "work_shift",
@@ -12,6 +12,7 @@ export const calendarItemTypes = [
   "personal_leave",
   "obstacle",
   "custom",
+  "availability",
 ] as const;
 
 export const calendarStatuses = ["planned", "in_progress", "done", "cancelled"] as const;
@@ -33,6 +34,7 @@ export const calendarTypeLabels: Record<CalendarItemType, string> = {
   personal_leave: "Osobní volno",
   obstacle: "Překážka",
   custom: "Vlastní",
+  availability: "Dostupnost",
 };
 
 export const workRelatedTypes: CalendarItemType[] = ["work_shift", "service_visit", "installation_job", "meeting", "training"];
@@ -73,6 +75,10 @@ export const calendarUpdateSchema = calendarCreateSchema.partial().extend({
 
 export function isWorkRelated(type: string | null | undefined) {
   return workRelatedTypes.includes(type as CalendarItemType);
+}
+
+export function isAvailability(type: string | null | undefined) {
+  return type === "availability";
 }
 
 export function deriveHours(date: string, startTime?: string | null, endTime?: string | null) {

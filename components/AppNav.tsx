@@ -102,16 +102,14 @@ export function AppShell({
           <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link href="/attendance" className="flex min-w-0 items-center gap-4">
-                <div className="flex h-20 w-[300px] items-center overflow-hidden rounded-[22px] border border-slate-200 bg-white px-3 shadow-sm sm:h-24 sm:w-[360px]">
-                  <Image
-                    src="/ekybl-logo.png"
-                    alt="Lukáš Kýbl"
-                    width={1400}
-                    height={900}
-                    className="h-full w-full scale-[1.9] object-cover object-center"
-                    priority
-                  />
-                </div>
+                <Image
+                  src="/ekybl-logo.png"
+                  alt="Lukáš Kýbl"
+                  width={920}
+                  height={320}
+                  className="h-auto w-[250px] max-w-full sm:w-[320px]"
+                  priority
+                />
               </Link>
 
               <nav className="hidden flex-wrap items-center gap-2 md:flex">
@@ -162,4 +160,3 @@ export function AppShell({
     </main>
   );
 }
-

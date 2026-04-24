@@ -1,8 +1,22 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
+
+type DayDetail = {
+  day: string;
+  hours: number;
+  hours_pay: number;
+  programming_hours: number;
+  programming_pay: number;
+  km: number;
+  km_pay: number;
+  material: number;
+  total: number;
+  note: string;
+  paid: boolean;
+};
 
 type Row = {
   user_id: string;
@@ -24,20 +38,6 @@ type Row = {
   days?: DayDetail[];
 };
 
-type DayDetail = {
-  day: string;
-  hours: number;
-  hours_pay: number;
-  programming_hours: number;
-  programming_pay: number;
-  km: number;
-  km_pay: number;
-  material: number;
-  total: number;
-  note: string;
-  paid: boolean;
-};
-
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -51,6 +51,23 @@ function fmt(n: unknown, max = 2) {
 
 function keyOf(r: Row) {
   return `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
+}
+
+function summarizeRow(row: Row) {
+  const dayList = row.days || [];
+  if (!dayList.length) {
+    const total = Number(row.total) || 0;
+    return {
+      unpaidAmount: row.paid ? 0 : total,
+      paidAmount: row.paid ? total : 0,
+      status: row.paid ? "paid" : "unpaid",
+    } as const;
+  }
+
+  const unpaidAmount = dayList.reduce((sum, day) => sum + (day.paid ? 0 : Number(day.total) || 0), 0);
+  const paidAmount = dayList.reduce((sum, day) => sum + (day.paid ? Number(day.total) || 0 : 0), 0);
+  const status = unpaidAmount > 0 && paidAmount > 0 ? "partial" : unpaidAmount > 0 ? "unpaid" : "paid";
+  return { unpaidAmount, paidAmount, status } as const;
 }
 
 export default function PaymentsPage() {
@@ -126,12 +143,15 @@ export default function PaymentsPage() {
 
   const totals = useMemo(() => {
     return rows.reduce(
-      (sum, row) => ({
-        unpaid: sum.unpaid + (!row.paid ? Number(row.total) || 0 : 0),
-        paid: sum.paid + (row.paid ? Number(row.total) || 0 : 0),
-        hours: sum.hours + (Number(row.hours) || 0) + (Number(row.programming_hours) || 0),
-        km: sum.km + (Number(row.km) || 0),
-      }),
+      (sum, row) => {
+        const summary = summarizeRow(row);
+        return {
+          unpaid: sum.unpaid + summary.unpaidAmount,
+          paid: sum.paid + summary.paidAmount,
+          hours: sum.hours + (Number(row.hours) || 0) + (Number(row.programming_hours) || 0),
+          km: sum.km + (Number(row.km) || 0),
+        };
+      },
       { unpaid: 0, paid: 0, hours: 0, km: 0 }
     );
   }, [rows]);
@@ -139,7 +159,12 @@ export default function PaymentsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
-      .filter((row) => (status === "all" ? true : status === "paid" ? row.paid : !row.paid))
+      .filter((row) => {
+        const summary = summarizeRow(row);
+        if (status === "all") return true;
+        if (status === "paid") return summary.unpaidAmount === 0;
+        return summary.unpaidAmount > 0;
+      })
       .filter((row) => {
         if (!q) return true;
         return `${row.user_name} ${row.site_name || ""}`.toLowerCase().includes(q);
@@ -150,7 +175,7 @@ export default function PaymentsPage() {
     <AppShell
       area="mixed"
       title="Výplaty"
-      subtitle="Souhrny podle pracovníka, stavby a období."
+      subtitle="Souhrny podle pracovníka, stavby a období. U smíšeného období se nahoře ukazuje jen skutečně neuhrazená částka."
       actions={
         <button onClick={load} disabled={loading} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           {loading ? "Načítám" : "Obnovit"}
@@ -190,20 +215,22 @@ export default function PaymentsPage() {
       <section className="mt-4 space-y-3">
         {filtered.map((row) => {
           const key = keyOf(row);
+          const summary = summarizeRow(row);
           return (
             <article key={key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-base font-semibold">{row.user_name}</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    {row.site_name || "Bez stavby"} · {row.from_day} - {row.to_day} · {row.days_count} d.
+                    {row.site_name || "Bez stavby"} • {row.from_day} - {row.to_day} • {row.days_count} d.
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${row.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                    {row.paid ? "Zaplaceno" : "K úhradě"}
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${summary.status === "paid" ? "bg-emerald-50 text-emerald-800" : summary.status === "partial" ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800"}`}>
+                    {summary.status === "paid" ? "Zaplaceno" : summary.status === "partial" ? "Částečně uhrazeno" : "K úhradě"}
                   </span>
-                  <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
+                  <div className="mt-2 text-xl font-semibold">{fmt(summary.unpaidAmount > 0 ? summary.unpaidAmount : summary.paidAmount)} Kč</div>
+                  {summary.status === "partial" ? <div className="mt-1 text-xs text-slate-500">Uhrazeno {fmt(summary.paidAmount)} Kč</div> : null}
                 </div>
               </div>
 
@@ -245,7 +272,7 @@ export default function PaymentsPage() {
                 </div>
               ) : null}
 
-              {!row.paid ? (
+              {summary.unpaidAmount > 0 ? (
                 <div className="mt-4 flex justify-end">
                   <button onClick={() => payGroup(row)} disabled={busyKey === key} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                     {busyKey === key ? "Ukládám" : "Označit jako zaplacené"}

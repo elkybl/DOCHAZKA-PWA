@@ -38,6 +38,8 @@ type Row = {
   days?: DayDetail[];
 };
 
+type StatusFilter = "unpaid" | "all" | "paid";
+
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -53,6 +55,28 @@ function keyOf(r: Row) {
   return `${r.user_id}_${r.site_id || "none"}_${r.from_day}_${r.to_day}`;
 }
 
+function getVisibleDays(row: Row, filter: StatusFilter) {
+  const dayList = row.days || [];
+  if (filter === "all") return dayList;
+  return dayList.filter((day) => (filter === "paid" ? day.paid : !day.paid));
+}
+
+function summarizeDays(days: DayDetail[]) {
+  return days.reduce(
+    (sum, day) => ({
+      total: sum.total + (Number(day.total) || 0),
+      hoursPay: sum.hoursPay + (Number(day.hours_pay) || 0),
+      programmingPay: sum.programmingPay + (Number(day.programming_pay) || 0),
+      kmPay: sum.kmPay + (Number(day.km_pay) || 0),
+      material: sum.material + (Number(day.material) || 0),
+      hours: sum.hours + (Number(day.hours) || 0),
+      programmingHours: sum.programmingHours + (Number(day.programming_hours) || 0),
+      km: sum.km + (Number(day.km) || 0),
+    }),
+    { total: 0, hoursPay: 0, programmingPay: 0, kmPay: 0, material: 0, hours: 0, programmingHours: 0, km: 0 }
+  );
+}
+
 function summarizeRow(row: Row) {
   const dayList = row.days || [];
   if (!dayList.length) {
@@ -60,14 +84,12 @@ function summarizeRow(row: Row) {
     return {
       unpaidAmount: row.paid ? 0 : total,
       paidAmount: row.paid ? total : 0,
-      status: row.paid ? "paid" : "unpaid",
     } as const;
   }
 
   const unpaidAmount = dayList.reduce((sum, day) => sum + (day.paid ? 0 : Number(day.total) || 0), 0);
   const paidAmount = dayList.reduce((sum, day) => sum + (day.paid ? Number(day.total) || 0 : 0), 0);
-  const status = unpaidAmount > 0 && paidAmount > 0 ? "partial" : unpaidAmount > 0 ? "unpaid" : "paid";
-  return { unpaidAmount, paidAmount, status } as const;
+  return { unpaidAmount, paidAmount } as const;
 }
 
 export default function PaymentsPage() {
@@ -79,7 +101,7 @@ export default function PaymentsPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState<"unpaid" | "all" | "paid">("unpaid");
+  const [status, setStatus] = useState<StatusFilter>("unpaid");
   const [query, setQuery] = useState("");
 
   const token = useMemo(() => getToken(), []);
@@ -107,16 +129,16 @@ export default function PaymentsPage() {
     }
   }
 
-  async function payGroup(row: Row) {
+  async function updateWholeGroup(row: Row, method: "POST" | "DELETE") {
     setErr(null);
     setInfo(null);
     if (!token) return;
 
-    const key = keyOf(row);
+    const key = `${method}_${keyOf(row)}`;
     setBusyKey(key);
     try {
       const res = await fetch("/api/admin/pay", {
-        method: "POST",
+        method,
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: row.user_id,
@@ -126,8 +148,12 @@ export default function PaymentsPage() {
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "Nepodařilo se označit jako zaplacené.");
-      setInfo(`${row.user_name} / ${row.site_name || "Bez stavby"} označeno jako zaplacené.`);
+      if (!res.ok) throw new Error(data.error || (method === "POST" ? "Nepodařilo se označit jako zaplacené." : "Nepodařilo se vrátit úhradu."));
+      setInfo(
+        method === "POST"
+          ? `${row.user_name} / ${row.site_name || "Bez stavby"} označeno jako zaplacené.`
+          : `${row.user_name} / ${row.site_name || "Bez stavby"} vráceno mezi neuhrazené.`
+      );
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Došlo k chybě.");
@@ -136,27 +162,29 @@ export default function PaymentsPage() {
     }
   }
 
-  async function unpayGroup(row: Row) {
+  async function updateSingleDay(row: Row, day: DayDetail, method: "POST" | "DELETE") {
     setErr(null);
     setInfo(null);
     if (!token) return;
 
-    const key = `unpay_${keyOf(row)}`;
+    const key = `${method}_${keyOf(row)}_${day.day}`;
     setBusyKey(key);
     try {
       const res = await fetch("/api/admin/pay", {
-        method: "DELETE",
+        method,
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: row.user_id,
-          site_id: row.site_id,
-          from_day: row.from_day,
-          to_day: row.to_day,
+          day: day.day,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "Nepodařilo se vrátit úhradu.");
-      setInfo(`${row.user_name} / ${row.site_name || "Bez stavby"} vráceno mezi neuhrazené.`);
+      if (!res.ok) throw new Error(data.error || (method === "POST" ? "Nepodařilo se označit den jako zaplacený." : "Nepodařilo se vrátit den mezi neuhrazené."));
+      setInfo(
+        method === "POST"
+          ? `${row.user_name} • ${day.day} označeno jako uhrazené.`
+          : `${row.user_name} • ${day.day} vráceno mezi neuhrazené.`
+      );
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Došlo k chybě.");
@@ -188,11 +216,10 @@ export default function PaymentsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
+      .map((row) => ({ ...row, visibleDays: getVisibleDays(row, status) }))
       .filter((row) => {
-        const summary = summarizeRow(row);
         if (status === "all") return true;
-        if (status === "paid") return summary.unpaidAmount === 0;
-        return summary.unpaidAmount > 0;
+        return row.visibleDays.length > 0;
       })
       .filter((row) => {
         if (!q) return true;
@@ -204,7 +231,7 @@ export default function PaymentsPage() {
     <AppShell
       area="mixed"
       title="Výplaty"
-      subtitle="K úhradě zobrazuje jen skutečně neuhrazené položky. Uhrazené položky najdete samostatně ve filtru Uhrazeno a můžete je vrátit zpět."
+      subtitle="Ve filtru K úhradě vidíte jen neuhrazené dny. Ve filtru Uhrazeno jen uhrazené dny. Každý den lze uhradit nebo vrátit samostatně."
       actions={
         <button onClick={load} disabled={loading} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           {loading ? "Načítám" : "Obnovit"}
@@ -244,77 +271,93 @@ export default function PaymentsPage() {
       <section className="mt-4 space-y-3">
         {filtered.map((row) => {
           const key = keyOf(row);
-          const summary = summarizeRow(row);
-          const payBusy = busyKey === key;
-          const unpayBusy = busyKey === `unpay_${key}`;
+          const visibleDays = row.visibleDays;
+          const summary = summarizeDays(visibleDays);
+          const groupAction = status === "paid" ? "DELETE" : status === "unpaid" ? "POST" : null;
+          const groupBusy = groupAction ? busyKey === `${groupAction}_${key}` : false;
           return (
             <article key={key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-base font-semibold">{row.user_name}</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    {row.site_name || "Bez stavby"} • {row.from_day} - {row.to_day} • {row.days_count} d.
+                    {row.site_name || "Bez stavby"} • {row.from_day} - {row.to_day} • zobrazeno {visibleDays.length} d.
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${summary.status === "paid" ? "bg-emerald-50 text-emerald-800" : summary.status === "partial" ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800"}`}>
-                    {summary.status === "paid" ? "Uhrazeno" : summary.status === "partial" ? "Částečně uhrazeno" : "K úhradě"}
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${status === "paid" ? "bg-emerald-50 text-emerald-800" : status === "unpaid" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-700"}`}>
+                    {status === "paid" ? "Uhrazené dny" : status === "unpaid" ? "K úhradě" : "Všechny dny"}
                   </span>
-                  <div className="mt-2 text-xl font-semibold">{fmt(summary.unpaidAmount > 0 ? summary.unpaidAmount : summary.paidAmount)} Kč</div>
-                  {summary.status === "partial" ? <div className="mt-1 text-xs text-slate-500">Uhrazeno {fmt(summary.paidAmount)} Kč</div> : null}
+                  <div className="mt-2 text-xl font-semibold">{fmt(summary.total)} Kč</div>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-2 sm:grid-cols-4">
-                <Mini label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={`${fmt(row.hours)} h`} />
-                <Mini label="Programování" value={`${fmt(row.programming_pay)} Kč`} sub={`${fmt(row.programming_hours)} h`} />
-                <Mini label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km`} />
-                <Mini label="Materiál" value={`${fmt(row.material)} Kč`} sub=" " />
+                <Mini label="Práce" value={`${fmt(summary.hoursPay)} Kč`} sub={`${fmt(summary.hours)} h`} />
+                <Mini label="Programování" value={`${fmt(summary.programmingPay)} Kč`} sub={`${fmt(summary.programmingHours)} h`} />
+                <Mini label="Doprava" value={`${fmt(summary.kmPay)} Kč`} sub={`${fmt(summary.km, 1)} km`} />
+                <Mini label="Materiál" value={`${fmt(summary.material)} Kč`} sub=" " />
               </div>
 
-              {row.days?.length ? (
-                <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-                  <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
-                    <div className="text-xs font-semibold uppercase text-slate-500">Denní rozpis</div>
-                    <div className="text-xs text-slate-500">Kontrola před označením jako zaplacené</div>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {row.days.map((day) => (
-                      <div key={`${key}_${day.day}`} className="grid gap-2 px-3 py-3 text-sm lg:grid-cols-[110px_1fr_120px] lg:items-center">
+              <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                  <div className="text-xs font-semibold uppercase text-slate-500">Denní rozpis</div>
+                  <div className="text-xs text-slate-500">Akce jsou po jednotlivých dnech</div>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {visibleDays.map((day) => {
+                    const dayBusyKey = `${day.paid ? "DELETE" : "POST"}_${key}_${day.day}`;
+                    const dayBusy = busyKey === dayBusyKey;
+                    return (
+                      <div key={`${key}_${day.day}`} className="grid gap-3 px-3 py-3 text-sm lg:grid-cols-[110px_1fr_160px] lg:items-start">
                         <div>
                           <div className="font-semibold text-slate-950">{day.day}</div>
                           <div className={`mt-1 text-xs font-medium ${day.paid ? "text-emerald-700" : "text-amber-700"}`}>
                             {day.paid ? "Uhrazeno" : "K úhradě"}
                           </div>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          <Mini label="Práce" value={`${fmt(day.hours_pay)} Kč`} sub={`${fmt(day.hours)} h`} />
-                          <Mini label="Programování" value={`${fmt(day.programming_pay)} Kč`} sub={`${fmt(day.programming_hours)} h`} />
-                          <Mini label="Doprava" value={`${fmt(day.km_pay)} Kč`} sub={`${fmt(day.km, 1)} km`} />
-                          <Mini label="Materiál" value={`${fmt(day.material)} Kč`} sub=" " />
+                        <div>
+                          <div className="grid gap-2 sm:grid-cols-4">
+                            <Mini label="Práce" value={`${fmt(day.hours_pay)} Kč`} sub={`${fmt(day.hours)} h`} />
+                            <Mini label="Programování" value={`${fmt(day.programming_pay)} Kč`} sub={`${fmt(day.programming_hours)} h`} />
+                            <Mini label="Doprava" value={`${fmt(day.km_pay)} Kč`} sub={`${fmt(day.km, 1)} km`} />
+                            <Mini label="Materiál" value={`${fmt(day.material)} Kč`} sub=" " />
+                          </div>
+                          <div className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-700">
+                            {day.note || "Bez popisu práce"}
+                          </div>
                         </div>
-                        <div className="text-right font-semibold text-slate-950">{fmt(day.total)} Kč</div>
-                        <div className="rounded-lg bg-white p-3 text-sm text-slate-700 lg:col-span-3">
-                          {day.note || "Bez popisu práce"}
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="text-right text-lg font-semibold text-slate-950">{fmt(day.total)} Kč</div>
+                          <button
+                            onClick={() => updateSingleDay(row, day, day.paid ? "DELETE" : "POST")}
+                            disabled={dayBusy}
+                            className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 ${day.paid ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white"}`}
+                          >
+                            {dayBusy ? "Ukládám" : day.paid ? "Vrátit den mezi neuhrazené" : "Označit den jako uhrazený"}
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {groupAction ? (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => updateWholeGroup(row, groupAction)}
+                    disabled={groupBusy}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 ${groupAction === "POST" ? "bg-slate-950 text-white" : "border border-slate-300 bg-white text-slate-700"}`}
+                  >
+                    {groupBusy
+                      ? "Ukládám"
+                      : groupAction === "POST"
+                        ? "Označit všechny zobrazené dny jako uhrazené"
+                        : "Vrátit všechny zobrazené dny mezi neuhrazené"}
+                  </button>
                 </div>
               ) : null}
-
-              <div className="mt-4 flex flex-wrap justify-end gap-2">
-                {summary.paidAmount > 0 ? (
-                  <button onClick={() => unpayGroup(row)} disabled={unpayBusy || payBusy} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">
-                    {unpayBusy ? "Vrací se" : "Vrátit mezi neuhrazené"}
-                  </button>
-                ) : null}
-                {summary.unpaidAmount > 0 ? (
-                  <button onClick={() => payGroup(row)} disabled={payBusy || unpayBusy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                    {payBusy ? "Ukládám" : "Označit jako zaplacené"}
-                  </button>
-                ) : null}
-              </div>
             </article>
           );
         })}

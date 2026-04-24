@@ -52,14 +52,14 @@ export default function LoginPage() {
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#ffffff_48%,#f4f7fb_100%)] px-4 py-6 text-slate-950">
       <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:items-center">
         <section className="space-y-6 lg:pr-6">
-          <div className="flex h-28 w-full max-w-[520px] items-center overflow-hidden rounded-[28px] border border-slate-200 bg-white px-4 shadow-[0_24px_80px_rgba(15,23,42,0.12)] sm:h-32">
+          <div className="flex w-full max-w-[560px] items-center justify-center rounded-[28px] border border-slate-200 bg-white px-6 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
             <Image
               src="/ekybl-logo.png"
               alt="Lukáš Kýbl"
               width={1400}
               height={900}
               priority
-              className="h-full w-full scale-[1.8] object-cover object-center"
+              className="h-auto w-full max-w-[520px] object-contain"
             />
           </div>
 
@@ -129,3 +129,5 @@ export default function LoginPage() {
     </main>
   );
 }
+
+

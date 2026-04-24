@@ -136,6 +136,35 @@ export default function PaymentsPage() {
     }
   }
 
+  async function unpayGroup(row: Row) {
+    setErr(null);
+    setInfo(null);
+    if (!token) return;
+
+    const key = `unpay_${keyOf(row)}`;
+    setBusyKey(key);
+    try {
+      const res = await fetch("/api/admin/pay", {
+        method: "DELETE",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          user_id: row.user_id,
+          site_id: row.site_id,
+          from_day: row.from_day,
+          to_day: row.to_day,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Nepodařilo se vrátit úhradu.");
+      setInfo(`${row.user_name} / ${row.site_name || "Bez stavby"} vráceno mezi neuhrazené.`);
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Došlo k chybě.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,7 +204,7 @@ export default function PaymentsPage() {
     <AppShell
       area="mixed"
       title="Výplaty"
-      subtitle="Souhrny podle pracovníka, stavby a období. U smíšeného období se nahoře ukazuje jen skutečně neuhrazená částka."
+      subtitle="K úhradě zobrazuje jen skutečně neuhrazené položky. Uhrazené položky najdete samostatně ve filtru Uhrazeno a můžete je vrátit zpět."
       actions={
         <button onClick={load} disabled={loading} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           {loading ? "Načítám" : "Obnovit"}
@@ -216,6 +245,8 @@ export default function PaymentsPage() {
         {filtered.map((row) => {
           const key = keyOf(row);
           const summary = summarizeRow(row);
+          const payBusy = busyKey === key;
+          const unpayBusy = busyKey === `unpay_${key}`;
           return (
             <article key={key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -227,7 +258,7 @@ export default function PaymentsPage() {
                 </div>
                 <div className="text-right">
                   <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${summary.status === "paid" ? "bg-emerald-50 text-emerald-800" : summary.status === "partial" ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800"}`}>
-                    {summary.status === "paid" ? "Zaplaceno" : summary.status === "partial" ? "Částečně uhrazeno" : "K úhradě"}
+                    {summary.status === "paid" ? "Uhrazeno" : summary.status === "partial" ? "Částečně uhrazeno" : "K úhradě"}
                   </span>
                   <div className="mt-2 text-xl font-semibold">{fmt(summary.unpaidAmount > 0 ? summary.unpaidAmount : summary.paidAmount)} Kč</div>
                   {summary.status === "partial" ? <div className="mt-1 text-xs text-slate-500">Uhrazeno {fmt(summary.paidAmount)} Kč</div> : null}
@@ -245,7 +276,7 @@ export default function PaymentsPage() {
                 <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
                     <div className="text-xs font-semibold uppercase text-slate-500">Denní rozpis</div>
-                    <div className="text-xs text-slate-500">Kontrola před označením jako zaplaceno</div>
+                    <div className="text-xs text-slate-500">Kontrola před označením jako zaplacené</div>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {row.days.map((day) => (
@@ -253,7 +284,7 @@ export default function PaymentsPage() {
                         <div>
                           <div className="font-semibold text-slate-950">{day.day}</div>
                           <div className={`mt-1 text-xs font-medium ${day.paid ? "text-emerald-700" : "text-amber-700"}`}>
-                            {day.paid ? "Zaplaceno" : "K úhradě"}
+                            {day.paid ? "Uhrazeno" : "K úhradě"}
                           </div>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-4">
@@ -272,13 +303,18 @@ export default function PaymentsPage() {
                 </div>
               ) : null}
 
-              {summary.unpaidAmount > 0 ? (
-                <div className="mt-4 flex justify-end">
-                  <button onClick={() => payGroup(row)} disabled={busyKey === key} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                    {busyKey === key ? "Ukládám" : "Označit jako zaplacené"}
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                {summary.paidAmount > 0 ? (
+                  <button onClick={() => unpayGroup(row)} disabled={unpayBusy || payBusy} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">
+                    {unpayBusy ? "Vrací se" : "Vrátit mezi neuhrazené"}
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+                {summary.unpaidAmount > 0 ? (
+                  <button onClick={() => payGroup(row)} disabled={payBusy || unpayBusy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                    {payBusy ? "Ukládám" : "Označit jako zaplacené"}
+                  </button>
+                ) : null}
+              </div>
             </article>
           );
         })}

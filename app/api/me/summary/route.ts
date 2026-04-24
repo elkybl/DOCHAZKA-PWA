@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
@@ -39,7 +39,7 @@ function dayKeyPrague(iso: string) {
   return `${obj.year}-${obj.month}-${obj.day}`;
 }
 
-// ✅ round UP to next 30 minutes (for ISO timestamps)
+// âś… round UP to next 30 minutes (for ISO timestamps)
 function roundUpIsoTo30(iso: string) {
   const d = new Date(iso);
   const m = d.getMinutes();
@@ -216,7 +216,7 @@ export async function GET(req: NextRequest) {
       } else if (e.type === "OUT" && lastIn) {
         const out = new Date(e.server_time);
 
-        // ✅ minutes rounding: ALWAYS UP to 30min blocks
+        // âś… minutes rounding: ALWAYS UP to 30min blocks
         const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
         const minutesRounded = ceilMinutesTo30(minutesRaw);
         const hours = minutesRounded / 60;
@@ -227,7 +227,7 @@ export async function GET(req: NextRequest) {
         const sid = (lastIn.site_id || e.site_id) as string | null;
         const r = getRate(sid);
 
-        // programování je jen pro programátory a zapisuje se na OUT eventu jako počet hodin v rámci směny
+        // programování je jen pro programátory a zapisuje se na OUT eventu jako poÄŤet hodin v rĂˇmci smÄ›ny
         const progH = isProg ? Math.max(0, Math.min(hours, toNum((e as any).programming_hours, 0))) : 0;
         const siteH = Math.max(0, hours - progH);
         const progPay = round2(progH * (r as any).prog);
@@ -401,3 +401,4 @@ export async function GET(req: NextRequest) {
   rows.sort((a, b) => (a.day < b.day ? 1 : -1));
   return json({ rows });
 }
+

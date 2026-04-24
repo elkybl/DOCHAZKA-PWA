@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
@@ -20,31 +20,31 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
-// ✅ Next 16: params je Promise
-export async function DELETE(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin(req);
   if (auth.error) return auth.error;
 
   const p = await context.params;
   let id = p?.id;
-
-  // fallback: kdyby náhodou přišlo prázdné
   if (!id) id = extractIdFromPath(req);
 
   if (!id || !isUuid(id)) {
-    return json({ error: `Chybí/špatné ID záznamu. URL: ${req.nextUrl.pathname}` }, { status: 400 });
+    return json({ error: `Chybí nebo je špatné ID záznamu. URL: ${req.nextUrl.pathname}` }, { status: 400 });
   }
 
   const db = supabaseAdmin();
-  const { error } = await db.from("attendance_events").delete().eq("id", id);
+  const { data: row, error: rowError } = await db.from("attendance_events").select("id,is_paid,user_id,day_local").eq("id", id).single();
+  if (rowError || !row) return json({ error: "Záznam nenalezen." }, { status: 404 });
+  if (row.is_paid) {
+    return json({ error: "Uhrazený záznam je zamčený. Nejprve ho vraťte ve výplatách mezi neuhrazené." }, { status: 409 });
+  }
 
+  const { error } = await db.from("attendance_events").delete().eq("id", id);
   if (error) {
     console.error("DELETE attendance error:", error);
     return json({ error: `Nejde smazat záznam: ${error.message}` }, { status: 500 });
   }
 
+  console.info("attendance.delete", { admin: auth.session.userId, event_id: id, day: row.day_local, user_id: row.user_id });
   return json({ ok: true });
 }

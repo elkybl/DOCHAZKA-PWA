@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -97,10 +97,10 @@ function timeHM(iso: string | null) {
 }
 
 function paymentLabel(state?: PaymentState, paid?: boolean) {
-  if (state === "partial") return "Částečně";
-  if (state === "paid") return "Zaplaceno";
-  if (state === "unpaid") return "Nezaplaceno";
-  return paid ? "Zaplaceno" : "Nezaplaceno";
+  if (state === "partial") return "Částečně uhrazeno";
+  if (state === "paid") return "Uhrazeno";
+  if (state === "unpaid") return "K úhradě";
+  return paid ? "Uhrazeno" : "K úhradě";
 }
 
 function paymentClass(state?: PaymentState, paid?: boolean) {
@@ -109,9 +109,16 @@ function paymentClass(state?: PaymentState, paid?: boolean) {
   return "bg-amber-50 text-amber-800 border-amber-100";
 }
 
+function kmSourceLabel(source: DayRow["km_source"]) {
+  if (source === "manual") return "Ruční zadání";
+  if (source === "trips") return "Z jízd";
+  return "Bez dopravy";
+}
+
 export default function Page() {
   const router = useRouter();
   const [rows, setRows] = useState<DayRow[]>([]);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
@@ -143,7 +150,9 @@ export default function Page() {
       });
       const data = (await res.json().catch(() => ({}))) as { rows?: DayRow[]; error?: string };
       if (!res.ok) throw new Error(data.error || "Chyba načtení.");
-      setRows(data.rows || []);
+      const nextRows = data.rows || [];
+      setRows(nextRows);
+      setSelectedDay((current) => (current && nextRows.some((row) => row.day === current) ? current : nextRows[0]?.day || null));
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Chyba načtení.");
     } finally {
@@ -174,7 +183,14 @@ export default function Page() {
         if (!segments.length && !offsites.length) return null;
         const hours = segments.reduce((sum, x) => sum + x.hours_rounded, 0) + offsites.reduce((sum, x) => sum + x.hours, 0);
         const hoursPay = segments.reduce((sum, x) => sum + x.pay, 0) + offsites.reduce((sum, x) => sum + x.pay, 0);
-        return { ...row, segments, offsites, hours, hours_pay: hoursPay };
+        return {
+          ...row,
+          segments,
+          offsites,
+          hours,
+          hours_pay: hoursPay,
+          total: (Number(hoursPay) || 0) + (Number(row.km_pay) || 0) + (Number(row.material) || 0),
+        };
       })
       .filter((row): row is DayRow => !!row);
   }, [rows, siteFilter]);
@@ -188,7 +204,7 @@ export default function Page() {
         unknown: sum.unknown + (Number(row.unknown_total) || 0),
         hours: sum.hours + (Number(row.hours) || 0),
       }),
-      { total: 0, paid: 0, unpaid: 0, unknown: 0, hours: 0 }
+      { total: 0, paid: 0, unpaid: 0, unknown: 0, hours: 0 },
     );
   }, [filteredRows]);
 
@@ -216,11 +232,13 @@ export default function Page() {
     return [...map.values()].sort((a, b) => b.amount - a.amount);
   }, [filteredRows]);
 
+  const selectedRow = useMemo(() => filteredRows.find((row) => row.day === selectedDay) || null, [filteredRows, selectedDay]);
+
   return (
     <AppShell
       area="auto"
       title="Moje výdělky"
-      subtitle="Přehled práce, plateb, dopravy a materiálu."
+      subtitle="Přehled práce, plateb, materiálu a navazujících částek po jednotlivých dnech."
       actions={
         <>
           {sheetUrl ? (
@@ -236,8 +254,8 @@ export default function Page() {
     >
       <section className="grid gap-3 md:grid-cols-4">
         <MoneyStat label="Celkem" value={totals.total} />
-        <MoneyStat label="Zaplaceno" value={totals.paid} tone="paid" />
-        <MoneyStat label="Nezaplaceno" value={totals.unpaid} tone="unpaid" />
+        <MoneyStat label="Uhrazeno" value={totals.paid} tone="paid" />
+        <MoneyStat label="K úhradě" value={totals.unpaid} tone="unpaid" />
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Odpracováno</div>
           <div className="mt-2 text-2xl font-semibold text-slate-950">{fmt(totals.hours)} h</div>
@@ -297,7 +315,7 @@ export default function Page() {
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-semibold">{fmt(site.amount)} Kč</div>
-                  <div className="mt-1 text-xs text-amber-700">Nezaplaceno {fmt(site.unpaid)} Kč</div>
+                  <div className="mt-1 text-xs text-amber-700">K úhradě {fmt(site.unpaid)} Kč</div>
                 </div>
               </div>
             </div>
@@ -305,11 +323,14 @@ export default function Page() {
           {!sitesAgg.length ? <EmptyState /> : null}
         </section>
       ) : (
-        <section className="mt-4 space-y-3">
-          {filteredRows.map((row) => (
-            <DayCard key={row.day} row={row} />
-          ))}
-          {!filteredRows.length ? <EmptyState /> : null}
+        <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-3">
+            {filteredRows.map((row) => (
+              <DayCard key={row.day} row={row} active={row.day === selectedDay} onOpen={() => setSelectedDay(row.day)} />
+            ))}
+            {!filteredRows.length ? <EmptyState /> : null}
+          </div>
+          <DayDrawer row={selectedRow} />
         </section>
       )}
     </AppShell>
@@ -321,8 +342,8 @@ function MoneyStat({ label, value, tone = "default" }: { label: string; value: n
     tone === "paid"
       ? "border-emerald-200 bg-emerald-50 text-emerald-950"
       : tone === "unpaid"
-      ? "border-amber-200 bg-amber-50 text-amber-950"
-      : "border-blue-200 bg-blue-50 text-blue-950";
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : "border-blue-200 bg-blue-50 text-blue-950";
   return (
     <div className={`rounded-lg border p-4 shadow-sm ${cls}`}>
       <div className="text-xs font-medium opacity-75">{label}</div>
@@ -331,10 +352,10 @@ function MoneyStat({ label, value, tone = "default" }: { label: string; value: n
   );
 }
 
-function DayCard({ row }: { row: DayRow }) {
+function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen: () => void }) {
   const items = [...(row.segments || []), ...(row.offsites || [])];
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article className={`rounded-lg border bg-white p-4 shadow-sm transition ${active ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-base font-semibold">{row.day}</div>
@@ -347,44 +368,116 @@ function DayCard({ row }: { row: DayRow }) {
             {paymentLabel(row.payment_state, row.paid)}
           </span>
           <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
-          <a className="mt-2 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50" href={`/me/edit?day=${row.day}`}>
-            Upravit den
-          </a>
+          <div className="mt-2 flex flex-wrap justify-end gap-2">
+            <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50" onClick={onOpen}>
+              Detail dne
+            </button>
+            <a className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50" href={`/me/edit?day=${row.day}`}>
+              Upravit den
+            </a>
+          </div>
         </div>
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-4">
         <MiniStat label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={`${fmt(row.hours)} h`} />
-        <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km`} />
+        <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km · ${kmSourceLabel(row.km_source)}`} />
         <MiniStat label="Materiál" value={`${fmt(row.material)} Kč`} sub={row.material_notes?.[0] || "Bez materiálu"} />
-        <MiniStat label="Nezaplaceno" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : " "} />
+        <MiniStat label="K úhradě" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : " "} />
       </div>
 
       {items.length ? (
-        <div className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-100">
-          {items.map((item, index) => (
-            <div key={index} className="p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className="text-sm font-semibold">
-                    {item.kind === "WORK" ? item.site_name || "Bez stavby" : "Mimo stavbu"}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {item.kind === "WORK" ? `${timeHM(item.in_time_rounded)} - ${timeHM(item.out_time_rounded)}` : `${fmt(item.hours)} h`}
-                  </div>
-                </div>
-                <div className="text-right text-sm font-semibold">{fmt(item.pay)} Kč</div>
-              </div>
-              {"note_work" in item && item.note_work ? <div className="mt-2 text-sm text-slate-700">{item.note_work}</div> : null}
-              {"reason" in item && item.reason ? <div className="mt-2 text-sm text-slate-700">{item.reason}</div> : null}
-              {"prog_hours" in item && item.prog_hours > 0 ? (
-                <div className="mt-2 text-xs text-slate-500">Programování {fmt(item.prog_hours)} h · {fmt(item.prog_pay)} Kč</div>
-              ) : null}
-            </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {items.slice(0, 4).map((item, index) => (
+            <span key={`${row.day}_${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
+              {item.kind === "WORK" ? item.site_name || "Bez stavby" : "Mimo stavbu"}
+            </span>
           ))}
+          {items.length > 4 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500">+{items.length - 4} další položky</span> : null}
         </div>
       ) : null}
     </article>
+  );
+}
+
+function DayDrawer({ row }: { row: DayRow | null }) {
+  if (!row) {
+    return (
+      <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold">Detail dne</h2>
+        <p className="mt-3 text-sm text-slate-500">Vyberte den vlevo. Tady uvidíte časovou osu, rozpis práce, programování, materiál a stav úhrady.</p>
+      </aside>
+    );
+  }
+
+  const timeline = [
+    row.first_in ? { label: "Příchod", time: timeHM(row.first_in), tone: "blue" } : null,
+    row.last_out ? { label: "Odchod", time: timeHM(row.last_out), tone: "slate" } : null,
+    { label: paymentLabel(row.payment_state, row.paid), time: `${fmt(row.unpaid_total || 0)} Kč k úhradě`, tone: row.paid ? "emerald" : row.payment_state === "partial" ? "blue" : "amber" },
+  ].filter(Boolean) as Array<{ label: string; time: string; tone: "blue" | "slate" | "emerald" | "amber" }>;
+
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:self-start">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Detail dne</h2>
+          <div className="mt-1 text-sm text-slate-500">{row.day}</div>
+        </div>
+        <a className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50" href={`/me/edit?day=${row.day}`}>
+          Upravit den
+        </a>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <MiniStat label="Hodiny dne" value={`${fmt(row.hours)} h`} sub={`${timeHM(row.first_in)} - ${timeHM(row.last_out)}`} />
+        <MiniStat label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={row.segments.some((item) => item.prog_hours > 0) ? `Programování ${fmt(row.segments.reduce((sum, item) => sum + item.prog_hours, 0))} h` : "Bez programování"} />
+        <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km · ${kmSourceLabel(row.km_source)}`} />
+        <MiniStat label="Materiál" value={`${fmt(row.material)} Kč`} sub={row.material_notes.length ? `${row.material_notes.length} položek` : "Bez materiálu"} />
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Časová osa</div>
+        <div className="mt-3 space-y-2">
+          {timeline.map((item, index) => (
+            <div key={`${item.label}_${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+              <span className="font-medium text-slate-700">{item.label}</span>
+              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.tone === "emerald" ? "bg-emerald-50 text-emerald-800" : item.tone === "amber" ? "bg-amber-50 text-amber-800" : item.tone === "blue" ? "bg-blue-50 text-blue-800" : "bg-slate-100 text-slate-700"}`}>{item.time}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {[...row.segments, ...row.offsites].map((item, index) => (
+          <div key={`${row.day}_${index}`} className="rounded-lg border border-slate-200 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">{item.kind === "WORK" ? item.site_name || "Bez stavby" : "Mimo stavbu"}</div>
+                <div className="mt-1 text-xs text-slate-500">{item.kind === "WORK" ? `${timeHM(item.in_time_rounded)} - ${timeHM(item.out_time_rounded)}` : `${fmt(item.hours)} h`}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-semibold">{fmt(item.pay)} Kč</div>
+                <div className={`mt-1 inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${item.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{item.paid ? "Uhrazeno" : "K úhradě"}</div>
+              </div>
+            </div>
+            {"note_work" in item && item.note_work ? <div className="mt-3 text-sm text-slate-700">{item.note_work}</div> : null}
+            {"reason" in item && item.reason ? <div className="mt-3 text-sm text-slate-700">{item.reason}</div> : null}
+            {"prog_hours" in item && item.prog_hours > 0 ? <div className="mt-3 text-xs text-slate-500">Programování {fmt(item.prog_hours)} h · {fmt(item.prog_pay)} Kč</div> : null}
+          </div>
+        ))}
+      </div>
+
+      {row.material_notes.length ? (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Materiál</div>
+          <div className="mt-3 space-y-2 text-sm text-slate-700">
+            {row.material_notes.map((note, index) => (
+              <div key={`${row.day}_mat_${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2">{note}</div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </aside>
   );
 }
 
@@ -393,7 +486,7 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub: st
     <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
       <div className="text-xs text-slate-500">{label}</div>
       <div className="mt-1 font-semibold">{value}</div>
-      <div className="mt-1 truncate text-xs text-slate-500">{sub}</div>
+      <div className="mt-1 text-xs text-slate-500">{sub}</div>
     </div>
   );
 }

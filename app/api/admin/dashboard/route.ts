@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
@@ -64,13 +64,7 @@ export async function GET(req: NextRequest) {
   const db = supabaseAdmin();
   const from = new Date(Date.now() - 45 * 86400000).toISOString();
 
-  const [
-    usersRes,
-    pendingSitesRes,
-    unpaidRes,
-    eventsRes,
-    sitesRes,
-  ] = await Promise.all([
+  const [usersRes, pendingSitesRes, unpaidRes, eventsRes, sitesRes] = await Promise.all([
     db.from("users").select("id,name,is_active,role"),
     db.from("sites").select("id", { count: "exact", head: true }).eq("is_pending", true).eq("is_archived", false),
     db.from("attendance_events").select("id", { count: "exact", head: true }).eq("is_paid", false),
@@ -107,12 +101,7 @@ export async function GET(req: NextRequest) {
     severity: "low" | "medium" | "high";
   }> = [];
 
-  function addRisk(input: {
-    code: string;
-    event: EventRow;
-    detail: string;
-    severity?: "low" | "medium" | "high";
-  }) {
+  function addRisk(input: { code: string; event: EventRow; detail: string; severity?: "low" | "medium" | "high" }) {
     risks.push({
       code: input.code,
       title: riskTitle(input.code),

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppNav";
@@ -12,6 +12,25 @@ type U = {
   is_programmer?: boolean;
   programming_rate?: number | null;
   created_at: string;
+};
+
+type UserProfile = {
+  lastDay: string | null;
+  unpaidTotal: number;
+  totalAmount: number;
+  workedDays: number;
+};
+
+type ExportRow = {
+  user_id: string;
+  user_name: string;
+  day: string;
+  total: number;
+  paid: boolean;
+};
+
+type RiskRow = {
+  user_id: string;
 };
 
 type UserForm = {
@@ -40,8 +59,16 @@ function emptyForm(): UserForm {
   };
 }
 
+function fmt(n: unknown) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "0";
+  return x.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
+}
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<U[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
+  const [riskCounts, setRiskCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [form, setForm] = useState<UserForm>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,21 +80,43 @@ export default function AdminUsers() {
     setErr(null);
     const t = token();
     if (!t) {
-      setErr("Chybi prihlaseni.");
+      setErr("Chybí přihlášení.");
       return;
     }
 
-    const res = await fetch("/api/admin/users", {
-      headers: { authorization: `Bearer ${t}` },
-    });
+    const [usersRes, exportRes, dashboardRes] = await Promise.all([
+      fetch("/api/admin/users", { headers: { authorization: `Bearer ${t}` } }),
+      fetch(`/api/admin/export?from=${new Date(Date.now() - 45 * 86400000).toISOString()}&to=${new Date().toISOString()}`, { headers: { authorization: `Bearer ${t}` } }),
+      fetch("/api/admin/dashboard", { headers: { authorization: `Bearer ${t}` } }),
+    ]);
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setErr(data?.error || "Chyba");
+    const usersData = await usersRes.json().catch(() => ({}));
+    if (!usersRes.ok) {
+      setErr(usersData?.error || "Chyba");
       return;
     }
+    const nextUsers = usersData.users || [];
+    setUsers(nextUsers);
 
-    setUsers(data.users || []);
+    const exportData = await exportRes.json().catch(() => ({}));
+    const exportRows = (exportData.rows || []) as ExportRow[];
+    const profileMap: Record<string, UserProfile> = {};
+    for (const row of exportRows) {
+      const current = profileMap[row.user_id] || { lastDay: null, unpaidTotal: 0, totalAmount: 0, workedDays: 0 };
+      current.totalAmount += Number(row.total) || 0;
+      if (!row.paid) current.unpaidTotal += Number(row.total) || 0;
+      current.workedDays += 1;
+      if (!current.lastDay || row.day > current.lastDay) current.lastDay = row.day;
+      profileMap[row.user_id] = current;
+    }
+    setProfiles(profileMap);
+
+    const dashboardData = await dashboardRes.json().catch(() => ({}));
+    const riskMap: Record<string, number> = {};
+    for (const risk of ((dashboardData.risks || []) as RiskRow[])) {
+      riskMap[risk.user_id] = (riskMap[risk.user_id] || 0) + 1;
+    }
+    setRiskCounts(riskMap);
   }
 
   useEffect(() => {
@@ -80,7 +129,7 @@ export default function AdminUsers() {
 
     const t = token();
     if (!t) {
-      setErr("Chybi prihlaseni.");
+      setErr("Chybí přihlášení.");
       return;
     }
 
@@ -115,11 +164,11 @@ export default function AdminUsers() {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setErr(data?.error || "Neslo ulozit.");
+      setErr(data?.error || "Nešlo uložit.");
       return;
     }
 
-    setMsg(editingId ? "Uzivatel upraven." : "Uzivatel pridan.");
+    setMsg(editingId ? "Uživatel upraven." : "Uživatel přidán.");
     setEditingId(null);
     setForm(emptyForm());
     await load();
@@ -148,12 +197,12 @@ export default function AdminUsers() {
   }
 
   async function removeUser(id: string, name: string) {
-    const ok = confirm(`Smazat uzivatele "${name}"? Smazou se i jeho zaznamy dochazky.`);
+    const ok = confirm(`Smazat uživatele "${name}"? Smažou se i jeho záznamy docházky.`);
     if (!ok) return;
 
     const t = token();
     if (!t) {
-      setErr("Chybi prihlaseni.");
+      setErr("Chybí přihlášení.");
       return;
     }
 
@@ -168,11 +217,11 @@ export default function AdminUsers() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Mazani selhalo.");
+      if (!res.ok) throw new Error(data?.error || "Mazání selhalo.");
 
       setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Mazani selhalo.");
+      setErr(e instanceof Error ? e.message : "Mazání selhalo.");
     } finally {
       setDeletingId(null);
     }
@@ -182,7 +231,7 @@ export default function AdminUsers() {
     const needle = query.trim().toLocaleLowerCase("cs");
     if (!needle) return users;
     return users.filter((u) =>
-      [u.name, u.role, u.is_programmer ? "programator" : "", u.is_active ? "aktivni" : "neaktivni"]
+      [u.name, u.role, u.is_programmer ? "programátor" : "", u.is_active ? "aktivní" : "neaktivní"]
         .join(" ")
         .toLocaleLowerCase("cs")
         .includes(needle),
@@ -197,11 +246,11 @@ export default function AdminUsers() {
   }), [users]);
 
   return (
-    <AppShell area="mixed" title="Lide" subtitle="Sprava pristupu, roli, exportu a programatorskych sazeb.">
+    <AppShell area="mixed" title="Lidé" subtitle="Správa přístupů, rolí, sazeb a rychlý profil každého pracovníka.">
       <section className="grid gap-3 md:grid-cols-4">
-        <StatCard label="Celkem lidi" value={String(stats.total)} tone="slate" />
-        <StatCard label="Aktivni" value={String(stats.active)} tone="emerald" />
-        <StatCard label="Programatori" value={String(stats.programmers)} tone="blue" />
+        <StatCard label="Celkem lidí" value={String(stats.total)} tone="slate" />
+        <StatCard label="Aktivní" value={String(stats.active)} tone="emerald" />
+        <StatCard label="Programátoři" value={String(stats.programmers)} tone="blue" />
         <StatCard label="Admini" value={String(stats.admins)} tone="amber" />
       </section>
 
@@ -209,50 +258,50 @@ export default function AdminUsers() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">{editingId ? "Upravit uzivatele" : "Novy uzivatel"}</h2>
-              <p className="mt-1 text-sm text-slate-500">PIN, role, export do Google Sheetu a programatorsky rezim.</p>
+              <h2 className="text-lg font-semibold">{editingId ? "Upravit uživatele" : "Nový uživatel"}</h2>
+              <p className="mt-1 text-sm text-slate-500">PIN, role, export do Google Sheetu a programátorský režim.</p>
             </div>
-            {editingId ? <button className="rounded-lg border px-3 py-2 text-sm" onClick={resetForm}>Zrusit</button> : null}
+            {editingId ? <button className="rounded-lg border px-3 py-2 text-sm" onClick={resetForm}>Zrušit</button> : null}
           </div>
 
           <div className="mt-4 space-y-3">
-            <Field label="Jmeno">
-              <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Napriklad Lukas" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Field label="Jméno">
+              <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Například Lukáš" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
 
-            <Field label={editingId ? "Novy PIN" : "PIN"} hint={editingId ? "Kdyz nechas prazdne, PIN zustane stejny." : "Pouziva se pro prihlaseni."}>
-              <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder={editingId ? "Nepovinne" : "PIN"} inputMode="numeric" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "").slice(0, 8) })} />
+            <Field label={editingId ? "Nový PIN" : "PIN"} hint={editingId ? "Když necháš prázdné, PIN zůstane stejný." : "Používá se pro přihlášení."}>
+              <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder={editingId ? "Nepovinné" : "PIN"} inputMode="numeric" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "").slice(0, 8) })} />
             </Field>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Role">
                 <select className="mt-1 w-full rounded-lg border px-3 py-2" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value === "admin" ? "admin" : "worker" })}>
-                  <option value="worker">Pracovnik</option>
+                  <option value="worker">Pracovník</option>
                   <option value="admin">Admin</option>
                 </select>
               </Field>
               <label className="flex items-center gap-2 rounded-lg border bg-slate-50 px-3 py-3 text-sm text-slate-700">
                 <input type="checkbox" checked={!!form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
-                Aktivni ucet
+                Aktivní účet
               </label>
             </div>
 
-            <Field label="Google Sheet URL" hint="Volitelne. Odkaz na osobni vykaz nebo export pracovnika.">
+            <Field label="Google Sheet URL" hint="Volitelné. Odkaz na osobní výkaz nebo export pracovníka.">
               <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="https://..." value={form.google_sheet_url} onChange={(e) => setForm({ ...form, google_sheet_url: e.target.value.slice(0, 500) })} />
             </Field>
 
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
               <label className="flex items-center gap-2 text-sm font-medium text-blue-950">
                 <input type="checkbox" checked={!!form.is_programmer} onChange={(e) => setForm({ ...form, is_programmer: e.target.checked })} />
-                Programator
+                Programátor
               </label>
-              <Field label="Programatorska sazba" hint="Kc za hodinu. Pracovnik si ji muze upravit i v casti Moje sazby.">
-                <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2" placeholder="Napriklad 650" inputMode="decimal" value={form.programming_rate} onChange={(e) => setForm({ ...form, programming_rate: e.target.value.replace(/[^\d.,]/g, "").slice(0, 10) })} disabled={!form.is_programmer} />
+              <Field label="Programátorská sazba" hint="Kč za hodinu. Pracovník si ji může upravit i v části Moje sazby.">
+                <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2" placeholder="Například 650" inputMode="decimal" value={form.programming_rate} onChange={(e) => setForm({ ...form, programming_rate: e.target.value.replace(/[^\d.,]/g, "").slice(0, 10) })} disabled={!form.is_programmer} />
               </Field>
             </div>
 
             <button className="w-full rounded-lg bg-slate-950 px-4 py-3 text-white" onClick={save}>
-              {editingId ? "Ulozit zmeny" : "Pridat uzivatele"}
+              {editingId ? "Uložit změny" : "Přidat uživatele"}
             </button>
 
             {err && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div>}
@@ -263,43 +312,55 @@ export default function AdminUsers() {
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Seznam lidi</h2>
-              <p className="mt-1 text-sm text-slate-500">Jednotny prehled roli, aktivity a programatorskeho rezimu.</p>
+              <h2 className="text-lg font-semibold">Profily lidí</h2>
+              <p className="mt-1 text-sm text-slate-500">Rychlý přehled aktivity, neuhrazených částek a posledního známého dne.</p>
             </div>
             <div className="w-full max-w-sm">
-              <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Hledat jmeno, roli nebo stav" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Hledat jméno, roli nebo stav" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
           </div>
 
           <div className="mt-4 space-y-3">
-            {filteredUsers.map((u) => (
-              <article key={u.id} className="rounded-lg border border-slate-200 p-4 transition hover:border-slate-300 hover:shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{u.name}</h3>
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${u.is_active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{u.is_active ? "Aktivni" : "Neaktivni"}</span>
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${u.role === "admin" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>{u.role === "admin" ? "Admin" : "Pracovnik"}</span>
-                      {u.is_programmer ? <span className="rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-800">Programator</span> : null}
+            {filteredUsers.map((u) => {
+              const profile = profiles[u.id] || { lastDay: null, unpaidTotal: 0, totalAmount: 0, workedDays: 0 };
+              const riskCount = riskCounts[u.id] || 0;
+              return (
+                <article key={u.id} className="rounded-lg border border-slate-200 p-4 transition hover:border-slate-300 hover:shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-950">{u.name}</h3>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${u.is_active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{u.is_active ? "Aktivní" : "Neaktivní"}</span>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${u.role === "admin" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>{u.role === "admin" ? "Admin" : "Pracovník"}</span>
+                        {u.is_programmer ? <span className="rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-800">Programátor</span> : null}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-500">
+                        <span>Poslední aktivita: {profile.lastDay || "bez dat"}</span>
+                        <span>Odpracované dny: {profile.workedDays}</span>
+                        <span>Programování: {u.programming_rate == null ? "nenastaveno" : `${u.programming_rate} Kč/h`}</span>
+                      </div>
+                      {u.google_sheet_url ? <a className="mt-2 inline-flex text-sm font-medium text-blue-700 underline" href={u.google_sheet_url} target="_blank" rel="noreferrer">Otevřít Google Sheet</a> : null}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-500">
-                      <span>Sazba programovani: {u.programming_rate == null ? "nenastaveno" : `${u.programming_rate} Kc/h`}</span>
-                      <span>Vytvoren: {new Date(u.created_at).toLocaleDateString("cs-CZ")}</span>
+
+                    <div className="flex gap-2">
+                      <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => edit(u)}>Upravit</button>
+                      <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => removeUser(u.id, u.name)} disabled={deletingId === u.id}>
+                        {deletingId === u.id ? "Mažu..." : "Smazat"}
+                      </button>
                     </div>
-                    {u.google_sheet_url ? <a className="mt-2 inline-flex text-sm font-medium text-blue-700 underline" href={u.google_sheet_url} target="_blank" rel="noreferrer">Otevrit Google Sheet</a> : null}
                   </div>
 
-                  <div className="flex gap-2">
-                    <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => edit(u)}>Upravit</button>
-                    <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => removeUser(u.id, u.name)} disabled={deletingId === u.id}>
-                      {deletingId === u.id ? "Mazu..." : "Smazat"}
-                    </button>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                    <Mini label="Celkem v období" value={`${fmt(profile.totalAmount)} Kč`} />
+                    <Mini label="K úhradě" value={`${fmt(profile.unpaidTotal)} Kč`} tone="amber" />
+                    <Mini label="Rizika" value={String(riskCount)} tone={riskCount > 0 ? "red" : "slate"} />
+                    <Mini label="Vytvořen" value={new Date(u.created_at).toLocaleDateString("cs-CZ")} />
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
 
-            {filteredUsers.length === 0 && <div className="rounded-lg border bg-slate-50 p-5 text-sm text-slate-500">Tomuto filtru neodpovida zadny uzivatel.</div>}
+            {filteredUsers.length === 0 && <div className="rounded-lg border bg-slate-50 p-5 text-sm text-slate-500">Tomuto filtru neodpovídá žádný uživatel.</div>}
           </div>
         </div>
       </section>
@@ -330,4 +391,9 @@ function StatCard({ label, value, tone }: { label: string; value: string; tone: 
       <div className="mt-2 text-2xl font-semibold">{value}</div>
     </div>
   );
+}
+
+function Mini({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "amber" | "red" }) {
+  const cls = tone === "amber" ? "bg-amber-50 text-amber-900" : tone === "red" ? "bg-red-50 text-red-900" : "bg-slate-50 text-slate-900";
+  return <div className={`rounded-lg border p-3 ${cls}`}><div className="text-xs opacity-70">{label}</div><div className="mt-1 font-semibold">{value}</div></div>;
 }

@@ -147,6 +147,7 @@ export default function AdminAttendancePage() {
   const [focusedDay, setFocusedDay] = useState(() => initialDateParam("day"));
   const [siteId, setSiteId] = useState(() => initialDateParam("site_id"));
   const [userId, setUserId] = useState(() => initialDateParam("user_id"));
+  const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -296,7 +297,22 @@ export default function AdminAttendancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const groups = useMemo(() => groupRows(rows), [rows]);
+  const groups = useMemo(() => {
+    const grouped = groupRows(rows);
+    const needle = query.trim().toLocaleLowerCase("cs");
+    if (!needle) return grouped;
+    return grouped.filter((group) => {
+      const haystack = [
+        group.user_name,
+        group.site_name || "",
+        group.day,
+        ...group.rows.map((row) => `${row.title} ${row.note}`),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("cs");
+      return haystack.includes(needle);
+    });
+  }, [rows, query]);
 
   return (
     <AppShell
@@ -310,7 +326,7 @@ export default function AdminAttendancePage() {
       }
     >
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
           <Field label="Stavba">
             <select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
               <option value="">Všechny</option>
@@ -322,6 +338,9 @@ export default function AdminAttendancePage() {
               <option value="">Všichni</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
+          </Field>
+          <Field label="Hledat">
+            <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Jméno, stavba, popis práce" />
           </Field>
           <div className="flex items-end gap-2">
             <button onClick={() => load()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Načíst</button>

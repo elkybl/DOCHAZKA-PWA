@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppNav";
@@ -143,7 +143,7 @@ export default function EditWorkPage() {
   async function save(row: Row) {
     if (!token) return;
     if (row.is_paid) {
-      setErr("Zaplacený záznam nelze upravit.");
+      setErr("Uhrazený záznam nelze upravit.");
       return;
     }
 
@@ -237,17 +237,43 @@ export default function EditWorkPage() {
         km: sum.km + (Number(row.km) || 0),
         material: sum.material + (Number(row.material_amount) || 0),
       }),
-      { work: 0, offsite: 0, km: 0, material: 0 }
+      { work: 0, offsite: 0, km: 0, material: 0 },
     );
   }, [filteredRows]);
 
   const activeDayInfo = dayFilter ? dayInfo[dayFilter] : null;
+  const previousWorkNotesBySite = useMemo(() => {
+    const map = new Map<string, string>();
+    const workRows = [...rows].filter((row) => row.type === "OUT" && !!row.note_work.trim()).sort((a, b) => (a.server_time < b.server_time ? 1 : -1));
+    for (const row of workRows) {
+      const siteKey = row.site_id || "none";
+      if (!map.has(siteKey)) map.set(siteKey, row.note_work.trim());
+    }
+    return map;
+  }, [rows]);
+
+  function fillIntentionalZero(row: Row) {
+    if (row.type !== "OUT") return;
+    updateRow(row.id, { note_work: row.note_work?.trim() ? row.note_work : "Záměrně nulový den – bez výkonu a bez účtované práce." });
+  }
+
+  function copyPreviousText(row: Row) {
+    if (row.type !== "OUT") return;
+    const key = row.site_id || "none";
+    const previous = previousWorkNotesBySite.get(key);
+    if (!previous) {
+      setErr("Pro tuto stavbu zatím není žádný starší popis práce k převzetí.");
+      return;
+    }
+    updateRow(row.id, { note_work: previous });
+    setInfo("Poslední podobný popis byl doplněn.");
+  }
 
   return (
     <AppShell
       area="auto"
       title={dayFilter ? `Upravit den ${dayFilter}` : "Upravit záznamy"}
-      subtitle="Doplnění práce, dopravy, materiálu a činností mimo stavbu."
+      subtitle="Doplnění práce, materiálu, programování a činností mimo stavbu na konkrétní dny."
       actions={
         <button onClick={() => load()} disabled={!token || !!busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           Obnovit
@@ -287,6 +313,12 @@ export default function EditWorkPage() {
             Zobrazit všechny dny
           </button>
         ) : null}
+        {activeDayInfo && activeDayInfo.hours <= 0 ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="font-semibold">Pozor na nulový den</div>
+            <div className="mt-1">Tenhle den má aktuálně nulové hodiny. Buď doplňte reálnou práci, nebo u řádku použijte rychlé označení záměrně nulového dne.</div>
+          </div>
+        ) : null}
         {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
         {info ? <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div> : null}
       </section>
@@ -304,6 +336,8 @@ export default function EditWorkPage() {
             save={save}
             createOffsite={createOffsite}
             dayInfo={dayInfo[dayKeyPrague(row.server_time)]}
+            copyPreviousText={copyPreviousText}
+            fillIntentionalZero={fillIntentionalZero}
           />
         ))}
         {!filteredRows.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy k úpravě.</div> : null}
@@ -322,6 +356,8 @@ function EditCard({
   save,
   createOffsite,
   dayInfo,
+  copyPreviousText,
+  fillIntentionalZero,
 }: {
   row: Row;
   canProg: boolean;
@@ -332,10 +368,13 @@ function EditCard({
   save: (row: Row) => void;
   createOffsite: (row: Row) => void;
   dayInfo?: DayInfo;
+  copyPreviousText: (row: Row) => void;
+  fillIntentionalZero: (row: Row) => void;
 }) {
   const day = dayKeyPrague(row.server_time);
   const draftKey = `${day}__${row.site_id || ""}`;
   const draft = draftOffsite[draftKey] || { reason: "", hours: "" };
+  const isZeroDay = (dayInfo?.hours || 0) <= 0;
 
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -345,7 +384,7 @@ function EditCard({
           <div className="mt-1 text-xs text-slate-500">{fmtDateTimeCZFromIso(row.server_time)} · {row.site_name || "Bez stavby"}</div>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${row.is_paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-          {row.is_paid ? "Zaplaceno" : "Nezaplaceno"}
+          {row.is_paid ? "Uhrazeno" : "K úpravě"}
         </span>
       </div>
 
@@ -363,13 +402,20 @@ function EditCard({
             </Field>
           </div>
 
+          <div className="rounded-lg border bg-slate-50 p-3 lg:col-span-2">
+            <div className="mb-3 grid gap-2 sm:grid-cols-3">
+              <SmallInfo label="Hodiny dne" value={`${fmt(dayInfo?.hours || 0)} h`} />
+              <SmallInfo label="Práce" value={`${fmt(dayInfo?.work || 0)} h`} />
+              <SmallInfo label="Programování" value={`${fmt(dayInfo?.programming || 0)} h`} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!row.is_paid ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => copyPreviousText(row)}>Kopírovat poslední podobný popis</button> : null}
+              {!row.is_paid && isZeroDay ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => fillIntentionalZero(row)}>Označit jako záměrně nulový den</button> : null}
+            </div>
+          </div>
+
           {canProg ? (
             <div className="rounded-lg border bg-slate-50 p-3 lg:col-span-2">
-              <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                <SmallInfo label="Hodiny dne" value={`${fmt(dayInfo?.hours || 0)} h`} />
-                <SmallInfo label="Práce" value={`${fmt(dayInfo?.work || 0)} h`} />
-                <SmallInfo label="Programování" value={`${fmt(dayInfo?.programming || 0)} h`} />
-              </div>
               <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                 <Field label="Programování h">
                   <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} max={dayInfo?.hours || undefined} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
@@ -412,7 +458,7 @@ function EditCard({
       )}
 
       <div className="mt-3">
-        <Field label="Materiál popis">
+        <Field label="Popis materiálu">
           <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.material_desc || ""} onChange={(e) => updateRow(row.id, { material_desc: e.target.value })} disabled={row.is_paid} />
         </Field>
       </div>

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
@@ -11,23 +11,18 @@ type Ev = {
   type: "IN" | "OUT" | "OFFSITE";
   server_time: string;
   day_local: string | null;
-
   note_work: string | null;
   km: number | null;
-
   offsite_reason: string | null;
   offsite_hours: number | null;
-
   material_desc: string | null;
   material_amount: number | null;
-
   programming_hours: number | null;
   programming_note: string | null;
-
   is_paid: boolean;
 };
 
-function toNum(v: any, d = 0) {
+function toNum(v: unknown, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
 }
@@ -47,33 +42,30 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const from = url.searchParams.get("from") || new Date(Date.now() - 14 * 86400000).toISOString();
   const to = url.searchParams.get("to") || new Date().toISOString();
+  const paidFilter = url.searchParams.get("paid") || "all";
+  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
 
   const db = supabaseAdmin();
 
-  // users (default sazby)
   const { data: users, error: uErr } = await db
     .from("users")
     .select("id,name,role,hourly_rate,km_rate,is_programmer,programming_rate")
     .order("name", { ascending: true });
-
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
-  const defaultByUser = new Map<string, { name: string; hourly: number; km: number; prog: number; canProg: boolean }>();
+  const defaultByUser = new Map<string, { name: string; hourly: number; km: number; prog: number }>();
   for (const u of users || []) {
     defaultByUser.set((u as any).id, {
       name: (u as any).name,
       hourly: toNum((u as any).hourly_rate, 0),
       km: toNum((u as any).km_rate, 0),
       prog: toNum((u as any).programming_rate, toNum((u as any).hourly_rate, 0)),
-      canProg: ((u as any).is_programmer || false) === true,
     });
   }
 
-  // sazby per user+site
   const { data: usrSiteRates, error: rErr } = await db
     .from("user_site_rates")
     .select("user_id,site_id,hourly_rate,km_rate,programming_rate");
-
   if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
 
   const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
@@ -95,28 +87,20 @@ export async function GET(req: NextRequest) {
     return { hourly, km: def?.km ?? 0, prog: def?.prog ?? hourly };
   };
 
-  // sites map (kvůli názvu)
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
-
   const siteName = new Map<string, string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  // events
   const { data: evs, error } = await db
     .from("attendance_events")
-    .select(
-      "user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,programming_hours,programming_note,is_paid"
-    )
+    .select("user_id,site_id,type,server_time,day_local,note_work,km,offsite_reason,offsite_hours,material_desc,material_amount,programming_hours,programming_note,is_paid")
     .gte("server_time", from)
     .lte("server_time", to)
     .order("server_time", { ascending: true });
-
   if (error) return json({ error: "DB chyba (events)." }, { status: 500 });
 
   const events = (evs || []) as Ev[];
-
-  // group by user + day_local
   const byUserDay = new Map<string, Ev[]>();
   for (const e of events) {
     const day = e.day_local || e.server_time.slice(0, 10);
@@ -124,7 +108,7 @@ export async function GET(req: NextRequest) {
     byUserDay.set(key, [...(byUserDay.get(key) || []), e]);
   }
 
-  const rows: any[] = [];
+  let rows: any[] = [];
 
   for (const [key, listRaw] of byUserDay.entries()) {
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
@@ -132,7 +116,6 @@ export async function GET(req: NextRequest) {
     const def = defaultByUser.get(user_id);
     if (!def) continue;
 
-    // details
     const sitesUsed = new Set<string>();
     const workNotes: string[] = [];
     const offsiteNotes: string[] = [];
@@ -140,50 +123,33 @@ export async function GET(req: NextRequest) {
 
     for (const e of list) {
       if (e.site_id) sitesUsed.add(siteName.get(e.site_id) || e.site_id);
-
       if (e.type === "OUT" && e.note_work) workNotes.push(e.note_work.trim());
-      if (e.type === "OFFSITE" && e.offsite_reason) {
-        const h = toNum(e.offsite_hours, 0);
-        offsiteNotes.push(`${e.offsite_reason.trim()} (${h} h)`);
-      }
-      if (e.material_amount && toNum(e.material_amount, 0) > 0) {
+      if (e.type === "OFFSITE" && e.offsite_reason) offsiteNotes.push(`${e.offsite_reason.trim()} (${toNum(e.offsite_hours, 0)} h)`);
+      if (toNum(e.material_amount, 0) > 0) {
         const desc = (e.material_desc || "").trim();
         materialNotes.push(`${desc ? desc + " – " : ""}${toNum(e.material_amount, 0)} Kč`);
       }
     }
 
-    // IN->OUT úseky (hodinovka podle site_id IN)
     let lastIn: { t: Date; site_id: string | null } | null = null;
-
-    let hours = 0; // rounded
-    let hoursRaw = 0;
-    let progHours = 0;
+    let hours = 0;
     let hoursPay = 0;
 
     for (const e of list) {
       if (e.type === "IN") lastIn = { t: toDate(e.server_time), site_id: e.site_id };
       if (e.type === "OUT" && lastIn) {
         const out = toDate(e.server_time);
-        const minutesRaw = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
-        const minutesRounded = ceilMinutesTo30(minutesRaw);
-        const hRaw = minutesRaw / 60;
+        const minutesRounded = ceilMinutesTo30(Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000)));
         const h = minutesRounded / 60;
-
-        hours += h; // rounded hours
+        hours += h;
         const r = getRate(user_id, lastIn.site_id || e.site_id || null);
-
-        const progH = Math.max(0, Math.min(h, toNum((e as any).programming_hours, 0)));
+        const progH = Math.max(0, Math.min(h, toNum(e.programming_hours, 0)));
         const siteH = Math.max(0, h - progH);
-
         hoursPay += siteH * r.hourly + progH * r.prog;
-        hoursRaw += hRaw;
-        progHours += progH;
-
         lastIn = null;
       }
     }
 
-    // OFFSITE hodiny
     let offH = 0;
     let offPay = 0;
     for (const o of list.filter((x) => x.type === "OFFSITE")) {
@@ -195,7 +161,6 @@ export async function GET(req: NextRequest) {
     hours += offH;
     hoursPay += offPay;
 
-    // KM z OUT
     let km = 0;
     let kmPay = 0;
     for (const o of list.filter((x) => x.type === "OUT")) {
@@ -205,45 +170,40 @@ export async function GET(req: NextRequest) {
       kmPay += k * r.km;
     }
 
-    // materiál (refund)
     const material = list.reduce((s, x) => s + toNum(x.material_amount, 0), 0);
-
     const total = hoursPay + kmPay + material;
     const paid = list.length > 0 && list.every((x) => x.is_paid);
-
-    const hourlyAvg = hours > 0 ? hoursPay / hours : 0;
-    const kmAvg = km > 0 ? kmPay / km : 0;
 
     rows.push({
       user_id,
       user_name: def.name,
       day,
-
       sites: Array.from(sitesUsed),
       work_notes: workNotes,
       offsite_notes: offsiteNotes,
       material_notes: materialNotes,
-
       hours: Math.round(hours * 100) / 100,
       km: Math.round(km * 10) / 10,
       material: Math.round(material * 100) / 100,
-
       hours_pay: Math.round(hoursPay * 100) / 100,
       km_pay: Math.round(kmPay * 100) / 100,
       total: Math.round(total * 100) / 100,
-
-      hourly_avg: Math.round(hourlyAvg * 100) / 100,
-      km_avg: Math.round(kmAvg * 100) / 100,
-
+      hourly_avg: Math.round((hours > 0 ? hoursPay / hours : 0) * 100) / 100,
+      km_avg: Math.round((km > 0 ? kmPay / km : 0) * 100) / 100,
       paid,
     });
   }
 
-  // řazení: nezaplacené nahoře, nejnovější den nahoře, pak jméno
+  if (paidFilter === "paid") rows = rows.filter((row) => row.paid);
+  if (paidFilter === "unpaid") rows = rows.filter((row) => !row.paid);
+  if (q) {
+    rows = rows.filter((row) => [row.user_name, row.day, ...(row.sites || []), ...(row.work_notes || []), ...(row.offsite_notes || [])].join(" ").toLowerCase().includes(q));
+  }
+
   rows.sort((a, b) => {
     if (a.paid !== b.paid) return a.paid ? 1 : -1;
     if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-    return a.user_name.localeCompare(b.user_name);
+    return a.user_name.localeCompare(b.user_name, "cs");
   });
 
   return json({ rows });

@@ -59,7 +59,7 @@ export default function LoginPage() {
               width={1400}
               height={900}
               priority
-              className="h-auto w-full max-w-[520px] object-contain"
+              className="h-auto w-full max-w-[460px] object-contain" unoptimized
             />
           </div>
 
@@ -129,5 +129,6 @@ export default function LoginPage() {
     </main>
   );
 }
+
 
 

@@ -7,18 +7,18 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 
 const workerLinks = [
-  { href: "/attendance", label: "Docházka" },
-  { href: "/calendar", label: "Kalendář" },
-  { href: "/me", label: "Moje výdělky" },
-  { href: "/me/rates", label: "Sazby" },
+  { href: "/attendance", label: "Docházka", short: "Docházka" },
+  { href: "/calendar", label: "Kalendář", short: "Kalendář" },
+  { href: "/me", label: "Moje výdělky", short: "Výdělky" },
+  { href: "/me/rates", label: "Sazby", short: "Sazby" },
 ];
 
 const adminLinks = [
-  { href: "/admin", label: "Admin" },
-  { href: "/admin/calendar", label: "Kalendář" },
-  { href: "/admin/attendance", label: "Přehled" },
-  { href: "/admin/payments", label: "Výplaty" },
-  { href: "/admin/users", label: "Lidé" },
+  { href: "/admin", label: "Admin", short: "Admin" },
+  { href: "/admin/calendar", label: "Kalendář", short: "Kalendář" },
+  { href: "/admin/attendance", label: "Přehled", short: "Přehled" },
+  { href: "/admin/payments", label: "Výplaty", short: "Výplaty" },
+  { href: "/admin/users", label: "Lidé", short: "Lidé" },
 ];
 
 const adminMoreLinks = [
@@ -37,27 +37,30 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
       ? adminLinks
       : variant === "mixed"
         ? [
-            { href: "/attendance", label: "Docházka" },
-            { href: "/calendar", label: "Kalendář" },
-            { href: "/me", label: "Moje" },
-            { href: "/admin", label: "Admin" },
+            { href: "/attendance", label: "Docházka", short: "Docházka" },
+            { href: "/calendar", label: "Kalendář", short: "Kalendář" },
+            { href: "/me", label: "Moje výdělky", short: "Výdělky" },
+            { href: "/admin", label: "Admin", short: "Admin" },
           ]
         : workerLinks;
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-12px_28px_rgba(15,23,42,0.10)] backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/98 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-16px_36px_rgba(15,23,42,0.14)] backdrop-blur md:hidden">
+      <div className={`mx-auto grid ${links.length === 5 ? "max-w-xl grid-cols-5" : "max-w-lg grid-cols-4"} gap-2`}>
         {links.map((link) => {
           const active = isActivePath(pathname, link.href);
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-xl px-2 py-2 text-center text-xs font-semibold transition ${
-                active ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
+              className={`flex min-h-[68px] flex-col items-center justify-center rounded-2xl border px-2 py-3 text-center transition ${
+                active
+                  ? "border-blue-200 bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.28)]"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {link.label}
+              <span className={`h-1.5 w-8 rounded-full ${active ? "bg-white/90" : "bg-slate-200"}`} />
+              <span className="mt-2 text-[11px] font-semibold leading-4">{link.short}</span>
             </Link>
           );
         })}
@@ -96,7 +99,7 @@ export function AppShell({
   const showWorker = resolvedArea === "worker" || resolvedArea === "mixed";
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-24 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-28 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
       <div className="mx-auto max-w-7xl">
         <header className="mb-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
           <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
@@ -107,7 +110,7 @@ export function AppShell({
                   alt="Lukáš Kýbl"
                   width={920}
                   height={320}
-                  className="h-auto w-[250px] max-w-full sm:w-[320px]"
+                  className="h-auto w-[280px] max-w-full object-contain sm:w-[360px]" unoptimized
                   priority
                 />
               </Link>
@@ -160,3 +163,4 @@ export function AppShell({
     </main>
   );
 }
+

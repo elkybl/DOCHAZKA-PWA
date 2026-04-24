@@ -130,6 +130,8 @@ export default function PaymentsPage() {
   }
 
   async function updateWholeGroup(row: Row, method: "POST" | "DELETE") {
+    const confirmed = confirm(method === "POST" ? `Označit všechny zobrazené dny ${row.user_name} jako uhrazené?` : `Vrátit všechny zobrazené dny ${row.user_name} mezi neuhrazené?`);
+    if (!confirmed) return;
     setErr(null);
     setInfo(null);
     if (!token) return;
@@ -163,6 +165,8 @@ export default function PaymentsPage() {
   }
 
   async function updateSingleDay(row: Row, day: DayDetail, method: "POST" | "DELETE") {
+    const confirmed = confirm(method === "POST" ? `Označit den ${day.day} jako uhrazený?` : `Vrátit den ${day.day} mezi neuhrazené?`);
+    if (!confirmed) return;
     setErr(null);
     setInfo(null);
     if (!token) return;
@@ -383,3 +387,6 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Mini({ label, value, sub }: { label: string; value: string; sub: string }) {
   return <div className="rounded-lg border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div><div className="mt-1 text-xs text-slate-500">{sub}</div></div>;
 }
+
+
+

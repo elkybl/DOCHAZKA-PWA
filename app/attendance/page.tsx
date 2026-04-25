@@ -633,14 +633,10 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
                 <div className="text-sm font-semibold">Zahajit dochazku</div>
                 <div className="mt-1 text-xs text-emerald-50">Pouzije nejblizsi stavbu nebo rucni vyber.</div>
-              </button>
-              <button type="button" disabled={busy || !present} onClick={() => doOut(false)} className="rounded-2xl bg-blue-700 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(29,78,216,0.24)] transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-45">
-                <div className="text-sm font-semibold">Ukoncit dochazku</div>
-                <div className="mt-1 text-xs text-blue-50">Nejdriv doplnte udaje nize, potom den ukoncete.</div>
               </button>
               <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
                 <div className="text-sm font-semibold text-slate-950">Vybrat stavbu</div>
@@ -729,6 +725,25 @@ export default function AttendancePage() {
             </div>
 
             {outErr ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{outErr}</div> : null}
+
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-blue-950">Nejdriv doplnte praci, potom ukoncete den</div>
+                  <div className="mt-1 text-xs leading-5 text-blue-900">
+                    Tohle je hlavni misto pro uzavreni dne. Po vyplneni popisu, kilometru a materialu uz staci jen potvrdit ukonceni dochazky.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || !present}
+                  onClick={() => doOut(false)}
+                  className="rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Ukoncit dochazku
+                </button>
+              </div>
+            </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3">

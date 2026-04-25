@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { calendarItemTypes, calendarTypeLabels, isAvailability, isWorkRelated, weekdayOptions, type CalendarItemType } from "@/lib/calendar";
 
 type User = { id: string; name: string };
@@ -235,6 +235,8 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const formPanelRef = useRef<HTMLDivElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const t = getToken();
@@ -305,11 +307,25 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
     [form.bulk_from_date, form.bulk_to_date, form.bulk_weekdays],
   );
 
+  useEffect(() => {
+    if (!formOpen) return;
+    const timer = window.setTimeout(() => {
+      revealForm();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [formOpen]);
+
+  function revealForm() {
+    formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => titleInputRef.current?.focus(), 120);
+  }
+
   function openCreate(day = selectedDay, type: CalendarItemType = admin ? "work_shift" : "availability") {
     setForm(initialForm(day, admin && userFilter !== "ALL" ? userFilter : me?.id || "", type));
     setFormOpen(true);
     setErr(null);
     setInfo(null);
+    window.setTimeout(() => revealForm(), 0);
   }
 
   function openEdit(item: CalendarItem) {
@@ -333,6 +349,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
     setFormOpen(true);
     setErr(null);
     setInfo(null);
+    window.setTimeout(() => revealForm(), 0);
   }
 
   async function saveForm() {
@@ -553,13 +570,13 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div ref={formPanelRef} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Rychlý přehled"}</h2>
           {formOpen ? (
             <div className="mt-4 space-y-3">
               {admin ? <Field label="Pracovník"><select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={form.user_id} onChange={(e) => setForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Vyber pracovnika</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field> : null}
               <Field label="Typ"><select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as CalendarItemType, title: p.title.trim() ? p.title : defaultTitle(e.target.value as CalendarItemType) }))}>{calendarItemTypes.map((type) => <option key={type} value={type}>{calendarTypeLabels[type]}</option>)}</select></Field>
-              <Field label="Název"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></Field>
+              <Field label="Název"><input ref={titleInputRef} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></Field>
               <Field label="Datum"><input type="date" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} /></Field>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.all_day} onChange={(e) => setForm((p) => ({ ...p, all_day: e.target.checked }))} />Celý den</label>
               {!form.all_day ? <div className="grid grid-cols-2 gap-3"><Field label="Od"><input type="time" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.start_time} onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))} /></Field><Field label="Do"><input type="time" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.end_time} onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))} /></Field></div> : null}

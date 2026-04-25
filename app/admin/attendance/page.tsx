@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
 import { fmtTimeCZFromIso } from "@/lib/time";
@@ -197,6 +197,7 @@ export default function AdminAttendancePage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "" });
+  const editNoteRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const t = getToken();
@@ -254,6 +255,11 @@ export default function AdminAttendancePage() {
     });
     setErr(null);
     setInfo(null);
+    window.setTimeout(() => {
+      const target = document.getElementById(`edit-row-${r.id}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      editNoteRef.current?.focus();
+    }, 80);
   }
 
   async function patchEvent(id: string, payload: Record<string, unknown>) {
@@ -565,7 +571,7 @@ export default function AdminAttendancePage() {
                       </div>
 
                       {isEditing ? (
-                        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                        <div id={`edit-row-${r.id}`} className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
                           {locked ? (
                             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Tento řádek je uhrazený. Pokud ho potřebujete upravit, nejdřív ho vraťte ve výplatách mezi neuhrazené.</div>
                           ) : (
@@ -591,7 +597,7 @@ export default function AdminAttendancePage() {
                                   <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={edit.material} onChange={(e) => setEdit((p) => ({ ...p, material: e.target.value.replace(/[^\d.,]/g, "") }))} />
                                 </Field>
                                 <Field label="Popis">
-                                  <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={edit.note} onChange={(e) => setEdit((p) => ({ ...p, note: e.target.value }))} />
+                                  <input ref={editNoteRef} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={edit.note} onChange={(e) => setEdit((p) => ({ ...p, note: e.target.value }))} />
                                 </Field>
                               </div>
                               <div className="mt-3 flex flex-wrap justify-end gap-2">

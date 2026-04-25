@@ -43,6 +43,22 @@ function timeForCalendar(iso: string | null) {
   return /^\d{2}:\d{2}$/.test(value) ? value : null;
 }
 
+function weekdayFromDate(day: string) {
+  const weekday = new Date(`${day}T12:00:00`).getDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+function enumerateDays(from: string, to: string) {
+  const result: string[] = [];
+  const cursor = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  while (cursor <= end) {
+    result.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
 async function requireSession(req: NextRequest) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
@@ -249,6 +265,42 @@ export async function POST(req: NextRequest) {
   });
 
   const db = supabaseAdmin();
+  const bulk = parsed.data.bulk_create;
+
+  if (bulk && parsed.data.type === "availability") {
+    const candidateDays = enumerateDays(bulk.from_date, bulk.to_date).filter((day) => bulk.weekdays.includes(weekdayFromDate(day)));
+    if (!candidateDays.length) return json({ error: "Ve zvoleném rozsahu nevyšel žádný den." }, { status: 400 });
+
+    const existing = await db
+      .from("calendar_items")
+      .select("date,start_time,end_time,all_day")
+      .eq("user_id", targetUserId)
+      .eq("type", "availability")
+      .in("date", candidateDays)
+      .is("deleted_at", null);
+
+    const existingKeys = new Set(
+      (existing.data || []).map((row) => `${row.date}__${row.start_time || ""}__${row.end_time || ""}__${row.all_day ? "1" : "0"}`),
+    );
+
+    const rows = candidateDays
+      .filter((day) => !existingKeys.has(`${day}__${payload.start_time || ""}__${payload.end_time || ""}__${payload.all_day ? "1" : "0"}`))
+      .map((day) =>
+        normalizeCalendarPayload({
+          ...payload,
+          date: day,
+        }),
+      );
+
+    if (!rows.length) {
+      return json({ items: [], created: 0, skipped: candidateDays.length, message: "Všechny vybrané dostupnosti už existují." });
+    }
+
+    const insert = await db.from("calendar_items").insert(rows).select("*");
+    if (insert.error) return json({ error: "Nešlo uložit hromadnou dostupnost." }, { status: 500 });
+    return json({ items: insert.data || [], created: rows.length, skipped: candidateDays.length - rows.length });
+  }
+
   const { data, error } = await db.from("calendar_items").insert(payload).select("*").single();
   if (error || !data) return json({ error: "Nešlo uložit položku kalendáře." }, { status: 500 });
 

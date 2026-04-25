@@ -38,6 +38,15 @@ export const calendarTypeLabels: Record<CalendarItemType, string> = {
 };
 
 export const workRelatedTypes: CalendarItemType[] = ["work_shift", "service_visit", "installation_job", "meeting", "training"];
+export const weekdayOptions = [
+  { value: 1, label: "Po" },
+  { value: 2, label: "Út" },
+  { value: 3, label: "St" },
+  { value: 4, label: "Čt" },
+  { value: 5, label: "Pá" },
+  { value: 6, label: "So" },
+  { value: 7, label: "Ne" },
+] as const;
 
 const timeSchema = z
   .string()
@@ -46,6 +55,13 @@ const timeSchema = z
   .optional();
 
 const decimalSchema = z.number().min(0).max(1000).nullable().optional();
+const bulkCreateSchema = z
+  .object({
+    from_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    to_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  })
+  .optional();
 
 export const calendarCreateSchema = z.object({
   user_id: z.string().uuid().optional(),
@@ -61,6 +77,7 @@ export const calendarCreateSchema = z.object({
   actual_hours: decimalSchema,
   status: z.enum(calendarStatuses).default("planned"),
   attendance_status: z.enum(calendarAttendanceStatuses).nullable().optional(),
+  bulk_create: bulkCreateSchema,
 });
 
 export const calendarUpdateSchema = calendarCreateSchema.partial().extend({

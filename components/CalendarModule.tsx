@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { calendarItemTypes, calendarTypeLabels, isAvailability, isWorkRelated, type CalendarItemType } from "@/lib/calendar";
+import { calendarItemTypes, calendarTypeLabels, isAvailability, isWorkRelated, weekdayOptions, type CalendarItemType } from "@/lib/calendar";
 
 type User = { id: string; name: string };
 
@@ -44,6 +44,10 @@ type FormState = {
   location: string;
   notes: string;
   planned_hours: string;
+  bulk_enabled: boolean;
+  bulk_from_date: string;
+  bulk_to_date: string;
+  bulk_weekdays: number[];
 };
 
 const initialForm = (date: string, userId = "", type: CalendarItemType = "work_shift"): FormState => ({
@@ -58,6 +62,10 @@ const initialForm = (date: string, userId = "", type: CalendarItemType = "work_s
   location: "",
   notes: "",
   planned_hours: "",
+  bulk_enabled: false,
+  bulk_from_date: date,
+  bulk_to_date: addDays(date, 13),
+  bulk_weekdays: [1, 2, 3, 4, 5],
 });
 
 function defaultTitle(type: CalendarItemType) {
@@ -179,6 +187,39 @@ function formatAvailability(item: CalendarItem) {
   return "Bez času";
 }
 
+function weekdayFromDate(day: string) {
+  const weekday = new Date(`${day}T12:00:00`).getDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+function enumerateBulkDays(from: string, to: string, weekdays: number[]) {
+  if (!from || !to || !weekdays.length) return [];
+  const result: string[] = [];
+  const cursor = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  while (cursor <= end) {
+    const day = cursor.toISOString().slice(0, 10);
+    if (weekdays.includes(weekdayFromDate(day))) result.push(day);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
+function bulkTemplate(name: "thisWeek" | "nextWeek" | "twoWeeks" | "monthWeekdays") {
+  const today = todayKey();
+  const weekStart = startOfWeek(today);
+  if (name === "thisWeek") return { from: weekStart, to: addDays(weekStart, 4), weekdays: [1, 2, 3, 4, 5] };
+  if (name === "nextWeek") {
+    const next = addDays(weekStart, 7);
+    return { from: next, to: addDays(next, 4), weekdays: [1, 2, 3, 4, 5] };
+  }
+  if (name === "monthWeekdays") {
+    const start = startOfMonth(today);
+    return { from: start, to: addDays(startOfMonth(addDays(start, 31)), -1), weekdays: [1, 2, 3, 4, 5] };
+  }
+  return { from: today, to: addDays(today, 13), weekdays: [1, 2, 3, 4, 5] };
+}
+
 export function CalendarModule({ admin = false }: { admin?: boolean }) {
   const [token, setToken] = useState<string | null>(null);
   const [me, setMe] = useState<{ id: string; name: string; role: string } | null>(null);
@@ -259,6 +300,10 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
     );
   }, [form.date, form.user_id, items]);
   const adminNeedsAvailabilityWarning = admin && isWorkRelated(form.type) && !!form.user_id && formAvailability.length === 0;
+  const bulkPreviewDays = useMemo(
+    () => enumerateBulkDays(form.bulk_from_date, form.bulk_to_date, form.bulk_weekdays),
+    [form.bulk_from_date, form.bulk_to_date, form.bulk_weekdays],
+  );
 
   function openCreate(day = selectedDay, type: CalendarItemType = admin ? "work_shift" : "availability") {
     setForm(initialForm(day, admin && userFilter !== "ALL" ? userFilter : me?.id || "", type));
@@ -280,6 +325,10 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
       location: item.location || "",
       notes: item.notes || "",
       planned_hours: item.planned_hours == null ? "" : String(item.planned_hours),
+      bulk_enabled: false,
+      bulk_from_date: item.date,
+      bulk_to_date: item.date,
+      bulk_weekdays: [weekdayFromDate(item.date)],
     });
     setFormOpen(true);
     setErr(null);
@@ -306,6 +355,14 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
         location: form.location.trim() || null,
         notes: form.notes.trim() || null,
         planned_hours: form.planned_hours ? Number(form.planned_hours.replace(",", ".")) : null,
+        bulk_create:
+          !admin && !form.id && form.type === "availability" && form.bulk_enabled
+            ? {
+                from_date: form.bulk_from_date,
+                to_date: form.bulk_to_date,
+                weekdays: form.bulk_weekdays,
+              }
+            : undefined,
       };
       const res = await fetch(form.id ? `/api/calendar/${form.id}` : "/api/calendar", {
         method: form.id ? "PATCH" : "POST",
@@ -314,7 +371,13 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Nešlo uložit položku.");
-      setInfo(adminNeedsAvailabilityWarning ? "Položka je uložena jako plán. Pracovník pro ten den ještě nemá zadanou dostupnost." : "Kalendář uložen.");
+      setInfo(
+        adminNeedsAvailabilityWarning
+          ? "Položka je uložena jako plán. Pracovník pro ten den ještě nemá zadanou dostupnost."
+          : !admin && !form.id && form.type === "availability" && form.bulk_enabled
+            ? `Dostupnost je uložená pro ${bulkPreviewDays.length} dní.`
+            : "Kalendář uložen.",
+      );
       setFormOpen(false);
       await load();
     } catch (e: unknown) {
@@ -504,7 +567,140 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
               <Field label="Místo"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} /></Field>
               <Field label="Poznámka"><textarea className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" rows={4} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></Field>
               {admin && isWorkRelated(form.type) ? <div className={`rounded-lg border p-3 text-sm ${adminNeedsAvailabilityWarning ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>{adminNeedsAvailabilityWarning ? <><div className="font-semibold">Pracovník jeste nema zadanou dostupnost.</div><div className="mt-1">Položku můžeš uložit jako plán, ale zůstane v režimu čekání na potvrzení.</div></> : <><div className="font-semibold">Dostupnost nalezena.</div><div className="mt-1">{formAvailability.map((item) => formatAvailability(item)).join(", ")}</div></>}</div> : null}
-              {!admin && isAvailability(form.type) ? <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">Touto položkou si značíš, kdy můžeš pracovat. Admin pak při plánování rovnou uvidí tvoje časové okno.</div> : null}
+              {!admin && isAvailability(form.type) ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">
+                    Touto položkou si značíš, kdy můžeš pracovat. Admin pak při plánování rovnou uvidí tvoje časové okno.
+                  </div>
+                  {!form.id ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={form.bulk_enabled}
+                          onChange={(e) => setForm((p) => ({ ...p, bulk_enabled: e.target.checked }))}
+                        />
+                        Použít na více dní dopředu
+                      </label>
+                      {form.bulk_enabled ? (
+                        <div className="mt-3 space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => {
+                                const tpl = bulkTemplate("thisWeek");
+                                setForm((p) => ({ ...p, bulk_from_date: tpl.from, bulk_to_date: tpl.to, bulk_weekdays: tpl.weekdays }));
+                              }}
+                            >
+                              Tento týden Po-Pá
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => {
+                                const tpl = bulkTemplate("nextWeek");
+                                setForm((p) => ({ ...p, bulk_from_date: tpl.from, bulk_to_date: tpl.to, bulk_weekdays: tpl.weekdays }));
+                              }}
+                            >
+                              Příští týden Po-Pá
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => {
+                                const tpl = bulkTemplate("twoWeeks");
+                                setForm((p) => ({ ...p, bulk_from_date: tpl.from, bulk_to_date: tpl.to, bulk_weekdays: tpl.weekdays }));
+                              }}
+                            >
+                              14 dní Po-Pá
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => {
+                                const tpl = bulkTemplate("monthWeekdays");
+                                setForm((p) => ({ ...p, bulk_from_date: tpl.from, bulk_to_date: tpl.to, bulk_weekdays: tpl.weekdays }));
+                              }}
+                            >
+                              Celý měsíc Po-Pá
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Field label="Od">
+                              <input
+                                type="date"
+                                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                                value={form.bulk_from_date}
+                                onChange={(e) => setForm((p) => ({ ...p, bulk_from_date: e.target.value }))}
+                              />
+                            </Field>
+                            <Field label="Do">
+                              <input
+                                type="date"
+                                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                                value={form.bulk_to_date}
+                                onChange={(e) => setForm((p) => ({ ...p, bulk_to_date: e.target.value }))}
+                              />
+                            </Field>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-slate-600">Dny v týdnu</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {weekdayOptions.map((option) => {
+                                const active = form.bulk_weekdays.includes(option.value);
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() =>
+                                      setForm((p) => ({
+                                        ...p,
+                                        bulk_weekdays: active
+                                          ? p.bulk_weekdays.filter((day) => day !== option.value)
+                                          : [...p.bulk_weekdays, option.value].sort((a, b) => a - b),
+                                      }))
+                                    }
+                                    className={`rounded-full border px-3 py-2 text-xs font-semibold ${active ? "border-cyan-200 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-600"}`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => setForm((p) => ({ ...p, bulk_weekdays: [1, 2, 3, 4, 5] }))}
+                            >
+                              Po-Pá
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold"
+                              onClick={() => setForm((p) => ({ ...p, bulk_weekdays: weekdayOptions.map((option) => option.value) }))}
+                            >
+                              Všechny dny
+                            </button>
+                          </div>
+                          <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3 text-sm text-cyan-900">
+                            Vytvoří se dostupnost pro <span className="font-semibold">{bulkPreviewDays.length}</span> dní.
+                            {bulkPreviewDays.length ? (
+                              <div className="mt-1 text-xs text-cyan-800">
+                                Rozsah {form.bulk_from_date} - {form.bulk_to_date}
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-xs text-cyan-800">Ve zvoleném rozsahu zatím nevyšel žádný den.</div>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2"><button className="rounded-lg border px-4 py-2 text-sm" onClick={() => setFormOpen(false)}>Zrušit</button><button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={busy === "form"} onClick={saveForm}>{busy === "form" ? "Ukládám" : "Uložit"}</button></div>
             </div>
           ) : <div className="mt-4 grid gap-2"><Mini label="Polozky v obdobi" value={String(items.length)} /><Mini label="Vybraný den" value={String(selectedItems.length)} /><Mini label="Nepřečtené" value={String(items.filter((x) => !x.seen_confirmed && x.source !== "attendance").length)} /></div>}

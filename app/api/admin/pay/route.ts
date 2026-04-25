@@ -3,6 +3,7 @@ import { z } from "zod";
 import { verifySession } from "@/lib/auth";
 import { getBearer, json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
+import { writeAuditLog } from "@/lib/audit";
 
 const singleSchema = z.object({
   user_id: z.string().uuid(),
@@ -49,6 +50,16 @@ export async function POST(req: NextRequest) {
 
     const { error } = await q;
     if (error) return json({ error: `Nešlo označit jako zaplacené: ${error.message}` }, { status: 500 });
+    await writeAuditLog({
+      entity_type: "attendance_payment",
+      entity_id: `${bulk.data.user_id}:${bulk.data.from_day}:${bulk.data.to_day}:${bulk.data.site_id || "all"}`,
+      action: "mark_paid_bulk",
+      actor_user_id: auth.session!.userId,
+      user_id: bulk.data.user_id,
+      site_id: bulk.data.site_id || null,
+      day: bulk.data.to_day,
+      detail: { from_day: bulk.data.from_day, to_day: bulk.data.to_day },
+    });
     return json({ ok: true, mode: "bulk" });
   }
 
@@ -67,6 +78,14 @@ export async function POST(req: NextRequest) {
     .eq("is_paid", false);
 
   if (error) return json({ error: `Nešlo označit jako zaplacené: ${error.message}` }, { status: 500 });
+  await writeAuditLog({
+    entity_type: "attendance_payment",
+    entity_id: `${parsed.data.user_id}:${parsed.data.day}`,
+    action: "mark_paid_day",
+    actor_user_id: auth.session!.userId,
+    user_id: parsed.data.user_id,
+    day: parsed.data.day,
+  });
   return json({ ok: true, mode: "single" });
 }
 
@@ -95,6 +114,16 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await q;
     if (error) return json({ error: `Nešlo vrátit úhradu: ${error.message}` }, { status: 500 });
+    await writeAuditLog({
+      entity_type: "attendance_payment",
+      entity_id: `${bulk.data.user_id}:${bulk.data.from_day}:${bulk.data.to_day}:${bulk.data.site_id || "all"}`,
+      action: "mark_unpaid_bulk",
+      actor_user_id: auth.session!.userId,
+      user_id: bulk.data.user_id,
+      site_id: bulk.data.site_id || null,
+      day: bulk.data.to_day,
+      detail: { from_day: bulk.data.from_day, to_day: bulk.data.to_day },
+    });
     return json({ ok: true, mode: "bulk" });
   }
 
@@ -113,5 +142,13 @@ export async function DELETE(req: NextRequest) {
     .eq("is_paid", true);
 
   if (error) return json({ error: `Nešlo vrátit úhradu: ${error.message}` }, { status: 500 });
+  await writeAuditLog({
+    entity_type: "attendance_payment",
+    entity_id: `${parsed.data.user_id}:${parsed.data.day}`,
+    action: "mark_unpaid_day",
+    actor_user_id: auth.session!.userId,
+    user_id: parsed.data.user_id,
+    day: parsed.data.day,
+  });
   return json({ ok: true, mode: "single" });
 }

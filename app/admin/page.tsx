@@ -25,6 +25,8 @@ type Dashboard = {
     unpaid_events: number;
     risk_count: number;
     same_time_transitions: number;
+    pending_reviews: number;
+    needs_attention_today: number;
   };
   risks: Risk[];
 };
@@ -162,6 +164,26 @@ export default function AdminHome() {
         <Metric label="Žádosti" value={summary?.pending_sites ?? 0} href="/admin/site-requests" tone={(summary?.pending_sites ?? 0) > 0 ? "amber" : "neutral"} />
         <Metric label="Neuhrazené záznamy" value={summary?.unpaid_events ?? 0} href="/admin/payments" tone={(summary?.unpaid_events ?? 0) > 0 ? "amber" : "neutral"} />
         <Metric label="Rizika" value={summary?.risk_count ?? 0} href="/admin/attendance" tone={(summary?.risk_count ?? 0) > 0 ? "red" : "neutral"} />
+      </section>
+
+      <section className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <div className="text-xs font-medium text-blue-800">Dnes řešit</div>
+          <div className="mt-2 text-3xl font-semibold text-blue-950">{fmt(summary?.needs_attention_today ?? 0)}</div>
+          <div className="mt-2 text-sm text-blue-900">Součet otevřených dnů, čekajících kontrol a nových žádostí.</div>
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="text-xs font-medium text-emerald-800">Čeká na kontrolu</div>
+          <div className="mt-2 text-3xl font-semibold text-emerald-950">{fmt(summary?.pending_reviews ?? 0)}</div>
+          <div className="mt-2 text-sm text-emerald-900">Dny vrácené k doplnění nebo ještě neschválené po kontrole.</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium text-slate-500">Ranní priorita</div>
+          <div className="mt-2 text-lg font-semibold text-slate-950">
+            {(summary?.pending_reviews ?? 0) > 0 ? "Projít vrácené a čekající dny" : "Kontrola dnů je v klidu"}
+          </div>
+          <div className="mt-2 text-sm text-slate-600">Největší smysl má začít admin docházkou a pak teprve řešit výplaty.</div>
+        </div>
       </section>
 
       {err ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}

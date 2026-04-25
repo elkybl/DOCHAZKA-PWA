@@ -10,6 +10,7 @@ function round2(n: number) { return Math.round(n * 100) / 100; }
 function isDay(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function startOfDayIso(v: string) { return isDay(v) ? `${v}T00:00:00.000Z` : v; }
 function endOfDayIso(v: string) { return isDay(v) ? `${v}T23:59:59.999Z` : v; }
+function reviewKey(userId: string, day: string, siteId: string | null) { return `${userId}__${day}__${siteId || ""}`; }
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -202,6 +203,42 @@ export async function GET(req: NextRequest) {
     return String(a.site_name || "").localeCompare(String(b.site_name || ""), "cs");
   });
 
-  return json({ rows });
+  let reviewQuery = db.from("attendance_day_reviews").select("*");
+  if (day && isDay(day)) reviewQuery = reviewQuery.eq("day", day);
+  else reviewQuery = reviewQuery.gte("day", from.slice(0, 10)).lte("day", to.slice(0, 10));
+  if (siteId) reviewQuery = reviewQuery.eq("site_id", siteId);
+  if (userId) reviewQuery = reviewQuery.eq("user_id", userId);
+  const reviewsRes = await reviewQuery;
+
+  let auditQuery = db
+    .from("attendance_audit_log")
+    .select("id,entity_type,entity_id,action,actor_user_id,user_id,site_id,day,detail,created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (day && isDay(day)) auditQuery = auditQuery.eq("day", day);
+  else auditQuery = auditQuery.gte("day", from.slice(0, 10)).lte("day", to.slice(0, 10));
+  if (siteId) auditQuery = auditQuery.eq("site_id", siteId);
+  if (userId) auditQuery = auditQuery.eq("user_id", userId);
+  const auditRes = await auditQuery;
+
+  const actorIds = [...new Set(((auditRes.data || []) as any[]).map((row) => String(row.actor_user_id || "")).filter(Boolean))];
+  const actorName = new Map<string, string>();
+  if (actorIds.length) {
+    const actors = await db.from("users").select("id,name").in("id", actorIds);
+    for (const actor of actors.data || []) actorName.set(String((actor as any).id), String((actor as any).name || "Admin"));
+  }
+
+  const reviews = ((reviewsRes.data || []) as any[]).map((review) => ({
+    ...review,
+    key: reviewKey(String(review.user_id), String(review.day), review.site_id ? String(review.site_id) : null),
+  }));
+
+  const audit = ((auditRes.data || []) as any[]).map((entry) => ({
+    ...entry,
+    actor_name: actorName.get(String(entry.actor_user_id || "")) || "Admin",
+    key: reviewKey(String(entry.user_id), String(entry.day), entry.site_id ? String(entry.site_id) : null),
+  }));
+
+  return json({ rows, reviews, audit });
 }
 

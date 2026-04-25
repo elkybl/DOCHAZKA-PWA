@@ -177,6 +177,8 @@ export async function GET(req: NextRequest) {
   }
 
   const activeUsers = users.filter((u) => u.is_active !== false).length;
+  const reviewRes = await db.from("attendance_day_reviews").select("status", { count: "exact", head: true }).neq("status", "approved");
+  const pendingReviewCount = reviewRes.count || 0;
 
   return json({
     summary: {
@@ -186,6 +188,8 @@ export async function GET(req: NextRequest) {
       unpaid_events: unpaidRes.count || 0,
       risk_count: risks.length,
       same_time_transitions: sameTimeTransitions,
+      pending_reviews: pendingReviewCount,
+      needs_attention_today: (openByUser.size || 0) + (pendingSitesRes.count || 0) + (pendingReviewCount || 0),
     },
     risks: risks
       .sort((a, b) => {

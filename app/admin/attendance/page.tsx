@@ -56,6 +56,21 @@ type Group = {
   last_out: string | null;
 };
 
+type DayReview = {
+  key: string;
+  status: "pending" | "approved" | "returned";
+  note: string | null;
+  approved_at: string | null;
+};
+
+type AuditLog = {
+  id: string;
+  key: string;
+  action: string;
+  actor_name: string;
+  created_at: string;
+};
+
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -87,6 +102,31 @@ function sourceLabel(kind: Row["sourceKind"]) {
   if (kind === "WORK") return "Práce";
   if (kind === "PROGRAM") return "Programování";
   return "Mimo stavbu";
+}
+
+function actionLabel(action: string) {
+  switch (action) {
+    case "approve_day":
+      return "Schválení dne";
+    case "return_day":
+      return "Vrácení k doplnění";
+    case "mark_pending":
+      return "Vráceno na čeká";
+    case "patch_event":
+      return "Úprava záznamu";
+    case "delete_event":
+      return "Smazání záznamu";
+    case "mark_paid_day":
+      return "Den uhrazen";
+    case "mark_unpaid_day":
+      return "Den vrácen mezi neuhrazené";
+    case "mark_paid_bulk":
+      return "Období uhrazeno";
+    case "mark_unpaid_bulk":
+      return "Období vráceno";
+    default:
+      return action;
+  }
 }
 
 function buildGroupKey(row: Row) {
@@ -149,6 +189,8 @@ export default function AdminAttendancePage() {
   const [userId, setUserId] = useState(() => initialDateParam("user_id"));
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
+  const [reviews, setReviews] = useState<DayReview[]>([]);
+  const [audit, setAudit] = useState<AuditLog[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -192,6 +234,8 @@ export default function AdminAttendancePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Chyba načtení.");
       setRows(data.rows || []);
+      setReviews(data.reviews || []);
+      setAudit(data.audit || []);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Chyba načtení.");
     } finally {
@@ -222,6 +266,39 @@ export default function AdminAttendancePage() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Nešlo uložit změny.");
+  }
+
+  async function reviewDay(group: Group, status: "pending" | "approved" | "returned") {
+    const t = getToken();
+    if (!t) return;
+    setErr(null);
+    setInfo(null);
+    setBusyId(group.key);
+    try {
+      const note =
+        status === "returned"
+          ? window.prompt("Krátká poznámka, co je potřeba doplnit:", "") || ""
+          : "";
+      const res = await fetch("/api/admin/day-review", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+        body: JSON.stringify({
+          user_id: group.user_id,
+          day: group.day,
+          site_id: group.site_id,
+          status,
+          note,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo uložit kontrolu dne.");
+      setInfo(status === "approved" ? "Den je schválený." : status === "returned" ? "Den je vrácený k doplnění." : "Den je znovu označený jako čekající.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo uložit kontrolu dne.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function saveRow(r: Row) {
@@ -313,6 +390,16 @@ export default function AdminAttendancePage() {
       return haystack.includes(needle);
     });
   }, [rows, query]);
+  const reviewMap = useMemo(() => {
+    const map = new Map<string, DayReview>();
+    for (const review of reviews) map.set(review.key, review);
+    return map;
+  }, [reviews]);
+  const auditMap = useMemo(() => {
+    const map = new Map<string, AuditLog[]>();
+    for (const entry of audit) map.set(entry.key, [...(map.get(entry.key) || []), entry]);
+    return map;
+  }, [audit]);
 
   return (
     <AppShell
@@ -368,6 +455,8 @@ export default function AdminAttendancePage() {
       <section className="mt-4 space-y-4">
         {groups.map((group) => {
           const flags = groupFlags(group);
+          const review = reviewMap.get(group.key);
+          const auditItems = auditMap.get(group.key) || [];
           return (
             <div key={group.key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -379,6 +468,13 @@ export default function AdminAttendancePage() {
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${group.paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
                     {group.paid ? "Uhrazený den" : "Otevřený k úpravám"}
                   </span>
+                  {review ? (
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${review.status === "approved" ? "bg-emerald-50 text-emerald-800" : review.status === "returned" ? "bg-red-50 text-red-800" : "bg-blue-50 text-blue-800"}`}>
+                      {review.status === "approved" ? "Schválený" : review.status === "returned" ? "Vrácený k doplnění" : "Čeká na kontrolu"}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Bez kontroly</span>
+                  )}
                   <div className="text-right text-lg font-semibold">{fmt(group.total)} Kč</div>
                 </div>
               </div>
@@ -399,7 +495,22 @@ export default function AdminAttendancePage() {
               </div>
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Časová osa dne</div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Časová osa dne</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900 disabled:opacity-50" disabled={busyId === group.key} onClick={() => reviewDay(group, "approved")}>
+                      Schválit den
+                    </button>
+                    <button className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900 disabled:opacity-50" disabled={busyId === group.key} onClick={() => reviewDay(group, "returned")}>
+                      Vrátit k doplnění
+                    </button>
+                    {review?.status ? (
+                      <button className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50" disabled={busyId === group.key} onClick={() => reviewDay(group, "pending")}>
+                        Zpět na čeká
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {group.rows.map((row) => (
                     <span key={`${group.key}_${row.id}`} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
@@ -407,6 +518,20 @@ export default function AdminAttendancePage() {
                     </span>
                   ))}
                 </div>
+                {review?.note ? <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">{review.note}</div> : null}
+                {auditItems.length ? (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Audit změn</div>
+                    <div className="mt-2 space-y-2">
+                      {auditItems.slice(0, 5).map((entry) => (
+                        <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                          <span>{entry.actor_name} · {actionLabel(entry.action)}</span>
+                          <span className="text-slate-500">{new Date(entry.created_at).toLocaleString("cs-CZ")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4 space-y-3">

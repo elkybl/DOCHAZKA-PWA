@@ -2,6 +2,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -51,6 +52,15 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const { error } = await found.db.from("attendance_events").delete().eq("id", id);
   if (error) return json({ error: "Nešlo smazat záznam." }, { status: 500 });
 
+  await writeAuditLog({
+    entity_type: "attendance_event",
+    entity_id: id,
+    action: "delete_event",
+    actor_user_id: auth.session.userId,
+    user_id: found.row.user_id,
+    day: found.row.day_local,
+    detail: { type: found.row.type, server_time: found.row.server_time },
+  });
   console.info("attendance_events.delete", { admin: auth.session.userId, event_id: id, day: found.row.day_local, user_id: found.row.user_id });
   return json({ ok: true });
 }
@@ -73,6 +83,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { error } = await found.db.from("attendance_events").update(patch).eq("id", id);
   if (error) return json({ error: "Nešlo uložit změny." }, { status: 500 });
 
+  await writeAuditLog({
+    entity_type: "attendance_event",
+    entity_id: id,
+    action: "patch_event",
+    actor_user_id: auth.session.userId,
+    user_id: found.row.user_id,
+    day: found.row.day_local,
+    detail: { patch },
+  });
   console.info("attendance_events.patch", { admin: auth.session.userId, event_id: id, day: found.row.day_local, user_id: found.row.user_id, patch_keys: Object.keys(patch) });
   return json({ ok: true });
 }

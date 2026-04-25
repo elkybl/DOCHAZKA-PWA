@@ -209,22 +209,19 @@ export default function AttendancePage() {
   const nearestLabel = useMemo(() => {
     if (manualSiteId) return sites.find((site) => site.id === manualSiteId)?.name ?? "Rucne vybrana stavba";
     if (!nearest) return null;
-    return `${nearest.site.name} Â· ${Math.round(nearest.dist)} m`;
+    return `${nearest.site.name} - ${Math.round(nearest.dist)} m`;
   }, [manualSiteId, nearest, sites]);
 
   const completionItems = useMemo(() => {
-    const materialValue = Number(matAmount.replace(",", "."));
     return [
       { label: "Popis prace", done: note.trim().length > 0 },
       { label: "Kilometry", done: km.trim().length > 0 },
-      { label: "Material", done: matAmount.trim().length > 0 },
-      { label: "Popis materialu", done: !Number.isFinite(materialValue) || materialValue <= 0 || matDesc.trim().length > 0 },
       {
         label: "Programovani",
         done: !me?.is_programmer || !didProgram || (progHours.trim().length > 0 && progNote.trim().length > 0),
       },
     ];
-  }, [note, km, matAmount, matDesc, me?.is_programmer, didProgram, progHours, progNote]);
+  }, [note, km, me?.is_programmer, didProgram, progHours, progNote]);
 
   const completedCount = completionItems.filter((item) => item.done).length;
   const missingCompletionItems = completionItems.filter((item) => !item.done);
@@ -268,8 +265,6 @@ export default function AttendancePage() {
     const fieldMap: Record<string, { field: string; message: string }> = {
       "Popis prace": { field: "note", message: "Nejdriv doplnte popis prace. Pak pujde den ukoncit." },
       Kilometry: { field: "km", message: "Nejdriv doplnte kilometry. Pokud zadne nejsou, zadejte 0." },
-      Material: { field: "material", message: "Nejdriv doplnte material v Kc. Pokud zadny nebyl, zadejte 0." },
-      "Popis materialu": { field: "material_desc", message: "U materialu doplnte kratky popis, at je den pripraveny k ukonceni." },
       Programovani: { field: "prog_hours", message: "Pokud se dnes programovalo, doplnte hodiny a poznamku k programovani." },
     };
 
@@ -407,7 +402,7 @@ export default function AttendancePage() {
       setPresent(true);
       setActiveSiteId(siteId);
       setActiveSiteName(site?.name || null);
-      setInfo(`Dochazka zahajena${site?.name ? ` Â· ${site.name}` : ""}.`);
+      setInfo(`Dochazka zahajena${site?.name ? ` - ${site.name}` : ""}.`);
       setManualSiteId(null);
     } catch (error: unknown) {
       setErr(getErrorMessage(error));
@@ -477,23 +472,21 @@ export default function AttendancePage() {
     try {
       const token = await getToken();
       if (!token) throw new Error("Chybi prihlaseni.");
-      if (!note.trim()) return focusOutField("note", "DoplĹte popis prĂˇce pĹ™ed ukonÄŤenĂ­m dochĂˇzky.");
-      if (!km.trim()) return focusOutField("km", "DoplĹte kilometry. Pokud ĹľĂˇdnĂ© nejsou, zadejte 0.");
+      if (!note.trim()) return focusOutField("note", "Doplnte popis prace pred ukoncenim dochazky.");
+      if (!km.trim()) return focusOutField("km", "Doplnte kilometry. Pokud zadne nejsou, zadejte 0.");
 
       const kmVal = Number(km.replace(",", "."));
-      if (!Number.isFinite(kmVal) || kmVal < 0) return focusOutField("km", "Kilometry nejsou platnĂ©.");
+      if (!Number.isFinite(kmVal) || kmVal < 0) return focusOutField("km", "Kilometry nejsou platne.");
 
-      if (!matAmount.trim()) return focusOutField("material", "DoplĹte materiĂˇl v KÄŤ. Pokud ĹľĂˇdnĂ˝ nebyl, zadejte 0.");
-      const matAmt = Number(matAmount.replace(",", "."));
-      if (!Number.isFinite(matAmt) || matAmt < 0) return focusOutField("material", "ÄŚĂˇstka za materiĂˇl nenĂ­ platnĂˇ.");
-      if (matAmt > 0 && !matDesc.trim()) return focusOutField("material_desc", "U materiĂˇlu doplĹte krĂˇtkĂ˝ popis.");
+      const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : 0;
+      if (matAmount.trim() && (!Number.isFinite(matAmt) || matAmt < 0)) return focusOutField("material", "Castka za material neni platna.");
 
       if (me?.is_programmer && didProgram) {
         const ph = Number(progHours.replace(",", "."));
-        if (!Number.isFinite(ph) || ph <= 0) return focusOutField("prog_hours", "DoplĹte poÄŤet hodin programovĂˇnĂ­.");
+        if (!Number.isFinite(ph) || ph <= 0) return focusOutField("prog_hours", "Doplnte pocet hodin programovani.");
       }
 
-      if (forceWithoutLocation && !manualOutTime.trim()) return focusOutField("manual_out_time", "Zadejte ÄŤas odchodu bez polohy.");
+      if (forceWithoutLocation && !manualOutTime.trim()) return focusOutField("manual_out_time", "Zadejte cas odchodu bez polohy.");
 
       setBusy(true);
 
@@ -623,14 +616,12 @@ export default function AttendancePage() {
         </div>
       }
     >
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="order-2 space-y-4 xl:order-1">
+      <section className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
+        <div className="order-2 space-y-5 xl:order-1">
           <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="hidden rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:block">
-                  <Image src="/ekybl-logo.png" alt="Lukas Kybl" width={180} height={60} className="h-auto w-32 object-contain" unoptimized priority />
-                </div>
+              <div className="flex min-w-0 items-start gap-4">
+
                 <div>
                   <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${present ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-800"}`}>
                     {present ? "Dochazka bezi" : "Pripraveno k zahajeni"}
@@ -646,10 +637,10 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="grid min-w-[220px] gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div className="grid min-w-[240px] gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm xl:w-[260px]">
                 <div>
                   <div className="text-xs font-medium text-slate-500">Prihlaseny uzivatel</div>
-                  <div className="mt-1 font-semibold text-slate-950">{me?.name || "â€”"}</div>
+                  <div className="mt-1 font-semibold text-slate-950">{me?.name || "-"}</div>
                 </div>
                 <div>
                   <div className="text-xs font-medium text-slate-500">Poloha / stavba</div>
@@ -680,7 +671,7 @@ export default function AttendancePage() {
                   <div>
                     <div className="text-sm font-semibold text-blue-950">Pred ukoncenim dochazky doplnte udaje k odchodu</div>
                     <div className="mt-1 text-xs leading-5 text-blue-900">
-                      Popis prace, kilometry a material jsou povinne. Jakmile je vse doplnene, ukonceni dne je hned pripraveno.
+                      Povinne jsou popis prace, cas a kilometry. Material muzete doplnit jen tehdy, kdyz je potreba.
                     </div>
                   </div>
                   <button type="button" onClick={openEndFormHint} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100/60">
@@ -691,7 +682,7 @@ export default function AttendancePage() {
             ) : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
             <StatusCard
               title="Dnes resit"
               tone={present ? "blue" : "neutral"}
@@ -709,10 +700,10 @@ export default function AttendancePage() {
                     ]
               }
             />
-            <StatusCard title="Pripravenost odchodu" tone={completedCount === completionItems.length ? "emerald" : "amber"} items={completionItems.map((item) => `${item.done ? "Hotovo" : "Chybi"} Â· ${item.label}`)} />
+            <StatusCard title="Pripravenost odchodu" tone={completedCount === completionItems.length ? "emerald" : "amber"} items={completionItems.map((item) => `${item.done ? "Hotovo" : "Chybi"} - ${item.label}`)} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
             <LinkCard href="/calendar" title="Kalendar" desc="Plan prace, volno, lekar i vlastni polozky." />
             <LinkCard href="/me" title="Moje vydelky" desc="Prehled k uhrade, uhrazeno a detail dnu." />
             <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
@@ -740,12 +731,12 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        <aside className="order-3 space-y-4 xl:order-2">
-          <section ref={endCardRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+        <aside className="order-3 space-y-4 xl:order-2 xl:sticky xl:top-24 xl:self-start">
+          <section ref={endCardRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] xl:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Ukonceni dochazky</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Tyto udaje jdou do vyplat, prehledu i exportu. Proto musi byt vyplnene poctive.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Popis prace, cas a kilometry jdou do vyplat, prehledu i exportu. Material je volitelny doplnek.</p>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinne</span>
             </div>
@@ -760,7 +751,7 @@ export default function AttendancePage() {
                   </div>
                   <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
                     {canSubmitOut
-                      ? "Popis prace, kilometry i material jsou hotove. Ted uz muzete dochazku bez obav ukoncit."
+                      ? "Popis prace i kilometry jsou hotove. Ted uz muzete dochazku bez obav ukoncit."
                       : "Tady hned vidite, co jeste chybi. Kdyz stisknete ukonceni moc brzy, formular vas presne navede na prvni chybejici pole."}
                   </div>
                 </div>
@@ -788,7 +779,7 @@ export default function AttendancePage() {
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {completionItems.map((item) => (
                   <div key={item.label} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${item.done ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {item.done ? "Hotovo" : "Chybi"} Â· {item.label}
+                    {item.done ? "Hotovo" : "Chybi"} - {item.label}
                   </div>
                 ))}
               </div>
@@ -831,7 +822,7 @@ export default function AttendancePage() {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] xl:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Dnesni kalendar</h2>
@@ -848,7 +839,7 @@ export default function AttendancePage() {
                   <div className="mt-1 text-sm font-semibold text-slate-950">{item.title}</div>
                   <div className="mt-1 text-xs text-slate-500">
                     {item.all_day ? "Cely den" : item.start_time ? `${item.start_time.slice(0, 5)}${item.end_time ? ` - ${item.end_time.slice(0, 5)}` : ""}` : "Bez casu"}
-                    {item.location ? ` Â· ${item.location}` : ""}
+                    {item.location ? ` - ${item.location}` : ""}
                   </div>
                 </div>
               ))}
@@ -999,4 +990,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
     </div>
   );
 }
+
+
+
 

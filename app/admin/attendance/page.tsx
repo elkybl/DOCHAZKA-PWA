@@ -375,6 +375,31 @@ export default function AdminAttendancePage() {
     }
   }
 
+  async function deleteDay(group: Group) {
+    const t = getToken();
+    if (!t) return;
+    const ok = window.confirm(`Opravdu smazat celý den ${group.day} pro ${group.user_name}? Tato akce smaže všechny řádky dne.`);
+    if (!ok) return;
+    setErr(null);
+    setInfo(null);
+    setBusyId(group.key);
+    try {
+      const res = await fetch('/api/admin/attendance/delete-day', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` },
+        body: JSON.stringify({ user_id: group.user_id, day: group.day }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Nešlo smazat celý den.');
+      setInfo('Celý den byl smazán.');
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Nešlo smazat celý den.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -515,6 +540,9 @@ export default function AdminAttendancePage() {
                         Zpět na čeká
                       </button>
                     ) : null}
+                    <button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50" disabled={busyId === group.key || group.paid} onClick={() => deleteDay(group)}>
+                      {busyId === group.key ? 'Mažu den' : 'Smazat celý den'}
+                    </button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -663,3 +691,4 @@ function FlagBadge({ text, tone }: { text: string; tone: "amber" | "red" | "blue
             : "border-slate-200 bg-slate-100 text-slate-700";
   return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${cls}`}>{text}</span>;
 }
+

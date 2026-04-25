@@ -208,6 +208,15 @@ export default function Page() {
     );
   }, [filteredRows]);
 
+  const selectedSitesCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of filteredRows) {
+      for (const seg of row.segments || []) if (seg.site_id) set.add(seg.site_id);
+      for (const off of row.offsites || []) if (off.site_id) set.add(off.site_id);
+    }
+    return set.size;
+  }, [filteredRows]);
+
   const sitesAgg = useMemo(() => {
     const map = new Map<string, SiteAgg>();
     for (const row of filteredRows) {
@@ -238,12 +247,12 @@ export default function Page() {
     <AppShell
       area="auto"
       title="Moje výdělky"
-      subtitle="Přehled práce, plateb, materiálu a navazujících částek po jednotlivých dnech."
+      subtitle="Denní přehled odvedené práce, plateb, dopravy a materiálu bez zbytečného chaosu."
       actions={
         <>
           {sheetUrl ? (
             <a className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm" href={sheetUrl} target="_blank" rel="noreferrer">
-              Výkaz
+              Export
             </a>
           ) : null}
           <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50" onClick={() => load(days)} disabled={loading}>
@@ -300,6 +309,17 @@ export default function Page() {
             </select>
           </label>
         </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Vybráno dnů: <span className="font-semibold text-slate-950">{filteredRows.length}</span>
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Aktivní stavby: <span className="font-semibold text-slate-950">{selectedSitesCount}</span>
+          </span>
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-blue-800">
+            Režim: <span className="font-semibold">{mode === "days" ? "Denní přehled" : "Souhrn po stavbách"}</span>
+          </span>
+        </div>
       </section>
 
       {err ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}
@@ -320,7 +340,7 @@ export default function Page() {
               </div>
             </div>
           ))}
-          {!sitesAgg.length ? <EmptyState /> : null}
+          {!sitesAgg.length ? <EmptyState text="Pro zvolené období a filtry tu teď nejsou žádné stavby s výdělkem." /> : null}
         </section>
       ) : (
         <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -354,6 +374,7 @@ function MoneyStat({ label, value, tone = "default" }: { label: string; value: n
 
 function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen: () => void }) {
   const items = [...(row.segments || []), ...(row.offsites || [])];
+  const paidAmount = Number(row.paid_total) || 0;
   return (
     <article className={`rounded-lg border bg-white p-4 shadow-sm transition ${active ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -383,7 +404,11 @@ function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen
         <MiniStat label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={`${fmt(row.hours)} h`} />
         <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km · ${kmSourceLabel(row.km_source)}`} />
         <MiniStat label="Materiál" value={`${fmt(row.material)} Kč`} sub={row.material_notes?.[0] || "Bez materiálu"} />
-        <MiniStat label="K úhradě" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : " "} />
+        <MiniStat
+          label="Platba dne"
+          value={`${fmt(row.unpaid_total || 0)} Kč`}
+          sub={paidAmount > 0 ? `Uhrazeno ${fmt(paidAmount)} Kč` : row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : "Bez uhrazené části"}
+        />
       </div>
 
       {items.length ? (
@@ -433,6 +458,12 @@ function DayDrawer({ row }: { row: DayRow | null }) {
         <MiniStat label="Práce" value={`${fmt(row.hours_pay)} Kč`} sub={row.segments.some((item) => item.prog_hours > 0) ? `Programování ${fmt(row.segments.reduce((sum, item) => sum + item.prog_hours, 0))} h` : "Bez programování"} />
         <MiniStat label="Doprava" value={`${fmt(row.km_pay)} Kč`} sub={`${fmt(row.km, 1)} km · ${kmSourceLabel(row.km_source)}`} />
         <MiniStat label="Materiál" value={`${fmt(row.material)} Kč`} sub={row.material_notes.length ? `${row.material_notes.length} položek` : "Bez materiálu"} />
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <MiniStat label="Celkem" value={`${fmt(row.total)} Kč`} sub="Součet dne" />
+        <MiniStat label="Uhrazeno" value={`${fmt(row.paid_total || 0)} Kč`} sub="Už zaplacená část" />
+        <MiniStat label="K úhradě" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.payment_state === "partial" ? "Den je částečně uhrazený" : row.paid ? "Den je uzavřený" : "Čeká na úhradu"} />
       </div>
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -491,6 +522,7 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub: st
   );
 }
 
-function EmptyState() {
-  return <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy pro vybrané filtry.</div>;
+function EmptyState({ text = "Pro zvolené období a filtry tu zatím nic není. Zkuste jiné období nebo jinou stavbu." }: { text?: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">{text}</div>;
 }
+

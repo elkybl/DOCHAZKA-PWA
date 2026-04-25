@@ -273,7 +273,7 @@ export default function EditWorkPage() {
     <AppShell
       area="auto"
       title={dayFilter ? `Upravit den ${dayFilter}` : "Upravit záznamy"}
-      subtitle="Doplnění práce, materiálu, programování a činností mimo stavbu na konkrétní dny."
+      subtitle="Přesné doplnění práce, materiálu, programování i činností mimo stavbu pro konkrétní den."
       actions={
         <button onClick={() => load()} disabled={!token || !!busy} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           Obnovit
@@ -286,6 +286,23 @@ export default function EditWorkPage() {
         <Stat label="Kilometry" value={`${fmt(totals.km, 1)} km`} />
         <Stat label={canProg ? "Programování" : "Materiál"} value={canProg ? `${fmt(activeDayInfo?.programming || 0)} h` : `${fmt(totals.material)} Kč`} />
       </section>
+
+      {dayFilter ? (
+        <section className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Detail dne</div>
+              <div className="mt-2 text-base font-semibold text-slate-950">{dayFilter}</div>
+              <div className="mt-1 text-sm text-slate-700">
+                Upravujete konkrétní den. Uhrazené řádky jsou zamčené a nejdřív je potřeba je vrátit ve výplatách mezi neuhrazené.
+              </div>
+            </div>
+            <a href="/me" className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100/60">
+              Zpět na Moje výdělky
+            </a>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[220px_180px_1fr]">
@@ -340,7 +357,11 @@ export default function EditWorkPage() {
             fillIntentionalZero={fillIntentionalZero}
           />
         ))}
-        {!filteredRows.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné záznamy k úpravě.</div> : null}
+        {!filteredRows.length ? (
+          <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+            Pro vybraný den nebo filtr tu teď není nic k úpravě. Pokud už je den uhrazený, vraťte ho nejdřív ve výplatách mezi neuhrazené.
+          </div>
+        ) : null}
       </section>
     </AppShell>
   );
@@ -407,6 +428,9 @@ function EditCard({
               <SmallInfo label="Hodiny dne" value={`${fmt(dayInfo?.hours || 0)} h`} />
               <SmallInfo label="Práce" value={`${fmt(dayInfo?.work || 0)} h`} />
               <SmallInfo label="Programování" value={`${fmt(dayInfo?.programming || 0)} h`} />
+            </div>
+            <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+              Programování vybírejte jen z reálně odpracovaných hodin daného dne. Díky tomu zůstane součet práce a programování auditovatelný.
             </div>
             <div className="flex flex-wrap gap-2">
               {!row.is_paid ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => copyPreviousText(row)}>Kopírovat poslední podobný popis</button> : null}
@@ -479,9 +503,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>;
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-2 text-2xl font-semibold text-slate-950">{value}</div></div>;
 }
 
 function SmallInfo({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div></div>;
+  return <div className="rounded-lg border bg-white p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold text-slate-950">{value}</div></div>;
 }
+

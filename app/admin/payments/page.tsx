@@ -231,11 +231,16 @@ export default function PaymentsPage() {
       });
   }, [rows, status, query]);
 
+  const visibleDayCount = useMemo(
+    () => filtered.reduce((sum, row) => sum + row.visibleDays.length, 0),
+    [filtered]
+  );
+
   return (
     <AppShell
       area="mixed"
       title="Výplaty"
-      subtitle="Ve filtru K úhradě vidíte jen neuhrazené dny. Ve filtru Uhrazeno jen uhrazené dny. Každý den lze uhradit nebo vrátit samostatně."
+      subtitle="K úhradě ukazuje jen skutečně neuhrazené dny. Uhrazeno ukazuje jen zaplacené dny. Každý den lze označit nebo vrátit samostatně."
       actions={
         <button onClick={load} disabled={loading} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
           {loading ? "Načítám" : "Obnovit"}
@@ -266,6 +271,17 @@ export default function PaymentsPage() {
           <Field label="Hledat">
             <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pracovník nebo stavba" />
           </Field>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Zobrazené skupiny: <span className="font-semibold text-slate-950">{filtered.length}</span>
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Zobrazené dny: <span className="font-semibold text-slate-950">{visibleDayCount}</span>
+          </span>
+          <span className={`rounded-full px-3 py-2 ${status === "paid" ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : status === "unpaid" ? "border border-amber-200 bg-amber-50 text-amber-800" : "border border-slate-200 bg-slate-50 text-slate-700"}`}>
+            {status === "paid" ? "Režim: vracení uhrazených dnů" : status === "unpaid" ? "Režim: označování k úhradě" : "Režim: kontrola všech dnů"}
+          </span>
         </div>
         <button onClick={load} className="mt-3 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Načíst období</button>
         {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
@@ -306,7 +322,7 @@ export default function PaymentsPage() {
               <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
                 <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
                   <div className="text-xs font-semibold uppercase text-slate-500">Denní rozpis</div>
-                  <div className="text-xs text-slate-500">Akce jsou po jednotlivých dnech</div>
+                  <div className="text-xs text-slate-500">Každý den lze zkontrolovat a změnit samostatně</div>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {visibleDays.map((day) => {
@@ -365,7 +381,15 @@ export default function PaymentsPage() {
             </article>
           );
         })}
-        {!filtered.length ? <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">Žádné položky.</div> : null}
+        {!filtered.length ? (
+          <div className="rounded-lg border bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+            {status === "paid"
+              ? "V tomhle období tu teď nejsou žádné uhrazené dny."
+              : status === "unpaid"
+                ? "V tomhle období tu teď nejsou žádné dny k úhradě."
+                : "Pro zvolené období a filtry tu teď nejsou žádné dny."}
+          </div>
+        ) : null}
       </section>
     </AppShell>
   );
@@ -387,6 +411,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Mini({ label, value, sub }: { label: string; value: string; sub: string }) {
   return <div className="rounded-lg border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div><div className="mt-1 text-xs text-slate-500">{sub}</div></div>;
 }
+
 
 
 

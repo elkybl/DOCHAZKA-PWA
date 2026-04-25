@@ -50,9 +50,9 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#ffffff_48%,#f4f7fb_100%)] px-4 py-6 text-slate-950">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:items-center">
-        <section className="space-y-6 lg:pr-6">
-          <div className="flex w-full max-w-[560px] items-center justify-center rounded-[28px] border border-slate-200 bg-white px-6 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.08fr_0.92fr]">
+        <section className="space-y-6 lg:pr-8">
+          <div className="flex w-full max-w-[560px] items-center justify-center overflow-visible rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
             <Image
               src="/ekybl-logo.png"
               alt="Lukáš Kýbl"
@@ -66,12 +66,27 @@ export default function LoginPage() {
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-blue-700">Software • Vývoj • Automatizace</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Firemní data pod kontrolou v jednom systému.
+              Docházka, práce a finance přehledně na jednom místě.
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-              Docházka Finish drží pohromadě docházku, práci, materiál, dopravu, kalendář i navazující finance. Cílem je přehled,
-              který sedí s realitou v datech a je srozumitelný pro uživatele i admin část.
+              Docházka Finish drží pohromadě docházku, práci, materiál, kalendář i navazující finance. Všechno je postavené tak,
+              aby se v datech rychle zorientoval pracovník i admin a aby přehled seděl s realitou.
             </p>
+          </div>
+
+          <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="rounded-[24px] border border-blue-200 bg-blue-50 p-4 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Každý den</div>
+              <div className="mt-2 text-sm font-semibold text-slate-950">Příchod, odchod a doplnění práce bez chaosu.</div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Přehled</div>
+              <div className="mt-2 text-sm font-semibold text-slate-950">Zaplaceno, k úhradě a kontrola dne na jednom místě.</div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Admin</div>
+              <div className="mt-2 text-sm font-semibold text-slate-950">Kalendář, schvalování a provozní dohled bez přeskakování.</div>
+            </div>
           </div>
 
           <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
@@ -90,11 +105,11 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="justify-self-start rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] sm:p-7 lg:w-full lg:max-w-[520px]">
+        <section className="w-full justify-self-start rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] sm:p-7 lg:max-w-[520px] lg:justify-self-end">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Přihlášení</div>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Vstup do systému</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Zadejte svůj PIN pro přístup do aplikace.</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Přihlášení do aplikace</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Použijte svůj PIN a pokračujte rovnou do pracovního přehledu.</p>
           </div>
 
           <div className="mt-6">
@@ -121,14 +136,19 @@ export default function LoginPage() {
 
           {err ? <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{err}</div> : null}
 
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Po přihlášení se otevře vaše pracovní část nebo administrace podle role účtu.
+          </div>
+
           <div className="mt-6 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
-            Přístupové údaje držte mimo obrazovku a sdílejte je jen interní cestou.
+            Přístupové údaje držte jen v interním provozu firmy.
           </div>
         </section>
       </div>
     </main>
   );
 }
+
 
 
 

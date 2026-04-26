@@ -256,6 +256,10 @@ export async function POST(req: NextRequest) {
     return json({ error: "Nemůžeš plánovat za jiného pracovníka." }, { status: 403 });
   }
 
+  const targetUserIds = session.role === "admin"
+    ? [...new Set((parsed.data.user_ids && parsed.data.user_ids.length ? parsed.data.user_ids : [targetUserId]).filter(Boolean))]
+    : [session.userId];
+
   const payload = normalizeCalendarPayload({
     ...parsed.data,
     user_id: targetUserId,
@@ -266,6 +270,18 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
   const bulk = parsed.data.bulk_create;
+
+  if (session.role === "admin" && !bulk && targetUserIds.length > 1) {
+    const rows = targetUserIds.map((userId) =>
+      normalizeCalendarPayload({
+        ...payload,
+        user_id: userId,
+      }),
+    );
+    const insertMany = await db.from("calendar_items").insert(rows).select("*");
+    if (insertMany.error) return json({ error: "Nešlo uložit položku pro více pracovníků." }, { status: 500 });
+    return json({ items: insertMany.data || [], created: rows.length });
+  }
 
   if (bulk && parsed.data.type === "availability") {
     const candidateDays = enumerateDays(bulk.from_date, bulk.to_date).filter((day) => bulk.weekdays.includes(weekdayFromDate(day)));
@@ -306,3 +322,4 @@ export async function POST(req: NextRequest) {
 
   return json({ item: data });
 }
+

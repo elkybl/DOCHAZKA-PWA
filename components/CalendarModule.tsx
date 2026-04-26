@@ -44,6 +44,7 @@ type FormState = {
   location: string;
   notes: string;
   planned_hours: string;
+  user_ids: string[];
   bulk_enabled: boolean;
   bulk_from_date: string;
   bulk_to_date: string;
@@ -62,6 +63,7 @@ const initialForm = (date: string, userId = "", type: CalendarItemType = "work_s
   location: "",
   notes: "",
   planned_hours: "",
+  user_ids: userId ? [userId] : [],
   bulk_enabled: false,
   bulk_from_date: date,
   bulk_to_date: addDays(date, 13),
@@ -341,6 +343,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
       location: item.location || "",
       notes: item.notes || "",
       planned_hours: item.planned_hours == null ? "" : String(item.planned_hours),
+      user_ids: [item.user_id],
       bulk_enabled: false,
       bulk_from_date: item.date,
       bulk_to_date: item.date,
@@ -356,13 +359,14 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
     if (!token) return;
     const finalTitle = form.title.trim() || defaultTitle(form.type);
     if (!finalTitle) return setErr("Doplň název položky.");
-    if (admin && !form.user_id) return setErr("Vyber pracovníka.");
+    if (admin && !(form.user_ids.length || form.user_id)) return setErr("Vyber alespoň jednoho pracovníka.");
     setBusy("form");
     setErr(null);
     setInfo(null);
     try {
       const payload = {
-        user_id: admin ? form.user_id : undefined,
+        user_id: admin ? (form.user_ids[0] || form.user_id) : undefined,
+        user_ids: admin && !form.id ? (form.user_ids.length ? form.user_ids : form.user_id ? [form.user_id] : undefined) : undefined,
         type: form.type,
         title: finalTitle,
         date: form.date,
@@ -393,6 +397,8 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           ? "Položka je uložena jako plán. Pracovník pro ten den ještě nemá zadanou dostupnost."
           : !admin && !form.id && form.type === "availability" && form.bulk_enabled
             ? `Dostupnost je uložená pro ${bulkPreviewDays.length} dní.`
+            : admin && !form.id && (form.user_ids.length || (form.user_id ? 1 : 0)) > 1
+              ? `Položka je uložená pro ${form.user_ids.length || 1} pracovníků.`
             : "Kalendář uložen.",
       );
       setFormOpen(false);
@@ -504,7 +510,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           </div>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500">
-          {["Po", "Ut", "St", "Ct", "Pa", "So", "Ne"].map((d) => <div key={d} className="py-1">{d}</div>)}
+          {["Po", "Út", "St", "Čt", "Pá", "So", "Ne"].map((d) => <div key={d} className="py-1">{d}</div>)}
         </div>
         <div className="mt-1 grid grid-cols-7 gap-1">
           {range.days.map((day) => {
@@ -517,11 +523,11 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
                 <div className="mt-2 space-y-1">
                   {dayItems.slice(0, 3).map((item) => (
                     <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${item.source === "attendance" ? "border-slate-300 bg-slate-100" : typeClass(item.type)}`}>
-                      <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} Â· ` : ""}</span>
+                      <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} · ` : ""}</span>
                       {item.title}
                     </div>
                   ))}
-                  {dayItems.length > 3 ? <div className="text-[11px] text-slate-500">+{dayItems.length - 3} dalsi</div> : null}
+                  {dayItems.length > 3 ? <div className="text-[11px] text-slate-500">+{dayItems.length - 3} další</div> : null}
                 </div>
               </button>
             );
@@ -574,7 +580,58 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Rychlý přehled"}</h2>
           {formOpen ? (
             <div className="mt-4 space-y-3">
-              {admin ? <Field label="Pracovník"><select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={form.user_id} onChange={(e) => setForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Vyber pracovnika</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field> : null}
+              {admin ? (
+                <div className="space-y-3">
+                  <Field label="Hlavní pracovník">
+                    <select
+                      className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                      value={form.user_id}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          user_id: e.target.value,
+                          user_ids: e.target.value ? Array.from(new Set([e.target.value, ...p.user_ids])) : p.user_ids,
+                        }))
+                      }
+                    >
+                      <option value="">Vyber pracovníka</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  {!form.id ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-medium text-slate-600">Stejná akce pro více lidí najednou</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {users.map((u) => {
+                          const active = form.user_ids.includes(u.id);
+                          return (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() =>
+                                setForm((p) => ({
+                                  ...p,
+                                  user_ids: active ? p.user_ids.filter((id: string) => id !== u.id) : [...p.user_ids, u.id],
+                                  user_id: !active && !p.user_id ? u.id : p.user_id === u.id && active ? p.user_ids.filter((id: string) => id !== u.id)[0] || "" : p.user_id,
+                                }))
+                              }
+                              className={`rounded-full border px-3 py-2 text-xs font-semibold ${active ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-600"}`}
+                            >
+                              {u.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">Vybráno: {form.user_ids.length || (form.user_id ? 1 : 0)} pracovníků</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <Field label="Typ"><select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as CalendarItemType, title: p.title.trim() ? p.title : defaultTitle(e.target.value as CalendarItemType) }))}>{calendarItemTypes.map((type) => <option key={type} value={type}>{calendarTypeLabels[type]}</option>)}</select></Field>
               <Field label="Název"><input ref={titleInputRef} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></Field>
               <Field label="Datum"><input type="date" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} /></Field>
@@ -583,7 +640,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
               <Field label="Plán hodin"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={form.planned_hours} onChange={(e) => setForm((p) => ({ ...p, planned_hours: e.target.value.replace(/[^\d.,]/g, "") }))} /></Field>
               <Field label="Místo"><input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} /></Field>
               <Field label="Poznámka"><textarea className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" rows={4} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></Field>
-              {admin && isWorkRelated(form.type) ? <div className={`rounded-lg border p-3 text-sm ${adminNeedsAvailabilityWarning ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>{adminNeedsAvailabilityWarning ? <><div className="font-semibold">Pracovník jeste nema zadanou dostupnost.</div><div className="mt-1">Položku můžeš uložit jako plán, ale zůstane v režimu čekání na potvrzení.</div></> : <><div className="font-semibold">Dostupnost nalezena.</div><div className="mt-1">{formAvailability.map((item) => formatAvailability(item)).join(", ")}</div></>}</div> : null}
+              {admin && isWorkRelated(form.type) ? <div className={`rounded-lg border p-3 text-sm ${adminNeedsAvailabilityWarning ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>{adminNeedsAvailabilityWarning ? <><div className="font-semibold">Pracovník ještě nemá zadanou dostupnost.</div><div className="mt-1">Položku můžeš uložit jako plán, ale zůstane v režimu čekání na potvrzení.</div></> : <><div className="font-semibold">Dostupnost nalezena.</div><div className="mt-1">{formAvailability.map((item) => formatAvailability(item)).join(", ")}</div></>}</div> : null}
               {!admin && isAvailability(form.type) ? (
                 <div className="space-y-3">
                   <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">

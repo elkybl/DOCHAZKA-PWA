@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -107,7 +107,7 @@ function extractUser(obj: unknown): Me | null {
   };
 }
 
-function getErrorMessage(error: unknown, fallback = "Doslo k chybe.") {
+function getErrorMessage(error: unknown, fallback = "Došlo k chybě.") {
   return error instanceof Error ? error.message : fallback;
 }
 
@@ -124,7 +124,7 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 async function getPosition(): Promise<Pos> {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("Geolokace neni dostupna."));
+    if (!navigator.geolocation) return reject(new Error("Geolokace není dostupná."));
     navigator.geolocation.getCurrentPosition(
       (p) =>
         resolve({
@@ -207,17 +207,17 @@ export default function AttendancePage() {
 
   const selectedSite = manualSiteId ? sites.find((site) => site.id === manualSiteId) ?? null : nearest?.site ?? null;
   const nearestLabel = useMemo(() => {
-    if (manualSiteId) return sites.find((site) => site.id === manualSiteId)?.name ?? "Rucne vybrana stavba";
+    if (manualSiteId) return sites.find((site) => site.id === manualSiteId)?.name ?? "Ručně vybraná stavba";
     if (!nearest) return null;
     return `${nearest.site.name} - ${Math.round(nearest.dist)} m`;
   }, [manualSiteId, nearest, sites]);
 
   const completionItems = useMemo(() => {
     return [
-      { label: "Popis prace", done: note.trim().length > 0 },
+      { label: "Popis práce", done: note.trim().length > 0 },
       { label: "Kilometry", done: km.trim().length > 0 },
       {
-        label: "Programovani",
+        label: "Programování",
         done: !me?.is_programmer || !didProgram || (progHours.trim().length > 0 && progNote.trim().length > 0),
       },
     ];
@@ -245,14 +245,14 @@ export default function AttendancePage() {
   }
 
   function openEndFormHint() {
-    setOutErr("Nejdriv doplnte udaje k odchodu. Formular je niz na strance.");
+    setOutErr("Nejdriv doplňte udaje k odchodu. Formular je niz na strance.");
     endCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => noteRef.current?.focus(), 120);
   }
 
   function submitOutFromCard() {
     if (!present) {
-      setOutErr("Nejdriv zahajte dochazku na stavbe.");
+      setOutErr("Nejdřív zahajte docházku na stavbě.");
       return;
     }
 
@@ -263,12 +263,12 @@ export default function AttendancePage() {
     }
 
     const fieldMap: Record<string, { field: string; message: string }> = {
-      "Popis prace": { field: "note", message: "Nejdriv doplnte popis prace. Pak pujde den ukoncit." },
-      Kilometry: { field: "km", message: "Nejdriv doplnte kilometry. Pokud zadne nejsou, zadejte 0." },
-      Programovani: { field: "prog_hours", message: "Pokud se dnes programovalo, doplnte hodiny a poznamku k programovani." },
+      "Popis práce": { field: "note", message: "Nejdriv doplňte popis práce. Pák pujde den ukoncit." },
+      Kilometry: { field: "km", message: "Nejdřív doplňte kilometry. Pokud žádné nejsou, zadejte 0." },
+      Programování: { field: "prog_hours", message: "Pokud se dnes programovalo, doplňte hodiny a poznámku k programování." },
     };
 
-    const target = fieldMap[firstMissing.label] ?? { field: "note", message: "Pred ukoncenim dne jeste doplnte chybejici udaje." };
+    const target = fieldMap[firstMissing.label] ?? { field: "note", message: "Před ukončením dne ještě doplňte chybějící údaje." };
     focusOutField(target.field, target.message);
   }
 
@@ -278,7 +278,7 @@ export default function AttendancePage() {
 
     const token = await getToken();
     if (!token) {
-      setErr("Chybi prihlaseni.");
+      setErr("Chybí přihlášení.");
       return;
     }
 
@@ -295,7 +295,7 @@ export default function AttendancePage() {
       }
     }
 
-    if (!meObj) throw new Error("Nepodarilo se nacist uzivatele.");
+    if (!meObj) throw new Error("Nepodařilo se načíst uživatele.");
     setMe(meObj);
     try {
       localStorage.setItem("user", JSON.stringify(meObj));
@@ -303,7 +303,7 @@ export default function AttendancePage() {
 
     const sitesTry = await fetchJSON("/api/sites", token);
     if (sitesTry.res.status === 401) return logout();
-    if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nepodarilo se nacist stavby.");
+    if (!sitesTry.res.ok) throw new Error(sitesTry.json?.error || "Nepodařilo se načíst stavby.");
     const safeSites = Array.isArray(sitesTry.json?.sites ?? sitesTry.json?.data?.sites ?? sitesTry.json?.data)
       ? ((sitesTry.json?.sites ?? sitesTry.json?.data?.sites ?? sitesTry.json?.data) as Site[])
       : [];
@@ -311,7 +311,7 @@ export default function AttendancePage() {
 
     const statusResponse = await fetchJSON("/api/attendance/status", token);
     if (statusResponse.res.status === 401) return logout();
-    if (!statusResponse.res.ok) throw new Error(statusResponse.json?.error || "Nepodarilo se nacist stav dochazky.");
+    if (!statusResponse.res.ok) throw new Error(statusResponse.json?.error || "Nepodařilo se načíst stav docházky.");
 
     const status = statusResponse.json || {};
     const presentVal =
@@ -366,7 +366,7 @@ export default function AttendancePage() {
     setInfo(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error("Chybi prihlaseni.");
+      if (!token) throw new Error("Chybí přihlášení.");
 
       const currentPos = await getPosition().catch(() => null);
       if (currentPos) setPos(currentPos);
@@ -380,7 +380,7 @@ export default function AttendancePage() {
 
       if (!siteId) {
         setTempOpen(true);
-        setInfo("V okoli neni aktivni stavba. Vyberte stavbu rucne nebo vytvorte docasnou.");
+        setInfo("V okolí není aktivní stavba. Vyberte stavbu ručně nebo vytvořte dočasnou.");
         return;
       }
 
@@ -396,13 +396,13 @@ export default function AttendancePage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nepodarilo se ulozit prichod.");
+      if (!res.ok) throw new Error(data?.error || "Nepodařilo se uložit příchod.");
 
       const site = sites.find((item) => item.id === siteId);
       setPresent(true);
       setActiveSiteId(siteId);
       setActiveSiteName(site?.name || null);
-      setInfo(`Dochazka zahajena${site?.name ? ` - ${site.name}` : ""}.`);
+      setInfo(`Docházka zahájena${site?.name ? ` - ${site.name}` : ""}.`);
       setManualSiteId(null);
     } catch (error: unknown) {
       setErr(getErrorMessage(error));
@@ -417,13 +417,13 @@ export default function AttendancePage() {
     setInfo(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error("Chybi prihlaseni.");
+      if (!token) throw new Error("Chybí přihlášení.");
 
       const currentPos = pos || (await getPosition().catch(() => null));
       if (!currentPos) throw new Error("Nepodarilo se ziskat polohu.");
 
       const name = tempName.trim();
-      if (!name) throw new Error("Zadejte nazev docasne stavby.");
+      if (!name) throw new Error("Zadejte název dočasné stavby.");
 
       const reqRes = await fetch("/api/sites/pending", {
         method: "POST",
@@ -432,10 +432,10 @@ export default function AttendancePage() {
       });
 
       const reqJson = await reqRes.json().catch(() => ({}));
-      if (!reqRes.ok) throw new Error(reqJson?.error || "Nepodarilo se vytvorit docasnou stavbu.");
+      if (!reqRes.ok) throw new Error(reqJson?.error || "Nepodarilo se vytvorit dočasnou stavbu.");
 
       const newSiteId = reqJson?.site?.id;
-      if (!newSiteId) throw new Error("Chybi ID nove docasne stavby.");
+      if (!newSiteId) throw new Error("Chybí ID nové dočasné stavby.");
 
       const inRes = await fetch("/api/attendance/in", {
         method: "POST",
@@ -449,14 +449,14 @@ export default function AttendancePage() {
       });
 
       const inJson = await inRes.json().catch(() => ({}));
-      if (!inRes.ok) throw new Error(inJson?.error || "Nepodarilo se ulozit prichod.");
+      if (!inRes.ok) throw new Error(inJson?.error || "Nepodařilo se uložit příchod.");
 
       setPresent(true);
       setActiveSiteId(String(newSiteId));
-      setActiveSiteName(`Docasna: ${name}`);
+      setActiveSiteName(`Dočasná: ${name}`);
       setTempOpen(false);
       setTempName("");
-      setInfo("Dochazka zahajena na docasne stavbe.");
+      setInfo("Docházka zahájena na dočasné stavbe.");
     } catch (error: unknown) {
       setErr(getErrorMessage(error));
     } finally {
@@ -471,22 +471,22 @@ export default function AttendancePage() {
     setOutField(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error("Chybi prihlaseni.");
-      if (!note.trim()) return focusOutField("note", "Doplnte popis prace pred ukoncenim dochazky.");
-      if (!km.trim()) return focusOutField("km", "Doplnte kilometry. Pokud zadne nejsou, zadejte 0.");
+      if (!token) throw new Error("Chybí přihlášení.");
+      if (!note.trim()) return focusOutField("note", "Doplňte popis práce před ukončením docházky.");
+      if (!km.trim()) return focusOutField("km", "Doplňte kilometry. Pokud žádné nejsou, zadejte 0.");
 
       const kmVal = Number(km.replace(",", "."));
-      if (!Number.isFinite(kmVal) || kmVal < 0) return focusOutField("km", "Kilometry nejsou platne.");
+      if (!Number.isFinite(kmVal) || kmVal < 0) return focusOutField("km", "Kilometry nejsou platné.");
 
       const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : 0;
-      if (matAmount.trim() && (!Number.isFinite(matAmt) || matAmt < 0)) return focusOutField("material", "Castka za material neni platna.");
+      if (matAmount.trim() && (!Number.isFinite(matAmt) || matAmt < 0)) return focusOutField("material", "Částka za materiál není platná.");
 
       if (me?.is_programmer && didProgram) {
         const ph = Number(progHours.replace(",", "."));
-        if (!Number.isFinite(ph) || ph <= 0) return focusOutField("prog_hours", "Doplnte pocet hodin programovani.");
+        if (!Number.isFinite(ph) || ph <= 0) return focusOutField("prog_hours", "Doplňte počet hodin programování.");
       }
 
-      if (forceWithoutLocation && !manualOutTime.trim()) return focusOutField("manual_out_time", "Zadejte cas odchodu bez polohy.");
+      if (forceWithoutLocation && !manualOutTime.trim()) return focusOutField("manual_out_time", "Zadejte čas odchodu bez polohy.");
 
       setBusy(true);
 
@@ -510,7 +510,7 @@ export default function AttendancePage() {
         if (bestAny) siteId = bestAny.site.id;
       }
 
-      if (!siteId) throw new Error("Nepodarilo se urcit stavbu pro odchod.");
+      if (!siteId) throw new Error("Nepodařilo se určit stavbu pro odchod.");
 
       const payload: Record<string, string | number | boolean | null | undefined> = {
         site_id: siteId,
@@ -534,12 +534,12 @@ export default function AttendancePage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nepodarilo se ulozit odchod.");
+      if (!res.ok) throw new Error(data?.error || "Nepodařilo se uložit odchod.");
 
       setPresent(false);
       setActiveSiteId(null);
       setActiveSiteName(null);
-      setInfo(forceWithoutLocation ? "Dochazka ukoncena bez polohy." : "Dochazka ukoncena.");
+      setInfo(forceWithoutLocation ? "Docházka ukončena bez polohy." : "Docházka ukončena.");
       setNote("");
       setKm("");
       setMatDesc("");
@@ -561,15 +561,15 @@ export default function AttendancePage() {
     setInfo(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error("Chybi prihlaseni.");
+      if (!token) throw new Error("Chybí přihlášení.");
 
       const hours = hoursFromTimes(manualDayFrom, manualDayTo);
       if (!manualDayDate) throw new Error("Vyberte datum.");
-      if (!(hours > 0)) throw new Error("Cas Do musi byt pozdeji nez Od.");
-      if (!manualDayNote.trim()) throw new Error("Doplnte popis prace.");
+      if (!(hours > 0)) throw new Error("Čas Do musí být později než Od.");
+      if (!manualDayNote.trim()) throw new Error("Doplňte popis práce.");
 
       const kmVal = manualDayKm.trim() ? Number(manualDayKm.replace(",", ".")) : 0;
-      if (manualDayKm.trim() && (!Number.isFinite(kmVal) || kmVal < 0)) throw new Error("Kilometry nejsou platne.");
+      if (manualDayKm.trim() && (!Number.isFinite(kmVal) || kmVal < 0)) throw new Error("Kilometry nejsou platné.");
 
       const res = await fetch("/api/attendance/manual-day", {
         method: "POST",
@@ -587,7 +587,7 @@ export default function AttendancePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nepodarilo se ulozit pracovni den.");
 
-      setInfo("Pracovni den byl doplnen.");
+      setInfo("Pracovní den byl doplněn.");
       setManualDayOpen(false);
       setManualDayNote("");
       setManualDayKm("");
@@ -601,8 +601,8 @@ export default function AttendancePage() {
   return (
     <AppShell
       area="auto"
-      title="Dochazka a prace"
-      subtitle="Jeden prehled pro zahajeni dne, ukonceni dochazky, kalendar i rychle opravy bez zbytecneho hledani."
+      title="Docházka a práce"
+      subtitle="Jeden přehled pro zahájení dne, ukončení docházky, kalendář i rychlé opravy bez zbytečného hledání."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {me?.role === "admin" ? (
@@ -611,7 +611,7 @@ export default function AttendancePage() {
             </a>
           ) : null}
           <button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50" onClick={logout}>
-            Odhlasit
+            Odhlásit
           </button>
         </div>
       }
@@ -624,44 +624,44 @@ export default function AttendancePage() {
 
                 <div>
                   <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${present ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-800"}`}>
-                    {present ? "Dochazka bezi" : "Pripraveno k zahajeni"}
+                    {present ? "Docházka běží" : "Připraveno k zahájení"}
                   </span>
                   <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
-                    {present ? activeSiteName || "Aktivni stavba neni urcena" : selectedSite?.name || "Vyberte stavbu nebo pouzijte polohu"}
+                    {present ? activeSiteName || "Aktivní stavba není určena" : selectedSite?.name || "Vyberte stavbu nebo použijte polohu"}
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                     {present
-                      ? "Pred ukoncenim dne doplnte praci, kilometry a material. Prechod na dalsi akci ve stejny cas zustava ulozeny oddelene jako samostatny zaznam."
-                      : "Aplikace vybere nejblizsi stavbu podle polohy. Kdyz poloha nesedi, vyberte stavbu rucne nebo vytvorte docasnou."}
+                      ? "Pred ukoncenim dne doplňte praci, kilometry a material. Prechod na další akci ve stejny cas zustava ulozeny oddelene jako samostatny zaznam."
+                      : "Aplikace vybere nejbližší stavbu podle polohy. Když poloha nesedí, vyberte stavbu ručně nebo vytvořte dočasnou."}
                   </p>
                 </div>
               </div>
 
               <div className="grid min-w-[240px] gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm xl:w-[260px]">
                 <div>
-                  <div className="text-xs font-medium text-slate-500">Prihlaseny uzivatel</div>
+                  <div className="text-xs font-medium text-slate-500">Přihlášený uživatel</div>
                   <div className="mt-1 font-semibold text-slate-950">{me?.name || "-"}</div>
                 </div>
                 <div>
                   <div className="text-xs font-medium text-slate-500">Poloha / stavba</div>
                   <div className="mt-1 font-semibold text-slate-950">{nearestLabel || "Nenalezena v dosahu"}</div>
-                  <div className="mt-1 text-xs text-slate-500">Presnost: {pos ? `${Math.round(pos.accuracy)} m` : "bez polohy"}</div>
+                  <div className="mt-1 text-xs text-slate-500">Přesnost: {pos ? `${Math.round(pos.accuracy)} m` : "bez polohy"}</div>
                 </div>
               </div>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
-                <div className="text-sm font-semibold">Zahajit dochazku</div>
-                <div className="mt-1 text-xs text-emerald-50">Pouzije nejblizsi stavbu nebo rucni vyber.</div>
+                <div className="text-sm font-semibold">Zahájit docházku</div>
+                <div className="mt-1 text-xs text-emerald-50">Použije nejbližší stavbu nebo ruční výběr.</div>
               </button>
               <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
                 <div className="text-sm font-semibold text-slate-950">Vybrat stavbu</div>
-                <div className="mt-1 text-xs text-slate-600">PrepnutI stavby bez cekani na GPS.</div>
+                <div className="mt-1 text-xs text-slate-600">Přepnutí stavby bez čekání na GPS.</div>
               </button>
               <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
                 <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
-                <div className="mt-1 text-xs text-slate-600">Znovu overi nejblizsi stavbu podle GPS.</div>
+                <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
               </button>
             </div>
 
@@ -669,13 +669,13 @@ export default function AttendancePage() {
               <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-blue-950">Pred ukoncenim dochazky doplnte udaje k odchodu</div>
+                    <div className="text-sm font-semibold text-blue-950">Před ukončením docházky doplňte údaje k odchodu</div>
                     <div className="mt-1 text-xs leading-5 text-blue-900">
-                      Povinne jsou popis prace, cas a kilometry. Material muzete doplnit jen tehdy, kdyz je potreba.
+                      Povinné jsou popis práce, čas a kilometry. Materiál můžete doplnit jen tehdy, když je potřeba.
                     </div>
                   </div>
                   <button type="button" onClick={openEndFormHint} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100/60">
-                    Otevrit formular
+                    Otevřít formulář
                   </button>
                 </div>
               </div>
@@ -684,47 +684,47 @@ export default function AttendancePage() {
 
           <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
             <StatusCard
-              title="Dnes resit"
+              title="Dnes řešit"
               tone={present ? "blue" : "neutral"}
               items={
                 present
                   ? [
-                      note.trim() ? "Popis prace je pripraveny." : "Doplnte popis prace pred odchodem.",
-                      km.trim() ? "Kilometry jsou vyplnene." : "Pripravte kilometry, i kdyby mely byt 0.",
-                      matAmount.trim() ? "Material je vyplneny." : "Doplnte material v Kc, i kdyby mel byt 0.",
+                      note.trim() ? "Popis práce je připravený." : "Doplňte popis práce před odchodem.",
+                      km.trim() ? "Kilometry jsou vyplněné." : "Připravte kilometry, i kdyby měly být 0.",
+                      matAmount.trim() ? "Materiál je vyplněný." : "Doplnte material v Kc, i kdyby mel byt 0.",
                     ]
                   : [
-                      selectedSite ? `Vybrana stavba: ${selectedSite.name}.` : "Zkontrolujte stavbu pred zahajenim dne.",
-                      todayCalendar.length ? `V kalendari mate ${todayCalendar.length} dnesni polozky.` : "Kalendar je dnes prazdny.",
-                      me?.role === "admin" ? "Jako admin muzete prepnout do spravy systemu." : "Po zahajeni dne uz jen doplnite odchod a praci.",
+                      selectedSite ? `Vybraná stavba: ${selectedSite.name}.` : "Zkontrolujte stavbu pred zahajenim dne.",
+                      todayCalendar.length ? `V kalendáři máte ${todayCalendar.length} dnešní položky.` : "Kalendář je dnes prázdný.",
+                      me?.role === "admin" ? "Jako admin můžete přepnout do správy systému." : "Po zahájení dne už jen doplníte odchod a práci.",
                     ]
               }
             />
-            <StatusCard title="Pripravenost odchodu" tone={completedCount === completionItems.length ? "emerald" : "amber"} items={completionItems.map((item) => `${item.done ? "Hotovo" : "Chybi"} - ${item.label}`)} />
+            <StatusCard title="Připravenost odchodu" tone={completedCount === completionItems.length ? "emerald" : "amber"} items={completionItems.map((item) => `${item.done ? "Hotovo" : "Chybí"} - ${item.label}`)} />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-            <LinkCard href="/calendar" title="Kalendar" desc="Plan prace, volno, lekar i vlastni polozky." />
-            <LinkCard href="/me" title="Moje vydelky" desc="Prehled k uhrade, uhrazeno a detail dnu." />
+            <LinkCard href="/calendar" title="Kalendář" desc="Plán práce, volno, lékař i vlastní položky." />
+            <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě, uhrazeno a detail dnů." />
             <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
               <div className="text-sm font-semibold text-slate-950">Doplnit den</div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">Rucni doplneni dne, kdyz nebyla poloha nebo jste den dodelavali zpetne.</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Ruční doplnění dne, když nebyla poloha nebo jste den dodělávali zpětně.</div>
             </button>
-            <LinkCard href="/me/edit" title="Upravit den" desc="Doplneni prace, materialu a presne opravy dne." />
+            <LinkCard href="/me/edit" title="Upravit den" desc="Doplnění práce, materiálu a přesné opravy dne." />
           </div>
 
           <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h3 className="text-base font-semibold text-amber-950">Ukonceni bez polohy</h3>
+                <h3 className="text-base font-semibold text-amber-950">Ukončení bez polohy</h3>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-amber-900">
-                  Pouzijte jen pri vypadku GPS nebo kdyz odchod doplnujete dodatecne. Hodi se hlavne na pocitaci, kdyz potrebujete den rychle uzavrit rucne.
+                  Použijte jen při výpadku GPS nebo když odchod doplňujete dodatečně. Hodí se hlavně na počítači, když potřebujete den rychle uzavřít ručně.
                 </p>
               </div>
               <div className="grid gap-2 sm:grid-cols-[180px_auto] sm:items-end">
                 <input ref={manualOutTimeRef} type="time" value={manualOutTime} onChange={(e) => { setManualOutTime(e.target.value); if (outField === "manual_out_time") setOutField(null); }} disabled={busy || !present} className={`w-full rounded-xl border bg-white px-3 py-3 text-sm ${outField === "manual_out_time" ? "border-red-300" : "border-amber-300"}`} />
                 <button type="button" disabled={busy || !present} onClick={() => doOut(true)} className="rounded-xl border border-amber-400 bg-white px-4 py-3 text-sm font-semibold text-amber-950 shadow-sm disabled:opacity-45">
-                  Ukoncit bez polohy
+                  Ukončit bez polohy
                 </button>
               </div>
             </div>
@@ -735,10 +735,10 @@ export default function AttendancePage() {
           <section ref={endCardRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] xl:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">Ukonceni dochazky</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Popis prace, cas a kilometry jdou do vyplat, prehledu i exportu. Material je volitelny doplnek.</p>
+                <h2 className="text-base font-semibold">Ukončení docházky</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Popis práce, čas a kilometry jdou do výplat, přehledu i exportu. Materiál je volitelný doplněk.</p>
               </div>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinne</span>
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinné</span>
             </div>
 
             {outErr ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{outErr}</div> : null}
@@ -747,17 +747,17 @@ export default function AttendancePage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className={`text-sm font-semibold ${canSubmitOut ? "text-emerald-950" : "text-amber-950"}`}>
-                    {canSubmitOut ? "Den je pripraveny k ukonceni" : `Pred ukoncenim doplnte jeste ${missingCompletionItems.length} polozky`}
+                    {canSubmitOut ? "Den je připravený k ukonceni" : `Před ukončením doplňte ještě ${missingCompletionItems.length} položky`}
                   </div>
                   <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
                     {canSubmitOut
-                      ? "Popis prace i kilometry jsou hotove. Ted uz muzete dochazku bez obav ukoncit."
-                      : "Tady hned vidite, co jeste chybi. Kdyz stisknete ukonceni moc brzy, formular vas presne navede na prvni chybejici pole."}
+                      ? "Popis práce i kilometry jsou hotove. Ted uz muzete dochazku bez obav ukoncit."
+                      : "Tady hned vidíte, co ještě chybí. Když stisknete ukončení moc brzy, formulář vás přesně navede na první chybějící pole."}
                   </div>
                 </div>
                 <div className="flex min-w-[220px] flex-col items-stretch gap-2">
                   <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${canSubmitOut ? "bg-white text-emerald-800" : "bg-white text-amber-800"}`}>
-                    {canSubmitOut ? "Pripraveno k ukonceni" : `${completedCount}/${completionItems.length} udaju pripraveno`}
+                    {canSubmitOut ? "Připraveno k ukončení" : `${completedCount}/${completionItems.length} údajů připraveno`}
                   </div>
                   <button
                     type="button"
@@ -765,7 +765,7 @@ export default function AttendancePage() {
                     onClick={submitOutFromCard}
                     className={`rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45 ${canSubmitOut ? "bg-blue-700" : "bg-amber-600 hover:bg-amber-700"}`}
                   >
-                    {canSubmitOut ? "Ukoncit dochazku" : "Zkontrolovat a doplnit"}
+                    {canSubmitOut ? "Ukončit docházku" : "Zkontrolovat a doplnit"}
                   </button>
                 </div>
               </div>
@@ -773,13 +773,13 @@ export default function AttendancePage() {
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-900">Stav formulare</div>
-                <div className="text-xs font-semibold text-slate-500">{completedCount}/{completionItems.length} pripraveno</div>
+                <div className="text-sm font-semibold text-slate-900">Stav formuláře</div>
+                <div className="text-xs font-semibold text-slate-500">{completedCount}/{completionItems.length} připraveno</div>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {completionItems.map((item) => (
                   <div key={item.label} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${item.done ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {item.done ? "Hotovo" : "Chybi"} - {item.label}
+                    {item.done ? "Hotovo" : "Chybí"} - {item.label}
                   </div>
                 ))}
               </div>
@@ -787,7 +787,7 @@ export default function AttendancePage() {
 
             <div className="mt-4 grid gap-3">
               <label className="block text-xs font-semibold text-slate-600">
-                Popis prace
+                Popis práce
                 <textarea ref={noteRef} className={`mt-1 min-h-28 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes delalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
               </label>
 
@@ -826,10 +826,10 @@ export default function AttendancePage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Dnesni kalendar</h2>
-                <p className="mt-1 text-xs text-slate-500">Prace, volno a osobni polozky na dnesek.</p>
+                <p className="mt-1 text-xs text-slate-500">Prace, volno a osobni položky na dnesek.</p>
               </div>
               <a href="/calendar" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold shadow-sm hover:bg-slate-50">
-                Otevrit
+                Otevřít
               </a>
             </div>
             <div className="mt-3 space-y-2">
@@ -863,7 +863,7 @@ export default function AttendancePage() {
                 onClick={() => {
                   setManualSiteId(site.id);
                   setManualPickOpen(false);
-                  setInfo(`Vybrana stavba: ${site.name}`);
+                  setInfo(`Vybraná stavba: ${site.name}`);
                 }}
               >
                 <span>{site.name}</span>
@@ -878,9 +878,9 @@ export default function AttendancePage() {
       ) : null}
 
       {tempOpen ? (
-        <Modal title="Docasna stavba" onClose={() => setTempOpen(false)}>
-          <p className="text-sm leading-6 text-slate-600">Zadejte nazev docasne stavby. Po ulozeni se k ni rovnou priradi prichod.</p>
-          <input className="mt-3 w-full rounded-2xl border border-slate-300 p-3 text-sm" placeholder="Nazev docasne stavby" value={tempName} onChange={(e) => setTempName(e.target.value)} />
+        <Modal title="Dočasná stavba" onClose={() => setTempOpen(false)}>
+          <p className="text-sm leading-6 text-slate-600">Zadejte název dočasné stavby. Po ulozeni se k ni rovnou priradi prichod.</p>
+          <input className="mt-3 w-full rounded-2xl border border-slate-300 p-3 text-sm" placeholder="Název dočasné stavby" value={tempName} onChange={(e) => setTempName(e.target.value)} />
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setTempOpen(false)}>
               Zrusit
@@ -925,7 +925,7 @@ export default function AttendancePage() {
             </label>
           </div>
 
-          <textarea className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Popis prace" value={manualDayNote} onChange={(e) => setManualDayNote(e.target.value)} />
+          <textarea className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Popis práce" value={manualDayNote} onChange={(e) => setManualDayNote(e.target.value)} />
           <input className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" inputMode="decimal" placeholder="Kilometry (volitelne)" value={manualDayKm} onChange={(e) => setManualDayKm(e.target.value)} />
 
           <div className="mt-3 flex justify-end gap-2">

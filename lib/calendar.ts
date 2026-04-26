@@ -65,6 +65,7 @@ const bulkCreateSchema = z
 
 export const calendarCreateSchema = z.object({
   user_id: z.string().uuid().optional(),
+  user_ids: z.array(z.string().uuid()).min(1).max(50).optional(),
   type: z.enum(calendarItemTypes),
   title: z.string().min(2).max(160),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -119,3 +120,4 @@ export function normalizeCalendarPayload<T extends { date?: string; start_time?:
   }
   return next;
 }
+

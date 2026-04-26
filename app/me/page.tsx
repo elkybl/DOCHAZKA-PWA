@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
 
@@ -125,6 +125,7 @@ export default function Page() {
   const [days, setDays] = useState(30);
   const [mode, setMode] = useState<"days" | "sites">("days");
   const [siteFilter, setSiteFilter] = useState("ALL");
+  const detailRef = useRef<HTMLDivElement | null>(null);
 
   const token = useMemo(() => getToken(), []);
 
@@ -182,14 +183,14 @@ export default function Page() {
         const offsites = (row.offsites || []).filter((off) => off.site_id === siteFilter);
         if (!segments.length && !offsites.length) return null;
         const hours = segments.reduce((sum, x) => sum + x.hours_rounded, 0) + offsites.reduce((sum, x) => sum + x.hours, 0);
-        const hoursPay = segments.reduce((sum, x) => sum + x.pay, 0) + offsites.reduce((sum, x) => sum + x.pay, 0);
+        const hoursPáy = segments.reduce((sum, x) => sum + x.pay, 0) + offsites.reduce((sum, x) => sum + x.pay, 0);
         return {
           ...row,
           segments,
           offsites,
           hours,
-          hours_pay: hoursPay,
-          total: (Number(hoursPay) || 0) + (Number(row.km_pay) || 0) + (Number(row.material) || 0),
+          hours_pay: hoursPáy,
+          total: (Number(hoursPáy) || 0) + (Number(row.km_pay) || 0) + (Number(row.material) || 0),
         };
       })
       .filter((row): row is DayRow => !!row);
@@ -242,6 +243,16 @@ export default function Page() {
   }, [filteredRows]);
 
   const selectedRow = useMemo(() => filteredRows.find((row) => row.day === selectedDay) || null, [filteredRows, selectedDay]);
+
+  useEffect(() => {
+    if (!selectedDay) return;
+    const mq = typeof window !== "undefined" ? window.matchMedia("(max-width: 1279px)") : null;
+    if (!mq?.matches) return;
+    const timer = window.setTimeout(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [selectedDay]);
 
   return (
     <AppShell
@@ -350,7 +361,7 @@ export default function Page() {
             ))}
             {!filteredRows.length ? <EmptyState /> : null}
           </div>
-          <DayDrawer row={selectedRow} />
+          <DayDrawer row={selectedRow} detailRef={detailRef} />
         </section>
       )}
     </AppShell>
@@ -425,10 +436,10 @@ function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen
   );
 }
 
-function DayDrawer({ row }: { row: DayRow | null }) {
+function DayDrawer({ row, detailRef }: { row: DayRow | null; detailRef: React.RefObject<HTMLDivElement | null> }) {
   if (!row) {
     return (
-      <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <aside ref={detailRef} id="me-day-detail" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">Detail dne</h2>
         <p className="mt-3 text-sm text-slate-500">Vyberte den vlevo. Tady uvidíte časovou osu, rozpis práce, programování, materiál a stav úhrady.</p>
       </aside>
@@ -442,7 +453,7 @@ function DayDrawer({ row }: { row: DayRow | null }) {
   ].filter(Boolean) as Array<{ label: string; time: string; tone: "blue" | "slate" | "emerald" | "amber" }>;
 
   return (
-    <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:self-start">
+    <aside ref={detailRef} id="me-day-detail" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:self-start">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Detail dne</h2>
@@ -525,4 +536,5 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub: st
 function EmptyState({ text = "Pro zvolené období a filtry tu zatím nic není. Zkuste jiné období nebo jinou stavbu." }: { text?: string }) {
   return <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">{text}</div>;
 }
+
 

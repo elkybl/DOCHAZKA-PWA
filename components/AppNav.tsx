@@ -9,6 +9,7 @@ import { useState } from "react";
 const workerLinks = [
   { href: "/attendance", label: "Docházka", short: "Docházka" },
   { href: "/calendar", label: "Kalendář", short: "Kalendář" },
+  { href: "/projects", label: "Projekty", short: "Projekty" },
   { href: "/me", label: "Moje výdělky", short: "Výdělky" },
   { href: "/me/rates", label: "Sazby", short: "Sazby" },
 ];
@@ -16,6 +17,7 @@ const workerLinks = [
 const adminLinks = [
   { href: "/admin", label: "Admin", short: "Admin" },
   { href: "/admin/calendar", label: "Kalendář", short: "Kalendář" },
+  { href: "/projects", label: "Projekty", short: "Projekty" },
   { href: "/admin/attendance", label: "Přehled", short: "Přehled" },
   { href: "/admin/payments", label: "Výplaty", short: "Výplaty" },
   { href: "/admin/users", label: "Lidé", short: "Lidé" },
@@ -39,6 +41,7 @@ export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin"
         ? [
             { href: "/attendance", label: "Docházka", short: "Docházka" },
             { href: "/calendar", label: "Kalendář", short: "Kalendář" },
+            { href: "/projects", label: "Projekty", short: "Projekty" },
             { href: "/me", label: "Moje výdělky", short: "Výdělky" },
             { href: "/admin", label: "Admin", short: "Admin" },
           ]

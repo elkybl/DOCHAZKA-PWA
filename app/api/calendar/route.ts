@@ -260,13 +260,17 @@ export async function POST(req: NextRequest) {
     ? [...new Set((parsed.data.user_ids && parsed.data.user_ids.length ? parsed.data.user_ids : [targetUserId]).filter(Boolean))]
     : [session.userId];
 
-  const payload = normalizeCalendarPayload({
+  const normalizedPayload = normalizeCalendarPayload({
     ...parsed.data,
     user_id: targetUserId,
     created_by: session.userId,
     updated_by: session.userId,
     attendance_status: parsed.data.attendance_status || "pending",
   });
+  const { user_ids: _userIds, bulk_create: _bulkCreate, ...payload } = normalizedPayload as typeof normalizedPayload & {
+    user_ids?: string[];
+    bulk_create?: unknown;
+  };
 
   const db = supabaseAdmin();
   const bulk = parsed.data.bulk_create;

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
-import { ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
+import { addTaskActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
 import { projectCommentCreateSchema } from "@/lib/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -33,6 +33,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
     .single();
 
   if (insert.error || !insert.data) return json({ error: "Nešlo uložit komentář." }, { status: 500 });
+  await addTaskActivity(id, auth.session.userId, "comment_added", {
+    length: parsed.data.body.trim().length,
+  });
   return json({ comment: insert.data });
 }
-

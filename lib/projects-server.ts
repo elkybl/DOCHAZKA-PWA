@@ -66,6 +66,9 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
       assignees: [],
       checklistItems: [],
       comments: [],
+      attachments: [],
+      activityLogs: [],
+      labels: [],
       users: (usersRes.data || []) as ProjectBundle["users"],
       sites: (sitesRes.data || []) as ProjectBundle["sites"],
     };
@@ -88,6 +91,9 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
       assignees: [],
       checklistItems: [],
       comments: [],
+      attachments: [],
+      activityLogs: [],
+      labels: [],
       users: [],
       sites: [],
     };
@@ -111,7 +117,7 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
 
   const taskIds = tasks.map((task) => task.id);
 
-  const [assigneesRes, checklistRes, commentsRes] = taskIds.length
+  const [assigneesRes, checklistRes, commentsRes, attachmentsRes, activityRes, labelsRes] = taskIds.length
     ? await Promise.all([
         db.from("project_task_assignees").select("id,task_id,user_id,created_at").in("task_id", taskIds),
         db
@@ -121,8 +127,14 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
           .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true }),
         db.from("project_comments").select("id,task_id,user_id,body,created_at").in("task_id", taskIds).order("created_at", { ascending: false }),
+        db.from("project_attachments").select("id,task_id,file_name,file_path,content_type,size_bytes,uploaded_by,created_at").in("task_id", taskIds).order("created_at", { ascending: false }),
+        db.from("project_activity_logs").select("id,task_id,actor_user_id,action,detail,created_at").in("task_id", taskIds).order("created_at", { ascending: false }),
+        db.from("project_task_labels").select("id,task_id,label,created_at").in("task_id", taskIds).order("created_at", { ascending: true }),
       ])
     : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -131,8 +143,11 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
   if (assigneesRes.error) throw assigneesRes.error;
   if (checklistRes.error) throw checklistRes.error;
   if (commentsRes.error) throw commentsRes.error;
+  if (attachmentsRes.error) throw attachmentsRes.error;
+  if (activityRes.error) throw activityRes.error;
+  if (labelsRes.error) throw labelsRes.error;
 
-  const userIds = [...new Set([...members.map((member) => member.user_id), ...projects.map((project) => project.created_by).filter(Boolean) as string[], ...tasks.flatMap((task) => [task.created_by, task.updated_by, task.completed_by].filter(Boolean) as string[]), ...(commentsRes.data || []).map((comment: { user_id: string }) => comment.user_id), ...(checklistRes.data || []).flatMap((item: { created_by: string | null; done_by: string | null }) => [item.created_by, item.done_by].filter(Boolean) as string[])])];
+  const userIds = [...new Set([...members.map((member) => member.user_id), ...projects.map((project) => project.created_by).filter(Boolean) as string[], ...tasks.flatMap((task) => [task.created_by, task.updated_by, task.completed_by].filter(Boolean) as string[]), ...(commentsRes.data || []).map((comment: { user_id: string }) => comment.user_id), ...(checklistRes.data || []).flatMap((item: { created_by: string | null; done_by: string | null }) => [item.created_by, item.done_by].filter(Boolean) as string[]), ...(attachmentsRes.data || []).map((item: { uploaded_by: string | null }) => item.uploaded_by).filter(Boolean) as string[], ...(activityRes.data || []).map((item: { actor_user_id: string | null }) => item.actor_user_id).filter(Boolean) as string[]])];
 
   const [usersRes, sitesRes] = await Promise.all([
     userIds.length
@@ -151,8 +166,20 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
     assignees: (assigneesRes.data || []) as ProjectBundle["assignees"],
     checklistItems: (checklistRes.data || []) as ProjectBundle["checklistItems"],
     comments: (commentsRes.data || []) as ProjectBundle["comments"],
+    attachments: (attachmentsRes.data || []) as ProjectBundle["attachments"],
+    activityLogs: (activityRes.data || []) as ProjectBundle["activityLogs"],
+    labels: (labelsRes.data || []) as ProjectBundle["labels"],
     users: (usersRes.data || []) as ProjectBundle["users"],
     sites: (sitesRes.data || []) as ProjectBundle["sites"],
   };
 }
 
+export async function addTaskActivity(taskId: string, actorUserId: string | null, action: string, detail: Record<string, unknown> = {}) {
+  const db = supabaseAdmin();
+  await db.from("project_activity_logs").insert({
+    task_id: taskId,
+    actor_user_id: actorUserId,
+    action,
+    detail,
+  });
+}

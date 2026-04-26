@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
-import { ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
+import { addTaskActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
 import { checklistToggleSchema } from "@/lib/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -42,6 +42,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     .single();
 
   if (update.error || !update.data) return json({ error: "Nešlo uložit bod checklistu." }, { status: 500 });
+  await addTaskActivity(update.data.task_id, auth.session.userId, parsed.data.is_done ? "checklist_done" : "checklist_reopened", {
+    text: update.data.text,
+  });
   return json({ item: update.data });
 }
 

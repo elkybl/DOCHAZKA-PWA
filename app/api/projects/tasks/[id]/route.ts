@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
-import { ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
-import { projectTaskUpdateSchema } from "@/lib/projects";
+import { addTaskActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
+import { projectTaskLabelSchema, projectTaskMoveSchema, projectTaskUpdateSchema } from "@/lib/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -22,14 +22,57 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
   const { id } = await context.params;
   const body = await req.json().catch(() => null);
-  const parsed = projectTaskUpdateSchema.safeParse(body);
-  if (!parsed.success) return json({ error: "Neplatná data úkolu." }, { status: 400 });
-
   const { db, task } = await loadTask(id);
   if (task.error || !task.data) return json({ error: "Úkol nebyl nalezen." }, { status: 404 });
 
   const access = await ensureProjectAccess(task.data.project_id, auth.session.userId, auth.session.role);
   if (!access) return json({ error: "K projektu nemáš přístup." }, { status: 403 });
+
+  const moveParsed = projectTaskMoveSchema.safeParse(body);
+  if (moveParsed.success) {
+    const moveUpdate = await db
+      .from("project_tasks")
+      .update({
+        status: moveParsed.data.status,
+        ...(moveParsed.data.sort_order !== undefined ? { sort_order: moveParsed.data.sort_order } : {}),
+        updated_by: auth.session.userId,
+        updated_at: new Date().toISOString(),
+        completed_by: moveParsed.data.status === "done" ? auth.session.userId : null,
+        completed_at: moveParsed.data.status === "done" ? new Date().toISOString() : null,
+      })
+      .eq("id", id)
+      .select("id,project_id,title,description,status,sort_order,due_date,created_by,updated_by,completed_by,completed_at,created_at,updated_at")
+      .single();
+
+    if (moveUpdate.error || !moveUpdate.data) return json({ error: "Nešlo přesunout úkol." }, { status: 500 });
+    await addTaskActivity(id, auth.session.userId, "task_moved", {
+      status: moveParsed.data.status,
+      sort_order: moveParsed.data.sort_order ?? null,
+    });
+    return json({ task: moveUpdate.data });
+  }
+
+  const labelParsed = projectTaskLabelSchema.safeParse(body);
+  if (labelParsed.success) {
+    if (auth.session.role !== "admin") return json({ error: "Jen admin může měnit štítky." }, { status: 403 });
+    await db.from("project_task_labels").delete().eq("task_id", id);
+    if (labelParsed.data.labels.length) {
+      const insertLabels = await db.from("project_task_labels").insert(
+        [...new Set(labelParsed.data.labels.map((label) => label.trim()).filter(Boolean))].map((label) => ({
+          task_id: id,
+          label,
+        })),
+      );
+      if (insertLabels.error) return json({ error: "Nešlo uložit štítky." }, { status: 500 });
+    }
+    await addTaskActivity(id, auth.session.userId, "labels_updated", {
+      labels: labelParsed.data.labels,
+    });
+    return json({ ok: true });
+  }
+
+  const parsed = projectTaskUpdateSchema.safeParse(body);
+  if (!parsed.success) return json({ error: "Neplatná data úkolu." }, { status: 400 });
 
   if (auth.session.role !== "admin" && (parsed.data.title !== undefined || parsed.data.description !== undefined || parsed.data.due_date !== undefined || parsed.data.assignee_ids !== undefined)) {
     return json({ error: "Jen admin může upravit zadání úkolu." }, { status: 403 });
@@ -69,6 +112,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
   }
 
+  await addTaskActivity(id, auth.session.userId, "task_updated", {
+    changed_status: parsed.data.status ?? null,
+    due_date: parsed.data.due_date ?? null,
+    assignee_count: parsed.data.assignee_ids?.length ?? null,
+  });
+
   return json({ task: update.data });
 }
 
@@ -84,8 +133,10 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   const access = await ensureProjectAccess(task.data.project_id, auth.session.userId, auth.session.role);
   if (!access) return json({ error: "K projektu nemáš přístup." }, { status: 403 });
 
+  await addTaskActivity(id, auth.session.userId, "task_deleted", {
+    title: task.data.title,
+  });
   const remove = await db.from("project_tasks").delete().eq("id", id);
   if (remove.error) return json({ error: "Nešlo smazat úkol." }, { status: 500 });
   return json({ ok: true });
 }
-

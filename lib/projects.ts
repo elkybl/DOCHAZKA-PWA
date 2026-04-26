@@ -62,6 +62,42 @@ export const projectCommentCreateSchema = z.object({
   body: z.string().min(1).max(3000),
 });
 
+export const projectTaskMoveSchema = z.object({
+  status: z.enum(taskStatuses),
+  sort_order: z.number().int().min(0).max(100000).optional(),
+});
+
+export const projectTaskLabelSchema = z.object({
+  labels: z.array(z.string().min(1).max(40)).max(12),
+});
+
+export type ProjectAttachment = {
+  id: string;
+  task_id: string;
+  file_name: string;
+  file_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type ProjectActivityLog = {
+  id: string;
+  task_id: string;
+  actor_user_id: string | null;
+  action: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ProjectTaskLabel = {
+  id: string;
+  task_id: string;
+  label: string;
+  created_at: string;
+};
+
 export type ProjectUser = {
   id: string;
   name: string;
@@ -144,6 +180,9 @@ export type ProjectBundle = {
   assignees: ProjectTaskAssignee[];
   checklistItems: ProjectChecklistItem[];
   comments: ProjectComment[];
+  attachments: ProjectAttachment[];
+  activityLogs: ProjectActivityLog[];
+  labels: ProjectTaskLabel[];
   users: ProjectUser[];
   sites: ProjectSite[];
 };
@@ -155,4 +194,3 @@ export function isProjectMember(sessionUserId: string, projectId: string, member
 export function isProjectOwner(sessionUserId: string, projectId: string, members: ProjectMember[]) {
   return members.some((member) => member.project_id === projectId && member.user_id === sessionUserId && member.role === "owner");
 }
-

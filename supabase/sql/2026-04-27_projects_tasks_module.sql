@@ -76,6 +76,42 @@ create table if not exists public.project_comments (
 create index if not exists project_comments_task_idx
   on public.project_comments(task_id, created_at desc);
 
+create table if not exists public.project_attachments (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.project_tasks(id) on delete cascade,
+  file_name text not null,
+  file_path text not null,
+  content_type text null,
+  size_bytes bigint null,
+  uploaded_by uuid null references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_attachments_task_idx
+  on public.project_attachments(task_id, created_at desc);
+
+create table if not exists public.project_activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.project_tasks(id) on delete cascade,
+  actor_user_id uuid null references public.users(id) on delete set null,
+  action text not null,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_activity_logs_task_idx
+  on public.project_activity_logs(task_id, created_at desc);
+
+create table if not exists public.project_task_labels (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.project_tasks(id) on delete cascade,
+  label text not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists project_task_labels_task_label_idx
+  on public.project_task_labels(task_id, label);
+
 do $$
 begin
   if not exists (
@@ -114,4 +150,3 @@ begin
 end $$;
 
 alter table public.project_tasks validate constraint project_tasks_status_check;
-

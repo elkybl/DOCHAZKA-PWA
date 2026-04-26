@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
-import { ensureProjectAccess, requireProjectAdmin } from "@/lib/projects-server";
+import { addTaskActivity, ensureProjectAccess, requireProjectAdmin } from "@/lib/projects-server";
 import { projectTaskCreateSchema } from "@/lib/projects";
 
 export async function POST(req: NextRequest) {
@@ -67,6 +67,12 @@ export async function POST(req: NextRequest) {
     if (checklistInsert.error) return json({ error: "Úkol se uložil, ale nešlo přidat checklist." }, { status: 500 });
   }
 
+  await addTaskActivity(taskInsert.data.id, auth.session.userId, "task_created", {
+    title: taskInsert.data.title,
+    status: taskInsert.data.status,
+    assignee_count: parsed.data.assignee_ids.length,
+    checklist_count: parsed.data.checklist.length,
+  });
+
   return json({ task: taskInsert.data });
 }
-

@@ -7,13 +7,12 @@ import { Button, Card, Pill, SubCard } from "@/app/components/ui";
 import {
   projectStatusLabel,
   taskStatusLabel,
-  type Project,
   type ProjectBundle,
+  type ProjectActivityLog,
+  type ProjectAttachment,
   type ProjectChecklistItem,
-  type ProjectComment,
-  type ProjectMember,
-  type ProjectSite,
   type ProjectTask,
+  type ProjectTaskLabel,
   type ProjectTaskAssignee,
   type ProjectUser,
   type TaskStatus,
@@ -47,6 +46,9 @@ const emptyBundle: ProjectBundle = {
   assignees: [],
   checklistItems: [],
   comments: [],
+  attachments: [],
+  activityLogs: [],
+  labels: [],
   users: [],
   sites: [],
 };
@@ -67,6 +69,13 @@ const initialTaskForm: TaskFormState = {
   checklistText: "",
 };
 
+type EditTaskState = {
+  title: string;
+  description: string;
+  due_date: string;
+  assignee_ids: string[];
+};
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
@@ -84,8 +93,11 @@ export default function ProjectsPage() {
   const [projectSiteId, setProjectSiteId] = useState("");
   const [projectMemberIds, setProjectMemberIds] = useState<string[]>([]);
   const [taskForm, setTaskForm] = useState<TaskFormState>(initialTaskForm);
+  const [editTaskOpen, setEditTaskOpen] = useState(false);
+  const [editTask, setEditTask] = useState<EditTaskState | null>(null);
   const [commentBody, setCommentBody] = useState("");
   const [newChecklistText, setNewChecklistText] = useState("");
+  const [labelsInput, setLabelsInput] = useState("");
 
   useEffect(() => {
     const nextToken = getToken();
@@ -109,6 +121,9 @@ export default function ProjectsPage() {
         assignees: data.assignees || [],
         checklistItems: data.checklistItems || [],
         comments: data.comments || [],
+        attachments: data.attachments || [],
+        activityLogs: data.activityLogs || [],
+        labels: data.labels || [],
         users: data.users || [],
         sites: data.sites || [],
       });
@@ -177,6 +192,18 @@ export default function ProjectsPage() {
     if (!selectedTask) return [];
     return bundle.comments.filter((comment) => comment.task_id === selectedTask.id);
   }, [bundle.comments, selectedTask]);
+  const taskAttachments = useMemo(() => {
+    if (!selectedTask) return [];
+    return bundle.attachments.filter((item) => item.task_id === selectedTask.id);
+  }, [bundle.attachments, selectedTask]);
+  const taskActivity = useMemo(() => {
+    if (!selectedTask) return [];
+    return bundle.activityLogs.filter((item) => item.task_id === selectedTask.id);
+  }, [bundle.activityLogs, selectedTask]);
+  const taskLabels = useMemo(() => {
+    if (!selectedTask) return [];
+    return bundle.labels.filter((item) => item.task_id === selectedTask.id);
+  }, [bundle.labels, selectedTask]);
 
   const isAdmin = me?.role === "admin";
   const availableMembers = useMemo(() => {
@@ -189,6 +216,20 @@ export default function ProjectsPage() {
     for (const task of selectedProjectTasks) init[task.status].push(task);
     return init;
   }, [selectedProjectTasks]);
+
+  useEffect(() => {
+    if (!selectedTask) {
+      setEditTask(null);
+      return;
+    }
+    setEditTask({
+      title: selectedTask.title,
+      description: selectedTask.description || "",
+      due_date: selectedTask.due_date || "",
+      assignee_ids: bundle.assignees.filter((assignee) => assignee.task_id === selectedTask.id).map((assignee) => assignee.user_id),
+    });
+    setLabelsInput(bundle.labels.filter((item) => item.task_id === selectedTask.id).map((item) => item.label).join(", "));
+  }, [selectedTask, bundle.assignees]);
 
   async function createProject() {
     if (!token) return;
@@ -359,6 +400,101 @@ export default function ProjectsPage() {
     }
   }
 
+  async function saveTaskEdit() {
+    if (!token || !selectedTask || !editTask) return;
+    setBusy("task-edit");
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/tasks/${selectedTask.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: editTask.title,
+          description: editTask.description,
+          due_date: editTask.due_date || null,
+          assignee_ids: editTask.assignee_ids,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo upravit úkol.");
+      setInfo("Úkol je upravený.");
+      setEditTaskOpen(false);
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo upravit úkol.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadAttachment(file: File) {
+    if (!token || !selectedTask) return;
+    const form = new FormData();
+    form.set("file", file);
+    setBusy("attachment-upload");
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/tasks/${selectedTask.id}/attachments`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo nahrát přílohu.");
+      setInfo("Příloha je nahraná.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo nahrát přílohu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteAttachment(attachment: ProjectAttachment) {
+    if (!token || !selectedTask || !confirm(`Smazat přílohu "${attachment.file_name}"?`)) return;
+    setBusy(`attachment-delete-${attachment.id}`);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/tasks/${selectedTask.id}/attachments?attachment_id=${encodeURIComponent(attachment.id)}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo smazat přílohu.");
+      setInfo("Příloha je smazaná.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo smazat přílohu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveLabels() {
+    if (!token || !selectedTask) return;
+    setBusy("labels-save");
+    setErr(null);
+    try {
+      const labels = labelsInput
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const res = await fetch(`/api/projects/tasks/${selectedTask.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ labels }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo uložit štítky.");
+      setInfo("Štítky jsou uložené.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo uložit štítky.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <AppShell
       area="auto"
@@ -516,6 +652,7 @@ export default function ProjectsPage() {
                     tasks={groupedTasks.todo}
                     selectedTaskId={selectedTaskId}
                     assignees={bundle.assignees}
+                    labels={bundle.labels}
                     usersById={usersById}
                     onSelect={setSelectedTaskId}
                     onStatusChange={updateTaskStatus}
@@ -527,6 +664,7 @@ export default function ProjectsPage() {
                     tasks={groupedTasks.doing}
                     selectedTaskId={selectedTaskId}
                     assignees={bundle.assignees}
+                    labels={bundle.labels}
                     usersById={usersById}
                     onSelect={setSelectedTaskId}
                     onStatusChange={updateTaskStatus}
@@ -538,6 +676,7 @@ export default function ProjectsPage() {
                     tasks={groupedTasks.done}
                     selectedTaskId={selectedTaskId}
                     assignees={bundle.assignees}
+                    labels={bundle.labels}
                     usersById={usersById}
                     onSelect={setSelectedTaskId}
                     onStatusChange={updateTaskStatus}
@@ -561,13 +700,56 @@ export default function ProjectsPage() {
                   <h2 className="mt-3 text-xl font-semibold text-slate-950">{selectedTask.title}</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedTask.description || "Bez doplňujícího popisu úkolu."}</p>
                 </div>
-                {isAdmin ? <Button variant="secondary" onClick={() => deleteTask(selectedTask.id)} disabled={busy === `task-delete-${selectedTask.id}`}>Smazat</Button> : null}
+                <div className="flex gap-2">
+                  {isAdmin ? <Button variant="secondary" onClick={() => setEditTaskOpen((value) => !value)}>Upravit úkol</Button> : null}
+                  {isAdmin ? <Button variant="secondary" onClick={() => deleteTask(selectedTask.id)} disabled={busy === `task-delete-${selectedTask.id}`}>Smazat</Button> : null}
+                </div>
               </div>
+
+              {editTaskOpen && isAdmin && editTask ? (
+                <div className="mt-4 rounded-2xl border bg-slate-50 p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Název úkolu">
+                      <input className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm" value={editTask.title} onChange={(e) => setEditTask((current) => current ? { ...current, title: e.target.value } : current)} />
+                    </Field>
+                    <Field label="Termín">
+                      <input type="date" className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm" value={editTask.due_date} onChange={(e) => setEditTask((current) => current ? { ...current, due_date: e.target.value } : current)} />
+                    </Field>
+                    <Field label="Popis">
+                      <textarea className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm" rows={4} value={editTask.description} onChange={(e) => setEditTask((current) => current ? { ...current, description: e.target.value } : current)} />
+                    </Field>
+                    <Field label="Řešitelé">
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {availableMembers.map((member) => {
+                          const active = editTask.assignee_ids.includes(member.id);
+                          return (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => setEditTask((current) => current ? {
+                                ...current,
+                                assignee_ids: active ? current.assignee_ids.filter((id) => id !== member.id) : [...current.assignee_ids, member.id],
+                              } : current)}
+                              className={`rounded-full border px-3 py-2 text-xs font-semibold ${active ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-600"}`}
+                            >
+                              {member.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setEditTaskOpen(false)}>Zavřít</Button>
+                    <Button onClick={saveTaskEdit} disabled={busy === "task-edit"}>{busy === "task-edit" ? "Ukládám" : "Uložit změny"}</Button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <SubCard>
-                  <div className="text-xs font-medium text-slate-500">Termín</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950">{fmtDate(selectedTask.due_date)}</div>
+                  <div className="text-xs font-medium text-slate-500">Termín splnění</div>
+                  <div className={`mt-2 text-base font-semibold ${selectedTask.due_date ? "text-blue-700" : "text-slate-950"}`}>{fmtDate(selectedTask.due_date)}</div>
                 </SubCard>
                 <SubCard>
                   <div className="text-xs font-medium text-slate-500">Řešitelé</div>
@@ -578,6 +760,26 @@ export default function ProjectsPage() {
                   </div>
                 </SubCard>
               </div>
+
+              <section className="mt-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">Štítky</h3>
+                  <Pill tone="neutral">{taskLabels.length}</Pill>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {taskLabels.length ? taskLabels.map((label) => (
+                    <span key={label.id} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900">
+                      {label.label}
+                    </span>
+                  )) : <EmptyInline text="Zatím bez štítků." />}
+                </div>
+                {isAdmin ? (
+                  <div className="mt-3 flex gap-2">
+                    <input className="flex-1 rounded-2xl border px-3 py-2 text-sm" placeholder="Např. urgent, revize, čeká na materiál" value={labelsInput} onChange={(e) => setLabelsInput(e.target.value)} />
+                    <Button onClick={saveLabels} disabled={busy === "labels-save"}>{busy === "labels-save" ? "Ukládám" : "Uložit"}</Button>
+                  </div>
+                ) : null}
+              </section>
 
               <section className="mt-5">
                 <div className="flex items-center justify-between gap-3">
@@ -608,6 +810,47 @@ export default function ProjectsPage() {
 
               <section className="mt-5">
                 <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">Přílohy</h3>
+                  <Pill tone="neutral">{taskAttachments.length}</Pill>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {taskAttachments.length ? taskAttachments.map((attachment) => {
+                    const uploadedBy = attachment.uploaded_by ? usersById.get(attachment.uploaded_by)?.name : null;
+                    return (
+                      <div key={attachment.id} className="rounded-2xl border bg-white px-4 py-3">
+                      <div className="text-sm font-semibold text-slate-950">{attachment.file_name}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {uploadedBy ? `${uploadedBy} · ` : ""}{fmtDateTime(attachment.created_at)}
+                      </div>
+                      {isAdmin ? (
+                        <div className="mt-3">
+                          <Button variant="secondary" onClick={() => deleteAttachment(attachment)} disabled={busy === `attachment-delete-${attachment.id}`}>Smazat přílohu</Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                }) : <EmptyInline text="Zatím bez příloh." />}
+                </div>
+                {isAdmin ? (
+                  <div className="mt-3">
+                    <label className="inline-flex cursor-pointer items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadAttachment(file);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                      {busy === "attachment-upload" ? "Nahrávám přílohu" : "Přidat přílohu"}
+                    </label>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="mt-5">
+                <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-semibold">Komentáře</h3>
                   <Pill tone="neutral">{taskComments.length}</Pill>
                 </div>
@@ -629,6 +872,26 @@ export default function ProjectsPage() {
                   </div>
                 </div>
               </section>
+
+              <section className="mt-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">Aktivita</h3>
+                  <Pill tone="neutral">{taskActivity.length}</Pill>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {taskActivity.length ? taskActivity.map((item) => (
+                    <div key={item.id} className="rounded-2xl border bg-slate-50 px-4 py-3">
+                      <div className="text-sm font-semibold text-slate-950">{activityLabel(item)}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {(item.actor_user_id ? usersById.get(item.actor_user_id)?.name : "Systém") || "Systém"} · {fmtDateTime(item.created_at)}
+                      </div>
+                      {item.detail && Object.keys(item.detail).length ? (
+                        <div className="mt-2 text-xs leading-5 text-slate-600">{activityDetail(item.detail)}</div>
+                      ) : null}
+                    </div>
+                  )) : <EmptyInline text="Zatím bez zapsané aktivity." />}
+                </div>
+              </section>
             </>
           ) : <EmptyState title="Vyber úkol" text="Po kliknutí na kartu úkolu tady uvidíš detail, checklist, komentáře a historii dokončení." />}
         </Card>
@@ -646,6 +909,7 @@ function TaskColumn({
   tasks,
   selectedTaskId,
   assignees,
+  labels,
   usersById,
   onSelect,
   onStatusChange,
@@ -656,6 +920,7 @@ function TaskColumn({
   tasks: ProjectTask[];
   selectedTaskId: string;
   assignees: ProjectTaskAssignee[];
+  labels: ProjectTaskLabel[];
   usersById: Map<string, ProjectUser>;
   onSelect: (id: string) => void;
   onStatusChange: (id: string, status: TaskStatus) => void;
@@ -675,6 +940,7 @@ function TaskColumn({
             .filter((assignee) => assignee.task_id === task.id)
             .map((assignee) => usersById.get(assignee.user_id)?.name)
             .filter(Boolean) as string[];
+          const taskLabels = labels.filter((label) => label.task_id === task.id);
           return (
             <button
               key={task.id}
@@ -690,6 +956,7 @@ function TaskColumn({
                 {task.due_date ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">{fmtDate(task.due_date)}</span> : null}
               </div>
               {members.length ? <div className="mt-3 flex flex-wrap gap-2">{members.map((name) => <span key={name} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">{name}</span>)}</div> : null}
+              {taskLabels.length ? <div className="mt-2 flex flex-wrap gap-2">{taskLabels.map((item) => <span key={item.id} className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-900">{item.label}</span>)}</div> : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 {(["todo", "doing", "done"] as TaskStatus[]).map((status) => (
                   <button
@@ -745,3 +1012,41 @@ function EmptyInline({ text }: { text: string }) {
   return <div className="rounded-2xl border border-dashed bg-white px-4 py-4 text-sm text-slate-500">{text}</div>;
 }
 
+function activityLabel(item: ProjectActivityLog) {
+  switch (item.action) {
+    case "task_created":
+      return "Založen nový úkol";
+    case "task_updated":
+      return "Upravený detail úkolu";
+    case "task_deleted":
+      return "Úkol byl smazán";
+    case "comment_added":
+      return "Přidaný komentář";
+    case "checklist_done":
+      return "Odškrtnutý checklist";
+    case "checklist_reopened":
+      return "Checklist vrácený zpět";
+    case "attachment_added":
+      return "Přidaná příloha";
+    case "attachment_deleted":
+      return "Smazaná příloha";
+    case "labels_updated":
+      return "Upravené štítky";
+    case "task_moved":
+      return "Přesunutý úkol";
+    default:
+      return item.action;
+  }
+}
+
+function activityDetail(detail: Record<string, unknown>) {
+  const parts: string[] = [];
+  if (typeof detail.file_name === "string") parts.push(`Soubor: ${detail.file_name}`);
+  if (typeof detail.status === "string") parts.push(`Stav: ${detail.status}`);
+  if (Array.isArray(detail.labels) && detail.labels.length) parts.push(`Štítky: ${detail.labels.join(", ")}`);
+  if (typeof detail.text === "string") parts.push(`Bod: ${detail.text}`);
+  if (typeof detail.assignee_count === "number") parts.push(`Řešitelé: ${detail.assignee_count}`);
+  if (typeof detail.checklist_count === "number") parts.push(`Checklist: ${detail.checklist_count}`);
+  if (typeof detail.length === "number") parts.push(`Délka komentáře: ${detail.length} znaků`);
+  return parts.join(" · ");
+}

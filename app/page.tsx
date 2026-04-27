@@ -10,18 +10,18 @@ export default function HomePage() {
         <div className="max-w-3xl">
           <Image
             src="/ekybl-logo.png"
-            alt="Elektro práce Lukáš Kybl"
+            alt="Lukáš Kýbl"
             width={520}
             height={140}
             priority
             className="h-auto w-[320px] max-w-full"
           />
-          <p className="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Docházka / Finish</p>
+          <p className="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">FlowDesk</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
-            Profesionální evidence práce pro terén i administraci.
+            Profesionální systém pro práci, docházku a provozní přehled.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-            Docházka, akce, doprava, materiál, offsite položky a výplaty v jednom přehledném systému.
+            Docházka, výkony, kalendář, projekty, materiál i výplaty v jednom přehledném systému pro každodenní provoz.
           </p>
 
           <div className="mt-7">

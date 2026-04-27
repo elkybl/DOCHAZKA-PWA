@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -59,18 +59,18 @@ export default function LoginPage() {
               width={1400}
               height={900}
               priority
-              className="h-auto w-full max-w-[460px] object-contain" unoptimized
+              className="h-auto w-full max-w-[460px] object-contain"
+              unoptimized
             />
           </div>
 
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-blue-700">Software • Vývoj • Automatizace</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Docházka, práce a finance přehledně na jednom místě.
+              FlowDesk pro řízení práce, docházky a provozu firmy.
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-              Docházka Finish drží pohromadě docházku, práci, materiál, kalendář i navazující finance. Všechno je postavené tak,
-              aby se v datech rychle zorientoval pracovník i admin a aby přehled seděl s realitou.
+              FlowDesk drží pohromadě docházku, práci, kalendář, projekty i navazující finance. Všechno je postavené tak, aby se v datech rychle zorientoval pracovník i admin a aby přehled seděl s realitou.
             </p>
           </div>
 
@@ -85,7 +85,7 @@ export default function LoginPage() {
             </div>
             <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Admin</div>
-              <div className="mt-2 text-sm font-semibold text-slate-950">Kalendář, schvalování a provozní dohled bez přeskakování.</div>
+              <div className="mt-2 text-sm font-semibold text-slate-950">Kalendář, schvalování, projekty a provozní dohled.</div>
             </div>
           </div>
 
@@ -96,11 +96,11 @@ export default function LoginPage() {
             </div>
             <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
               <div className="text-sm font-semibold text-slate-950">Finance</div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">Zaplaceno, nezaplaceno i částečně.</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Zaplaceno, k úhradě a kontrola po dnech.</div>
             </div>
             <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-sm font-semibold text-slate-950">Administrace</div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">Kalendář, kontrola dnů a exporty.</div>
+              <div className="text-sm font-semibold text-slate-950">Projekty</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">Úkoly, checklisty, komentáře a přílohy v jednom systému.</div>
             </div>
           </div>
         </section>
@@ -108,7 +108,7 @@ export default function LoginPage() {
         <section className="w-full justify-self-start rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_30px_90px_rgba(15,23,42,0.14)] sm:p-7 lg:max-w-[520px] lg:justify-self-end">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Přihlášení</div>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Přihlášení do aplikace</h2>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Přihlášení do FlowDesku</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">Použijte svůj PIN a pokračujte rovnou do pracovního přehledu.</p>
           </div>
 
@@ -148,7 +148,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
-
-
-

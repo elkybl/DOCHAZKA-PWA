@@ -1,9 +1,9 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lukáš Kýbl | Docházka Finish",
-  description: "Docházka Finish pro evidenci práce, materiálu, dopravy, kalendáře a administrace firmy.",
+  title: "Lukáš Kýbl | FlowDesk",
+  description: "FlowDesk pro evidenci práce, docházky, kalendáře, výplat, projektů a administrace firmy.",
   icons: {
     icon: "/ekybl-icon.png",
     shortcut: "/ekybl-icon.png",

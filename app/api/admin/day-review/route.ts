@@ -7,7 +7,7 @@ import { writeAuditLog } from "@/lib/audit";
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
-  if (!session) return { error: json({ error: "Neprihlasen." }, { status: 401 }) };
+  if (!session) return { error: json({ error: "Nepřihlášen." }, { status: 401 }) };
   if (session.role !== "admin") return { error: json({ error: "Jen admin." }, { status: 403 }) };
   return { session };
 }
@@ -28,15 +28,15 @@ export async function GET(req: NextRequest) {
   const day = url.searchParams.get("day");
   const userId = url.searchParams.get("user_id");
   const siteId = url.searchParams.get("site_id");
-  if (!day || !userId) return json({ error: "Chybi den nebo pracovnik." }, { status: 400 });
+  if (!day || !userId) return json({ error: "Chybí den nebo pracovník." }, { status: 400 });
 
   const db = supabaseAdmin();
   let reviewQuery = db.from("attendance_day_reviews").select("*").eq("user_id", userId).eq("day", day);
   reviewQuery = siteId ? reviewQuery.eq("site_id", siteId) : reviewQuery.is("site_id", null);
-  const reviewRes = await reviewQuery.maybeSingle();
+  const reviewRes = await reviewQuery.order("updated_at", { ascending: false }).limit(1);
 
   if (reviewRes.error && missingReviewTableMessage(reviewRes.error.message || "")) {
-    return json({ error: "V databazi chybi tabulka pro schvalovani dnu. Spustte prosim SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
   let auditQuery = db
@@ -50,10 +50,10 @@ export async function GET(req: NextRequest) {
   const auditRes = await auditQuery;
 
   if (auditRes.error && missingReviewTableMessage(auditRes.error.message || "")) {
-    return json({ error: "V databazi chybi tabulka pro audit zmen. Spustte prosim SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json({ error: "V databázi chybí tabulka pro audit změn. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
-  return json({ review: reviewRes.data || null, audit: auditRes.data || [], key: reviewKey(userId, day, siteId) });
+  return json({ review: reviewRes.data?.[0] || null, audit: auditRes.data || [], key: reviewKey(userId, day, siteId) });
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   const note = typeof body?.note === "string" ? body.note.trim() : null;
 
   if (!userId || !day || !["pending", "approved", "returned"].includes(status)) {
-    return json({ error: "Neplatna data schvaleni." }, { status: 400 });
+    return json({ error: "Neplatná data schválení." }, { status: 400 });
   }
 
   const db = supabaseAdmin();
@@ -86,24 +86,31 @@ export async function POST(req: NextRequest) {
 
   let existingQuery = db.from("attendance_day_reviews").select("id").eq("user_id", userId).eq("day", day);
   existingQuery = siteId ? existingQuery.eq("site_id", siteId) : existingQuery.is("site_id", null);
-  const existing = await existingQuery.maybeSingle();
+  const existing = await existingQuery.order("updated_at", { ascending: false }).limit(10);
 
   if (existing.error) {
     if (missingReviewTableMessage(existing.error.message || "")) {
-      return json({ error: "V databazi chybi tabulka pro schvalovani dnu. Spustte prosim SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
-    return json({ error: "Neslo nacist stav dne." }, { status: 500 });
+    return json({ error: "Nešlo načíst stav dne." }, { status: 500 });
   }
 
-  const result = existing.data?.id
-    ? await db.from("attendance_day_reviews").update(payload).eq("id", existing.data.id).select("*").single()
+  const current = existing.data?.[0] || null;
+  const duplicateIds = (existing.data || []).slice(1).map((row) => row.id);
+
+  const result = current?.id
+    ? await db.from("attendance_day_reviews").update(payload).eq("id", current.id).select("*").single()
     : await db.from("attendance_day_reviews").insert(payload).select("*").single();
 
   if (result.error) {
     if (missingReviewTableMessage(result.error.message || "")) {
-      return json({ error: "V databazi chybi tabulka pro schvalovani dnu. Spustte prosim SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
-    return json({ error: result.error.message || "Neslo ulozit stav dne." }, { status: 500 });
+    return json({ error: result.error.message || "Nešlo uložit stav dne." }, { status: 500 });
+  }
+
+  if (duplicateIds.length) {
+    await db.from("attendance_day_reviews").delete().in("id", duplicateIds);
   }
 
   await writeAuditLog({

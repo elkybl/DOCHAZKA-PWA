@@ -130,7 +130,7 @@ function actionLabel(action: string) {
 }
 
 function buildGroupKey(row: Row) {
-  return `${row.day}__${row.user_id}__${row.site_id || "none"}`;
+  return `${row.day}__${row.user_id}__${row.site_id || ""}`;
 }
 
 function groupRows(rows: Row[]) {
@@ -546,7 +546,10 @@ export default function AdminAttendancePage() {
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Časová osa dne</div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kontrola dne</div>
+                    <div className="mt-1 text-xs text-slate-500">Schválení vychází z reálné docházky, částky a navázaných řádků níže.</div>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900 disabled:opacity-50" disabled={busyId === group.key} onClick={() => reviewDay(group, "approved")}>
                       Schválit den

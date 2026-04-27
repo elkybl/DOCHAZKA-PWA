@@ -7,6 +7,7 @@ import { writeAuditLog } from "@/lib/audit";
 
 const singleSchema = z.object({
   user_id: z.string().uuid(),
+  site_id: z.string().uuid().nullable().optional(),
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   const parsed = singleSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Neplatná data." }, { status: 400 });
 
-  const { error } = await db
+  let query = db
     .from("attendance_events")
     .update({
       is_paid: true,
@@ -77,13 +78,18 @@ export async function POST(req: NextRequest) {
     .eq("day_local", parsed.data.day)
     .eq("is_paid", false);
 
+  if (parsed.data.site_id) query = query.eq("site_id", parsed.data.site_id);
+
+  const { error } = await query;
+
   if (error) return json({ error: `Nešlo označit jako zaplacené: ${error.message}` }, { status: 500 });
   await writeAuditLog({
     entity_type: "attendance_payment",
-    entity_id: `${parsed.data.user_id}:${parsed.data.day}`,
+    entity_id: `${parsed.data.user_id}:${parsed.data.day}:${parsed.data.site_id || "all"}`,
     action: "mark_paid_day",
     actor_user_id: auth.session!.userId,
     user_id: parsed.data.user_id,
+    site_id: parsed.data.site_id || null,
     day: parsed.data.day,
   });
   return json({ ok: true, mode: "single" });
@@ -130,7 +136,7 @@ export async function DELETE(req: NextRequest) {
   const parsed = singleSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Neplatná data." }, { status: 400 });
 
-  const { error } = await db
+  let query = db
     .from("attendance_events")
     .update({
       is_paid: false,
@@ -141,13 +147,18 @@ export async function DELETE(req: NextRequest) {
     .eq("day_local", parsed.data.day)
     .eq("is_paid", true);
 
+  if (parsed.data.site_id) query = query.eq("site_id", parsed.data.site_id);
+
+  const { error } = await query;
+
   if (error) return json({ error: `Nešlo vrátit úhradu: ${error.message}` }, { status: 500 });
   await writeAuditLog({
     entity_type: "attendance_payment",
-    entity_id: `${parsed.data.user_id}:${parsed.data.day}`,
+    entity_id: `${parsed.data.user_id}:${parsed.data.day}:${parsed.data.site_id || "all"}`,
     action: "mark_unpaid_day",
     actor_user_id: auth.session!.userId,
     user_id: parsed.data.user_id,
+    site_id: parsed.data.site_id || null,
     day: parsed.data.day,
   });
   return json({ ok: true, mode: "single" });

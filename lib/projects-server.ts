@@ -41,7 +41,7 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
   let projectIds: string[] = [];
 
   if (sessionRole === "admin") {
-    const { data, error } = await db.from("projects").select("id").neq("status", "archived");
+    const { data, error } = await db.from("projects").select("id");
     if (error) throw error;
     projectIds = (data || []).map((row: { id: string }) => row.id);
   } else {
@@ -78,6 +78,7 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
     .from("projects")
     .select("id,title,description,site_id,status,created_by,updated_by,created_at,updated_at")
     .in("id", projectIds)
+    .order("status", { ascending: true })
     .order("updated_at", { ascending: false });
   if (projectsRes.error) throw projectsRes.error;
   const projects = (projectsRes.data || []) as ProjectBundle["projects"];
@@ -147,7 +148,15 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
   if (activityRes.error) throw activityRes.error;
   if (labelsRes.error) throw labelsRes.error;
 
-  const userIds = [...new Set([...members.map((member) => member.user_id), ...projects.map((project) => project.created_by).filter(Boolean) as string[], ...tasks.flatMap((task) => [task.created_by, task.updated_by, task.completed_by].filter(Boolean) as string[]), ...(commentsRes.data || []).map((comment: { user_id: string }) => comment.user_id), ...(checklistRes.data || []).flatMap((item: { created_by: string | null; done_by: string | null }) => [item.created_by, item.done_by].filter(Boolean) as string[]), ...(attachmentsRes.data || []).map((item: { uploaded_by: string | null }) => item.uploaded_by).filter(Boolean) as string[], ...(activityRes.data || []).map((item: { actor_user_id: string | null }) => item.actor_user_id).filter(Boolean) as string[]])];
+  const userIds = [...new Set([
+    ...members.map((member) => member.user_id),
+    ...projects.map((project) => project.created_by).filter(Boolean) as string[],
+    ...tasks.flatMap((task) => [task.created_by, task.updated_by, task.completed_by].filter(Boolean) as string[]),
+    ...(commentsRes.data || []).map((comment: { user_id: string }) => comment.user_id),
+    ...(checklistRes.data || []).flatMap((item: { created_by: string | null; done_by: string | null }) => [item.created_by, item.done_by].filter(Boolean) as string[]),
+    ...(attachmentsRes.data || []).map((item: { uploaded_by: string | null }) => item.uploaded_by).filter(Boolean) as string[],
+    ...(activityRes.data || []).map((item: { actor_user_id: string | null }) => item.actor_user_id).filter(Boolean) as string[],
+  ])];
 
   const [usersRes, sitesRes] = await Promise.all([
     userIds.length

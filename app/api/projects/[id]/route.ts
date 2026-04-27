@@ -96,4 +96,3 @@ export async function GET(req: NextRequest, context: RouteContext) {
   if (project.error || !project.data) return json({ error: "Projekt nebyl nalezen." }, { status: 404 });
   return json({ project: project.data });
 }
-

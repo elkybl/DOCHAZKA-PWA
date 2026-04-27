@@ -9,15 +9,62 @@ export type TaskStatus = (typeof taskStatuses)[number];
 export type ProjectMemberRole = (typeof memberRoles)[number];
 
 export const projectStatusLabel: Record<ProjectStatus, string> = {
-  active: "Aktivní",
+  active: "Aktivn\u00ed",
   archived: "Archiv",
 };
 
 export const taskStatusLabel: Record<TaskStatus, string> = {
-  todo: "K řešení",
-  doing: "Probíhá",
+  todo: "K \u0159e\u0161en\u00ed",
+  doing: "Prob\u00edh\u00e1",
   done: "Hotovo",
 };
+
+export const checklistTemplates = [
+  {
+    key: "service",
+    label: "Servis a opravy",
+    items: [
+      "Potvrdit zadání a místo zásahu",
+      "Zkontrolovat stávající stav",
+      "Provést opravu nebo zásah",
+      "Otestovat funkčnost po zásahu",
+      "Dopsat stručný výstup pro předání",
+    ],
+  },
+  {
+    key: "installation",
+    label: "Montáž a realizace",
+    items: [
+      "Převzít podklady a rozsah práce",
+      "Připravit materiál a nářadí",
+      "Provést montáž",
+      "Otestovat funkčnost",
+      "Dopsat poznámky k dokončení",
+    ],
+  },
+  {
+    key: "inspection",
+    label: "Kontrola a revize",
+    items: [
+      "Projít všechny kontrolní body",
+      "Vyfotit nebo zdokumentovat závady",
+      "Zapsat doporučení a další kroky",
+      "Předat stručný souhrn",
+    ],
+  },
+  {
+    key: "meeting",
+    label: "Schůzka a zápis",
+    items: [
+      "Sepsat hlavní body jednání",
+      "Zapsat rozhodnutí",
+      "Rozdělit úkoly a odpovědnosti",
+      "Doplnit termíny a návaznosti",
+    ],
+  },
+] as const;
+
+export type ChecklistTemplateKey = (typeof checklistTemplates)[number]["key"];
 
 export const projectCreateSchema = z.object({
   title: z.string().min(2).max(160),
@@ -192,5 +239,7 @@ export function isProjectMember(sessionUserId: string, projectId: string, member
 }
 
 export function isProjectOwner(sessionUserId: string, projectId: string, members: ProjectMember[]) {
-  return members.some((member) => member.project_id === projectId && member.user_id === sessionUserId && member.role === "owner");
+  return members.some(
+    (member) => member.project_id === projectId && member.user_id === sessionUserId && member.role === "owner",
+  );
 }

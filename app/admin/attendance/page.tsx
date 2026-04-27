@@ -431,6 +431,14 @@ export default function AdminAttendancePage() {
     for (const entry of audit) map.set(entry.key, [...(map.get(entry.key) || []), entry]);
     return map;
   }, [audit]);
+  const attentionGroups = useMemo(
+    () => groups.filter((group) => {
+      const flags = groupFlags(group);
+      return flags.hasMissingNote || flags.hasMissingSite || flags.hasZeroRow || flags.hasOpenDay;
+    }).length,
+    [groups],
+  );
+  const paidGroups = useMemo(() => groups.filter((group) => group.paid).length, [groups]);
 
   return (
     <AppShell
@@ -481,6 +489,17 @@ export default function AdminAttendancePage() {
             {info && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
           </div>
         )}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Zobrazené dny: <span className="font-semibold text-slate-950">{groups.length}</span>
+          </span>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+            Vyžaduje pozornost: <span className="font-semibold">{attentionGroups}</span>
+          </span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+            Uhrazené dny: <span className="font-semibold">{paidGroups}</span>
+          </span>
+        </div>
       </section>
 
       <section className="mt-4 space-y-4">

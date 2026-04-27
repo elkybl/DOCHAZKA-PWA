@@ -74,7 +74,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   const parsed = projectTaskUpdateSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Neplatná data úkolu." }, { status: 400 });
 
-  if (auth.session.role !== "admin" && (parsed.data.title !== undefined || parsed.data.description !== undefined || parsed.data.due_date !== undefined || parsed.data.assignee_ids !== undefined)) {
+  if (
+    auth.session.role !== "admin" &&
+    (parsed.data.title !== undefined ||
+      parsed.data.description !== undefined ||
+      parsed.data.due_date !== undefined ||
+      parsed.data.assignee_ids !== undefined)
+  ) {
     return json({ error: "Jen admin může upravit zadání úkolu." }, { status: 403 });
   }
 
@@ -108,7 +114,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           user_id: userId,
         })),
       );
-      if (insertAssignees.error) return json({ error: "Úkol se upravil, ale nešlo uložit řešitele." }, { status: 500 });
+      if (insertAssignees.error) {
+        return json({ error: "Úkol se upravil, ale nešlo uložit řešitele." }, { status: 500 });
+      }
     }
   }
 

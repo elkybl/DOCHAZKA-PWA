@@ -7,6 +7,28 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const BUCKET = "project-files";
 
+async function loadAttachmentContext(id: string, attachmentId: string, userId: string, role: "admin" | "worker") {
+  const db = supabaseAdmin();
+  const task = await db.from("project_tasks").select("id,project_id").eq("id", id).single();
+  if (task.error || !task.data) return { error: json({ error: "Úkol nebyl nalezen." }, { status: 404 }) };
+
+  const access = await ensureProjectAccess(task.data.project_id, userId, role);
+  if (!access) return { error: json({ error: "K projektu nemáš přístup." }, { status: 403 }) };
+
+  const attachment = await db
+    .from("project_attachments")
+    .select("id,file_name,file_path,content_type,size_bytes,uploaded_by,created_at")
+    .eq("id", attachmentId)
+    .eq("task_id", id)
+    .single();
+
+  if (attachment.error || !attachment.data) {
+    return { error: json({ error: "Příloha nebyla nalezena." }, { status: 404 }) };
+  }
+
+  return { db, attachment: attachment.data };
+}
+
 export async function POST(req: NextRequest, context: RouteContext) {
   const auth = await requireProjectSession(req);
   if ("error" in auth) return auth.error;
@@ -80,28 +102,38 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   const attachmentId = url.searchParams.get("attachment_id");
   if (!attachmentId) return json({ error: "Chybí attachment_id." }, { status: 400 });
 
-  const db = supabaseAdmin();
-  const task = await db.from("project_tasks").select("id,project_id").eq("id", id).single();
-  if (task.error || !task.data) return json({ error: "Úkol nebyl nalezen." }, { status: 404 });
+  const loaded = await loadAttachmentContext(id, attachmentId, auth.session.userId, auth.session.role);
+  if ("error" in loaded) return loaded.error;
+  const { db, attachment } = loaded;
 
-  const access = await ensureProjectAccess(task.data.project_id, auth.session.userId, auth.session.role);
-  if (!access) return json({ error: "K projektu nemáš přístup." }, { status: 403 });
-
-  const attachment = await db
-    .from("project_attachments")
-    .select("id,file_name,file_path")
-    .eq("id", attachmentId)
-    .eq("task_id", id)
-    .single();
-
-  if (attachment.error || !attachment.data) return json({ error: "Příloha nebyla nalezena." }, { status: 404 });
-
-  await db.storage.from(BUCKET).remove([attachment.data.file_path]);
+  await db.storage.from(BUCKET).remove([attachment.file_path]);
   const removeMeta = await db.from("project_attachments").delete().eq("id", attachmentId);
   if (removeMeta.error) return json({ error: "Nešlo smazat metadata přílohy." }, { status: 500 });
 
   await addTaskActivity(id, auth.session.userId, "attachment_deleted", {
-    file_name: attachment.data.file_name,
+    file_name: attachment.file_name,
   });
   return json({ ok: true });
+}
+
+export async function GET(req: NextRequest, context: RouteContext) {
+  const auth = await requireProjectSession(req);
+  if ("error" in auth) return auth.error;
+
+  const { id } = await context.params;
+  const url = new URL(req.url);
+  const attachmentId = url.searchParams.get("attachment_id");
+  if (!attachmentId) return json({ error: "Chybí attachment_id." }, { status: 400 });
+
+  const loaded = await loadAttachmentContext(id, attachmentId, auth.session.userId, auth.session.role);
+  if ("error" in loaded) return loaded.error;
+  const { db, attachment } = loaded;
+
+  const signed = await db.storage.from(BUCKET).createSignedUrl(attachment.file_path, 60 * 30);
+  if (signed.error || !signed.data?.signedUrl) return json({ error: "Nešlo otevřít přílohu." }, { status: 500 });
+
+  return json({
+    attachment,
+    signed_url: signed.data.signedUrl,
+  });
 }

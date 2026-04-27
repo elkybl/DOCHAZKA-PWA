@@ -227,7 +227,7 @@ export async function GET(req: NextRequest) {
         const sid = (lastIn.site_id || e.site_id) as string | null;
         const r = getRate(sid);
 
-        // programování je jen pro programátory a zapisuje se na OUT eventu jako poÄŤet hodin v rĂˇmci smÄ›ny
+        // programování je jen pro programátory a zapisuje se na OUT eventu jako počet hodin v rámci směny
         const progH = isProg ? Math.max(0, Math.min(hours, toNum((e as any).programming_hours, 0))) : 0;
         const siteH = Math.max(0, hours - progH);
         const progPay = round2(progH * (r as any).prog);

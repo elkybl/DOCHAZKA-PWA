@@ -59,4 +59,3 @@ export async function POST(req: NextRequest) {
 
   return json({ project: insertProject.data });
 }
-

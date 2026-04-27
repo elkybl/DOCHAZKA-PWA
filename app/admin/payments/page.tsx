@@ -179,6 +179,7 @@ export default function PaymentsPage() {
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: row.user_id,
+          site_id: row.site_id,
           day: day.day,
         }),
       });

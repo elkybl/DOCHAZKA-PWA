@@ -254,6 +254,15 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [selectedDay]);
 
+  function openDayDetail(day: string) {
+    setSelectedDay(day);
+    const mq = typeof window !== "undefined" ? window.matchMedia("(max-width: 1279px)") : null;
+    if (!mq?.matches) return;
+    window.setTimeout(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  }
+
   return (
     <AppShell
       area="auto"
@@ -357,7 +366,7 @@ export default function Page() {
         <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
             {filteredRows.map((row) => (
-              <DayCard key={row.day} row={row} active={row.day === selectedDay} onOpen={() => setSelectedDay(row.day)} />
+              <DayCard key={row.day} row={row} active={row.day === selectedDay} onOpen={() => openDayDetail(row.day)} />
             ))}
             {!filteredRows.length ? <EmptyState /> : null}
           </div>

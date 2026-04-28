@@ -76,6 +76,32 @@ create table if not exists public.project_comments (
 create index if not exists project_comments_task_idx
   on public.project_comments(task_id, created_at desc);
 
+create table if not exists public.project_files (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  file_name text not null,
+  file_path text not null,
+  content_type text null,
+  size_bytes bigint null,
+  uploaded_by uuid null references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_files_project_idx
+  on public.project_files(project_id, created_at desc);
+
+create table if not exists public.project_file_activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  actor_user_id uuid null references public.users(id) on delete set null,
+  action text not null,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_file_activity_logs_project_idx
+  on public.project_file_activity_logs(project_id, created_at desc);
+
 create table if not exists public.project_attachments (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.project_tasks(id) on delete cascade,

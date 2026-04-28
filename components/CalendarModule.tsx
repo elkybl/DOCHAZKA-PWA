@@ -518,16 +518,30 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
             const active = day === selectedDay;
             const muted = day.slice(0, 7) !== anchor.slice(0, 7) && view === "month";
             return (
-              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-28 rounded-lg border p-2 text-left transition ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
+              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-24 rounded-lg border p-1.5 text-left transition sm:min-h-28 sm:p-2 ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
                 <div className="text-xs font-semibold">{formatDate(day)}</div>
-                <div className="mt-2 space-y-1">
-                  {dayItems.slice(0, 3).map((item) => (
-                    <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${item.source === "attendance" ? "border-slate-300 bg-slate-100" : typeClass(item.type)}`}>
-                      <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} · ` : ""}</span>
-                      {item.title}
-                    </div>
-                  ))}
-                  {dayItems.length > 3 ? <div className="text-[11px] text-slate-500">+{dayItems.length - 3} další</div> : null}
+                <div className="mt-1.5 space-y-1">
+                  <div className="sm:hidden">
+                    {dayItems.length ? (
+                      <>
+                        <div className="rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-[10px] font-semibold text-slate-700">
+                          {dayItems.length} {dayItems.length === 1 ? "položka" : dayItems.length < 5 ? "položky" : "položek"}
+                        </div>
+                        <div className="mt-1 truncate text-[10px] text-slate-500">
+                          {admin ? dayItems[0]?.user_name || "Pracovník" : dayItems[0]?.title}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                  <div className="hidden space-y-1 sm:block">
+                    {dayItems.slice(0, 3).map((item) => (
+                      <div key={item.id} className={`truncate rounded border px-2 py-1 text-[11px] ${item.source === "attendance" ? "border-slate-300 bg-slate-100" : typeClass(item.type)}`}>
+                        <span className="font-semibold">{item.start_time ? `${item.start_time.slice(0, 5)} ` : ""}{admin ? `${item.user_name || "Pracovník"} · ` : ""}</span>
+                        {item.title}
+                      </div>
+                    ))}
+                    {dayItems.length > 3 ? <div className="text-[11px] text-slate-500">+{dayItems.length - 3} další</div> : null}
+                  </div>
                 </div>
               </button>
             );

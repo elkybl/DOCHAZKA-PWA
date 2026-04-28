@@ -9,13 +9,13 @@ export type TaskStatus = (typeof taskStatuses)[number];
 export type ProjectMemberRole = (typeof memberRoles)[number];
 
 export const projectStatusLabel: Record<ProjectStatus, string> = {
-  active: "Aktivn\u00ed",
+  active: "Aktivní",
   archived: "Archiv",
 };
 
 export const taskStatusLabel: Record<TaskStatus, string> = {
-  todo: "K \u0159e\u0161en\u00ed",
-  doing: "Prob\u00edh\u00e1",
+  todo: "K řešení",
+  doing: "Probíhá",
   done: "Hotovo",
 };
 
@@ -117,6 +117,26 @@ export const projectTaskMoveSchema = z.object({
 export const projectTaskLabelSchema = z.object({
   labels: z.array(z.string().min(1).max(40)).max(12),
 });
+
+export type ProjectFile = {
+  id: string;
+  project_id: string;
+  file_name: string;
+  file_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type ProjectFileActivityLog = {
+  id: string;
+  project_id: string;
+  actor_user_id: string | null;
+  action: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+};
 
 export type ProjectAttachment = {
   id: string;
@@ -227,6 +247,8 @@ export type ProjectBundle = {
   assignees: ProjectTaskAssignee[];
   checklistItems: ProjectChecklistItem[];
   comments: ProjectComment[];
+  projectFiles: ProjectFile[];
+  projectFileActivityLogs: ProjectFileActivityLog[];
   attachments: ProjectAttachment[];
   activityLogs: ProjectActivityLog[];
   labels: ProjectTaskLabel[];

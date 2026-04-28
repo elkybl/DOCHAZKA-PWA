@@ -12,6 +12,8 @@ import {
   type ProjectAttachment,
   type ProjectBundle,
   type ProjectChecklistItem,
+  type ProjectFileActivityLog,
+  type ProjectFile,
   type ProjectTask,
   type ProjectTaskAssignee,
   type ProjectTaskLabel,
@@ -90,6 +92,8 @@ const emptyBundle: ProjectBundle = {
   assignees: [],
   checklistItems: [],
   comments: [],
+  projectFiles: [],
+  projectFileActivityLogs: [],
   attachments: [],
   activityLogs: [],
   labels: [],
@@ -148,6 +152,7 @@ export default function ProjectsPage() {
   const [checklistTemplateKey, setChecklistTemplateKey] = useState("");
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
+  const [projectFilePreview, setProjectFilePreview] = useState<{ name: string; url: string; contentType: string | null } | null>(null);
 
   useEffect(() => {
     const nextToken = getToken();
@@ -171,6 +176,8 @@ export default function ProjectsPage() {
         assignees: data.assignees || [],
         checklistItems: data.checklistItems || [],
         comments: data.comments || [],
+        projectFiles: data.projectFiles || [],
+        projectFileActivityLogs: data.projectFileActivityLogs || [],
         attachments: data.attachments || [],
         activityLogs: data.activityLogs || [],
         labels: data.labels || [],
@@ -248,6 +255,14 @@ export default function ProjectsPage() {
   const selectedProjectTasks = useMemo(
     () => bundle.tasks.filter((task) => task.project_id === selectedProjectId),
     [bundle.tasks, selectedProjectId],
+  );
+  const selectedProjectFiles = useMemo(
+    () => bundle.projectFiles.filter((item) => item.project_id === selectedProjectId),
+    [bundle.projectFiles, selectedProjectId],
+  );
+  const selectedProjectFileActivity = useMemo(
+    () => bundle.projectFileActivityLogs.filter((item) => item.project_id === selectedProjectId).slice(0, 8),
+    [bundle.projectFileActivityLogs, selectedProjectId],
   );
 
   useEffect(() => {
@@ -346,6 +361,10 @@ export default function ProjectsPage() {
     });
     setLabelsInput(bundle.labels.filter((item) => item.task_id === selectedTask.id).map((item) => item.label).join(", "));
   }, [selectedTask, bundle.assignees, bundle.labels]);
+
+  useEffect(() => {
+    setProjectFilePreview(null);
+  }, [selectedProjectId]);
 
   async function createProject() {
     if (!token) return;
@@ -577,6 +596,29 @@ export default function ProjectsPage() {
     }
   }
 
+  async function uploadProjectFile(file: File) {
+    if (!token || !selectedProject) return;
+    const form = new FormData();
+    form.set("file", file);
+    setBusy("project-file-upload");
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/attachments`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo nahrát soubor k projektu.");
+      setInfo("Soubor projektu je nahraný.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo nahrát soubor k projektu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function openAttachment(attachment: ProjectAttachment) {
     if (!token || !selectedTask) return;
     setBusy(`attachment-open-${attachment.id}`);
@@ -591,6 +633,48 @@ export default function ProjectsPage() {
       window.open(data.signed_url, "_blank", "noopener,noreferrer");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Ne\u0161lo otev\u0159\u00edt p\u0159\u00edlohu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openProjectFile(file: ProjectFile) {
+    if (!token || !selectedProject) return;
+    setBusy(`project-file-open-${file.id}`);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/attachments?file_id=${encodeURIComponent(file.id)}`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; signed_url?: string | null };
+      if (!res.ok || !data.signed_url) throw new Error(data.error || "Nešlo otevřít soubor projektu.");
+      window.open(data.signed_url, "_blank", "noopener,noreferrer");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo otevřít soubor projektu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function previewProjectFile(file: ProjectFile) {
+    if (!token || !selectedProject) return;
+    setBusy(`project-file-preview-${file.id}`);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/attachments?file_id=${encodeURIComponent(file.id)}`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; signed_url?: string | null };
+      if (!res.ok || !data.signed_url) throw new Error(data.error || "Nešlo načíst náhled souboru projektu.");
+      setProjectFilePreview({
+        name: file.file_name,
+        url: data.signed_url,
+        contentType: file.content_type,
+      });
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo načíst náhled souboru projektu.");
     } finally {
       setBusy(null);
     }
@@ -611,6 +695,26 @@ export default function ProjectsPage() {
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Ne\u0161lo smazat p\u0159\u00edlohu.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteProjectFile(file: ProjectFile) {
+    if (!token || !selectedProject || !confirm(`Smazat soubor projektu "${file.file_name}"?`)) return;
+    setBusy(`project-file-delete-${file.id}`);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/attachments?file_id=${encodeURIComponent(file.id)}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Nešlo smazat soubor projektu.");
+      setInfo("Soubor projektu je smazaný.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo smazat soubor projektu.");
     } finally {
       setBusy(null);
     }
@@ -871,6 +975,117 @@ export default function ProjectsPage() {
                     <div className="mt-2 text-2xl font-semibold text-slate-950">{recentProjectActivity.length}</div>
                     <div className="mt-2 text-xs text-slate-500">{recentProjectActivity.length ? activityLabel(recentProjectActivity[0]) : "Bez nov\u00fdch zm\u011bn od ostatn\u00edch."}</div>
                   </SubCard>
+                </div>
+
+                <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
+                  <SectionHeader title={"Soubory projektu"} count={selectedProjectFiles.length} />
+                  <div className="mt-3 space-y-2">
+                    {selectedProjectFiles.length ? (
+                      selectedProjectFiles.map((file) => {
+                        const uploadedBy = file.uploaded_by ? usersById.get(file.uploaded_by)?.name : null;
+                        return (
+                          <div key={file.id} className="rounded-2xl border bg-white px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-slate-950">{file.file_name}</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {uploadedBy ? `${uploadedBy} · ` : ""}
+                                  {fmtDateTime(file.created_at)} · {fmtSize(file.size_bytes)}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button variant="secondary" onClick={() => previewProjectFile(file)} disabled={busy === `project-file-preview-${file.id}`}>
+                                  Náhled
+                                </Button>
+                                <Button variant="secondary" onClick={() => openProjectFile(file)} disabled={busy === `project-file-open-${file.id}`}>
+                                  {UI.open}
+                                </Button>
+                                {isAdmin ? (
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() => deleteProjectFile(file)}
+                                    disabled={busy === `project-file-delete-${file.id}`}
+                                  >
+                                    {UI.delete}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <EmptyInline text={"Zatím bez souborů na úrovni projektu."} />
+                    )}
+                  </div>
+                  {projectFilePreview ? (
+                    <div className="mt-4 rounded-2xl border bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-950">{projectFilePreview.name}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {projectFilePreview.contentType?.includes("pdf")
+                              ? "Náhled PDF"
+                              : projectFilePreview.contentType?.startsWith("image/")
+                                ? "Náhled obrázku"
+                                : "Soubor nelze zobrazit přímo, ale lze ho otevřít."}
+                          </div>
+                        </div>
+                        <Button variant="secondary" onClick={() => setProjectFilePreview(null)}>
+                          Zavřít náhled
+                        </Button>
+                      </div>
+                      <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
+                        {projectFilePreview.contentType?.startsWith("image/") ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={projectFilePreview.url} alt={projectFilePreview.name} className="max-h-[440px] w-full object-contain bg-white" />
+                        ) : projectFilePreview.contentType?.includes("pdf") ? (
+                          <iframe src={projectFilePreview.url} title={projectFilePreview.name} className="h-[440px] w-full bg-white" />
+                        ) : (
+                          <div className="p-6 text-sm text-slate-600">
+                            Tento typ souboru nemá přímý náhled. Otevři ho přes tlačítko <span className="font-semibold">Otevřít</span>.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <label className="inline-flex cursor-pointer items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadProjectFile(file);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                      {busy === "project-file-upload" ? "Nahrávám soubor projektu" : "Přidat soubor projektu"}
+                    </label>
+                    <span className="text-xs text-slate-500">
+                      Sem patří podklady k celé akci: nabídka, výkres, PDF, fotky nebo předávací dokumenty.
+                    </span>
+                  </div>
+                  <div className="mt-5 rounded-2xl border bg-white p-4">
+                    <SectionHeader title={"Aktivita souborů projektu"} count={selectedProjectFileActivity.length} />
+                    <div className="mt-3 space-y-2">
+                      {selectedProjectFileActivity.length ? (
+                        selectedProjectFileActivity.map((item) => (
+                          <div key={item.id} className="rounded-2xl border bg-slate-50 px-4 py-3">
+                            <div className="text-sm font-semibold text-slate-950">{projectFileActivityLabel(item)}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {(item.actor_user_id ? usersById.get(item.actor_user_id)?.name : "Systém") || "Systém"} · {fmtDateTime(item.created_at)}
+                            </div>
+                            {item.detail && Object.keys(item.detail).length ? (
+                              <div className="mt-2 text-xs leading-5 text-slate-600">{projectFileActivityDetail(item.detail)}</div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <EmptyInline text={"Zatím bez zapsané projektové aktivity kolem souborů."} />
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {taskFormOpen && isAdmin ? (
@@ -1290,4 +1505,22 @@ function activityDetail(detail: Record<string, unknown>) {
   if (typeof detail.sort_order === "number") parts.push(`Po\u0159ad\u00ed: ${detail.sort_order}`);
   if (typeof detail.due_date === "string" && detail.due_date) parts.push(`Term\u00edn: ${fmtDate(detail.due_date)}`);
   return parts.join(" \u00b7 ");
+}
+
+function projectFileActivityLabel(item: ProjectFileActivityLog) {
+  switch (item.action) {
+    case "project_file_added":
+      return "Přidaný soubor projektu";
+    case "project_file_deleted":
+      return "Smazaný soubor projektu";
+    default:
+      return item.action;
+  }
+}
+
+function projectFileActivityDetail(detail: Record<string, unknown>) {
+  const parts: string[] = [];
+  if (typeof detail.file_name === "string") parts.push(`Soubor: ${detail.file_name}`);
+  if (typeof detail.size_bytes === "number") parts.push(`Velikost: ${fmtSize(detail.size_bytes)}`);
+  return parts.join(" · ");
 }

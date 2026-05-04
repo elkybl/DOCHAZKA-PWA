@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -25,14 +25,14 @@ import {
 } from "@/lib/projects";
 
 const UI = {
-  title: "Projekty a \u00fakoly",
+  title: "Akce a úkoly",
   subtitle:
-    "Jedno m\u00edsto pro akce, servis, body k dokon\u010den\u00ed, checklisty, koment\u00e1\u0159e i p\u0159ehled kdo co ud\u011blal.",
+    "Přehled zakázek, servisů, checklistů, komentářů a souborů na jednom místě bez zbytečného chaosu.",
   refresh: "Obnovit",
   newProject: "Nov\u00fd projekt",
   newTask: "Nov\u00fd \u00fakol",
   projects: "Projekty",
-  projectsSubtitle: "Akce, servis, realizace i intern\u00ed \u00fakoly na jednom m\u00edst\u011b.",
+  projectsSubtitle: "Zakázky, servis, realizace i interní úkoly v jednom workflow.",
   createProject: "Ulo\u017eit projekt",
   saveTask: "Ulo\u017eit \u00fakol",
   saveChanges: "Ulo\u017eit zm\u011bny",
@@ -53,9 +53,9 @@ const UI = {
   emptyProjectsTitle: "Zat\u00edm tu nen\u00ed \u017e\u00e1dn\u00fd projekt",
   emptyProjectsText: "Za\u010dni zalo\u017een\u00edm prvn\u00ed akce, ke kter\u00e9 pak p\u0159id\u00e1\u0161 \u00fakoly, checklist a koment\u00e1\u0159e.",
   emptyProjectTitle: "Vyber projekt",
-  emptyProjectText: "Po v\u00fdb\u011bru projektu tady uvid\u00ed\u0161 \u00fakoly, checklisty, koment\u00e1\u0159e i posledn\u00ed aktivitu.",
+  emptyProjectText: "Po výběru projektu tady uvidíš board úkolů, projektové soubory i navazující detail.",
   emptyTaskTitle: "Vyber \u00fakol",
-  emptyTaskText: "Po kliknut\u00ed na kartu \u00fakolu tady uvid\u00ed\u0161 detail, checklist, koment\u00e1\u0159e, p\u0159\u00edlohy a historii zm\u011bn.",
+  emptyTaskText: "Po kliknutí na kartu úkolu tady uvidíš detail, checklist, komentáře, přílohy a historii změn.",
 };
 
 function getToken() {
@@ -647,12 +647,12 @@ export default function ProjectsPage() {
         body: form,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "NeĹˇlo nahrĂˇt soubor k projektu.");
-      setInfo("Soubor projektu je nahranĂ˝.");
+      if (!res.ok) throw new Error(data.error || "Nešlo nahrát soubor k projektu.");
+      setInfo("Soubor projektu je nahraný.");
       setProjectFileCategory("other");
       await load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo nahrĂˇt soubor k projektu.");
+      setErr(e instanceof Error ? e.message : "Nešlo nahrát soubor k projektu.");
     } finally {
       setBusy(null);
     }
@@ -687,10 +687,10 @@ export default function ProjectsPage() {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; signed_url?: string | null };
-      if (!res.ok || !data.signed_url) throw new Error(data.error || "NeĹˇlo otevĹ™Ă­t soubor projektu.");
+      if (!res.ok || !data.signed_url) throw new Error(data.error || "Nešlo otevřít soubor projektu.");
       window.open(data.signed_url, "_blank", "noopener,noreferrer");
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo otevĹ™Ă­t soubor projektu.");
+      setErr(e instanceof Error ? e.message : "Nešlo otevřít soubor projektu.");
     } finally {
       setBusy(null);
     }
@@ -706,14 +706,14 @@ export default function ProjectsPage() {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; signed_url?: string | null };
-      if (!res.ok || !data.signed_url) throw new Error(data.error || "NeĹˇlo naÄŤĂ­st nĂˇhled souboru projektu.");
+      if (!res.ok || !data.signed_url) throw new Error(data.error || "Nešlo načíst náhled souboru projektu.");
       setProjectFilePreview({
         name: file.file_name,
         url: data.signed_url,
         contentType: file.content_type,
       });
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo naÄŤĂ­st nĂˇhled souboru projektu.");
+      setErr(e instanceof Error ? e.message : "Nešlo načíst náhled souboru projektu.");
     } finally {
       setBusy(null);
     }
@@ -749,11 +749,11 @@ export default function ProjectsPage() {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "NeĹˇlo smazat soubor projektu.");
-      setInfo("Soubor projektu je smazanĂ˝.");
+      if (!res.ok) throw new Error(data.error || "Nešlo smazat soubor projektu.");
+      setInfo("Soubor projektu je smazaný.");
       await load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo smazat soubor projektu.");
+      setErr(e instanceof Error ? e.message : "Nešlo smazat soubor projektu.");
     } finally {
       setBusy(null);
     }
@@ -796,11 +796,11 @@ export default function ProjectsPage() {
         body: JSON.stringify({ status }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "NeĹˇlo zmÄ›nit stav projektu.");
-      setInfo(status === "archived" ? "Projekt je pĹ™esunutĂ˝ do archivu." : "Projekt je znovu aktivnĂ­.");
+      if (!res.ok) throw new Error(data.error || "Nešlo změnit stav projektu.");
+      setInfo(status === "archived" ? "Projekt je přesunutý do archivu." : "Projekt je znovu aktivní.");
       await load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo zmÄ›nit stav projektu.");
+      setErr(e instanceof Error ? e.message : "Nešlo změnit stav projektu.");
     } finally {
       setBusy(null);
     }
@@ -831,13 +831,13 @@ export default function ProjectsPage() {
           body: JSON.stringify({ task_id: selectedTask.id, text }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "NeĹˇlo vloĹľit Ĺˇablonu checklistu.");
+        if (!res.ok) throw new Error(data.error || "Nešlo vložit šablonu checklistu.");
       }
       setChecklistTemplateKey("");
-      setInfo("Checklist Ĺˇablona je pĹ™idanĂˇ.");
+      setInfo("Checklist šablona je přidaná.");
       await load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "NeĹˇlo vloĹľit Ĺˇablonu checklistu.");
+      setErr(e instanceof Error ? e.message : "Nešlo vložit šablonu checklistu.");
     } finally {
       setBusy(null);
     }
@@ -866,7 +866,7 @@ export default function ProjectsPage() {
         </>
       }
     >
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
         <Card>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -876,7 +876,7 @@ export default function ProjectsPage() {
             <Pill tone="neutral">{filteredProjects.length}</Pill>
           </div>
 
-          <div className="mt-4 space-y-3 rounded-2xl border bg-slate-50 p-4">
+          <div className="mt-4 space-y-3 rounded-3xl border bg-slate-50 p-4">
             <input
               className="w-full rounded-2xl border bg-white px-3 py-2 text-sm"
               placeholder={UI.searchProjects}
@@ -885,9 +885,9 @@ export default function ProjectsPage() {
             />
             <div className="grid grid-cols-3 gap-2 rounded-2xl border bg-white p-1">
               {([
-                ["active", `AktivnĂ­ ${activeProjectCount}`],
+                ["active", `Aktivní ${activeProjectCount}`],
                 ["archived", `Archiv ${archivedProjectCount}`],
-                ["all", `VĹˇe ${bundle.projects.length}`],
+                ["all", `Vše ${bundle.projects.length}`],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -954,11 +954,11 @@ export default function ProjectsPage() {
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
                     <span>{count} {"\u00fakol\u016f"}</span>
-                    {project.status === "archived" ? <span>Jen ke ÄŤtenĂ­ a dohledĂˇnĂ­</span> : null}
+                    {project.status === "archived" ? <span>Jen ke čtení a dohledání</span> : null}
                   </div>
                 </button>
               );
-            }) : <EmptyState title={UI.emptyProjectsTitle} text={"Na zvolenĂ˝ filtr nebo hledĂˇnĂ­ teÄŹ nic nesedĂ­."} />}
+            }) : <EmptyState title={UI.emptyProjectsTitle} text={"Na zvolený filtr nebo hledání teď nic nesedí."} />}
           </div>
         </Card>
 
@@ -985,47 +985,42 @@ export default function ProjectsPage() {
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {selectedProject.status === "active" ? (
                       <Button variant="secondary" onClick={() => updateProjectStatus("archived")} disabled={busy === "project-status"}>
-                        {busy === "project-status" ? "UklĂˇdĂˇm" : "PĹ™esunout do archivu"}
+                        {busy === "project-status" ? "Ukládám" : "Přesunout do archivu"}
                       </Button>
                     ) : (
                       <Button variant="secondary" onClick={() => updateProjectStatus("active")} disabled={busy === "project-status"}>
-                        {busy === "project-status" ? "UklĂˇdĂˇm" : "VrĂˇtit mezi aktivnĂ­"}
+                        {busy === "project-status" ? "Ukládám" : "Vrátit mezi aktivní"}
                       </Button>
                     )}
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-                      Archiv je pro hotovĂ© nebo pozastavenĂ© akce, aby nezavazely v dennĂ­m provozu.
+                      Archiv je pro hotové nebo pozastavené akce, aby nezavazely v denním provozu.
                     </span>
                   </div>
                 ) : null}
 
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <SubCard>
-                    <div className="text-xs font-medium text-slate-500">{"Moje otev\u0159en\u00e9 \u00fakoly"}</div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-950">{myTasks.filter((task) => task.status !== "done").length}</div>
-                    <div className="mt-2 text-xs text-slate-500">{"\u00dakoly, kter\u00e9 m\u00e1m v tomto projektu p\u0159i\u0159azen\u00e9."}</div>
-                  </SubCard>
-                  <SubCard>
-                    <div className="text-xs font-medium text-slate-500">{"Po term\u00ednu"}</div>
-                    <div className="mt-2 text-2xl font-semibold text-amber-700">{overdueTasks.length}</div>
-                    <div className="mt-2 text-xs text-slate-500">{overdueTasks.length ? overdueTasks.slice(0, 2).map((task) => task.title).join(" \u00b7 ") : "V tomhle projektu te\u010f nic neho\u0159\u00ed."}</div>
-                  </SubCard>
-                  <SubCard>
-                    <div className="text-xs font-medium text-slate-500">{"Posledn\u00ed zm\u011bny"}</div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-950">{recentProjectActivity.length}</div>
-                    <div className="mt-2 text-xs text-slate-500">{recentProjectActivity.length ? activityLabel(recentProjectActivity[0]) : "Bez nov\u00fdch zm\u011bn od ostatn\u00edch."}</div>
-                  </SubCard>
+                <div className="mt-5 rounded-3xl border bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone="neutral">Moje otevřené úkoly {myTasks.filter((task) => task.status !== "done").length}</Pill>
+                    <Pill tone={overdueTasks.length ? "warn" : "ok"}>Po termínu {overdueTasks.length}</Pill>
+                    <Pill tone="neutral">Poslední změny {recentProjectActivity.length}</Pill>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">
+                    {recentProjectActivity.length
+                      ? `Poslední pohyb: ${activityLabel(recentProjectActivity[0])}.`
+                      : "Projekt je klidný a připravený na další práci."}
+                  </p>
                 </div>
 
-                <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
+                <div className="mt-5 rounded-3xl border bg-slate-50 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <SectionHeader title={"Soubory projektu"} count={selectedProjectFiles.length} />
                     <div className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-1 sm:grid-cols-5">
                       {([
-                        ["all", "VĹˇe"],
+                        ["all", "Vše"],
                         ["photo", "Fotky"],
                         ["pdf", "PDF"],
-                        ["drawing", "VĂ˝kresy"],
-                        ["handover", "PĹ™edĂˇnĂ­"],
+                        ["drawing", "Výkresy"],
+                        ["handover", "Předání"],
                       ] as const).map(([value, label]) => (
                         <button
                           key={value}
@@ -1075,12 +1070,12 @@ export default function ProjectsPage() {
                                 <div className="text-sm font-semibold text-slate-950">{file.file_name}</div>
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                   <Pill tone="neutral">{projectFileCategoryLabel[file.category]}</Pill>
-                                  <span>{uploadedBy ? `${uploadedBy} Â· ` : ""}{fmtDateTime(file.created_at)} Â· {fmtSize(file.size_bytes)}</span>
+                                  <span>{uploadedBy ? `${uploadedBy} · ` : ""}{fmtDateTime(file.created_at)} · {fmtSize(file.size_bytes)}</span>
                                 </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <Button variant="secondary" onClick={() => previewProjectFile(file)} disabled={busy === `project-file-preview-${file.id}`}>
-                                  NĂˇhled
+                                  Náhled
                                 </Button>
                                 <Button variant="secondary" onClick={() => openProjectFile(file)} disabled={busy === `project-file-open-${file.id}`}>
                                   {UI.open}
@@ -1100,7 +1095,7 @@ export default function ProjectsPage() {
                         );
                       })
                     ) : (
-                      <EmptyInline text={"Na zvolenĂ˝ filtr zatĂ­m nesedĂ­ ĹľĂˇdnĂ˝ soubor projektu."} />
+                      <EmptyInline text={"Na zvolený filtr zatím nesedí žádný soubor projektu."} />
                     )}
                   </div>
                   {projectFilePreview ? (
@@ -1110,14 +1105,14 @@ export default function ProjectsPage() {
                           <div className="text-sm font-semibold text-slate-950">{projectFilePreview.name}</div>
                           <div className="mt-1 text-xs text-slate-500">
                             {projectFilePreview.contentType?.includes("pdf")
-                              ? "NĂˇhled PDF"
+                              ? "Náhled PDF"
                               : projectFilePreview.contentType?.startsWith("image/")
-                                ? "NĂˇhled obrĂˇzku"
-                                : "Soubor nelze zobrazit pĹ™Ă­mo, ale lze ho otevĹ™Ă­t."}
+                                ? "Náhled obrázku"
+                                : "Soubor nelze zobrazit přímo, ale lze ho otevřít."}
                           </div>
                         </div>
                         <Button variant="secondary" onClick={() => setProjectFilePreview(null)}>
-                          ZavĹ™Ă­t nĂˇhled
+                          Zavřít náhled
                         </Button>
                       </div>
                       <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
@@ -1128,7 +1123,7 @@ export default function ProjectsPage() {
                           <iframe src={projectFilePreview.url} title={projectFilePreview.name} className="h-[440px] w-full bg-white" />
                         ) : (
                           <div className="p-6 text-sm text-slate-600">
-                            Tento typ souboru nemĂˇ pĹ™Ă­mĂ˝ nĂˇhled. OtevĹ™i ho pĹ™es tlaÄŤĂ­tko <span className="font-semibold">OtevĹ™Ă­t</span>.
+                            Tento typ souboru nemá přímý náhled. Otevři ho přes tlačítko <span className="font-semibold">Otevřít</span>.
                           </div>
                         )}
                       </div>
@@ -1142,10 +1137,10 @@ export default function ProjectsPage() {
                     >
                       <option value="photo">Fotky</option>
                       <option value="pdf">PDF</option>
-                      <option value="drawing">VĂ˝kresy</option>
-                      <option value="handover">PĹ™edĂˇnĂ­</option>
+                      <option value="drawing">Výkresy</option>
+                      <option value="handover">Předání</option>
                       <option value="document">Dokumenty</option>
-                      <option value="other">OstatnĂ­</option>
+                      <option value="other">Ostatní</option>
                     </select>
                     <label className="inline-flex cursor-pointer items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
                       <input
@@ -1157,21 +1152,21 @@ export default function ProjectsPage() {
                           e.currentTarget.value = "";
                         }}
                       />
-                      {busy === "project-file-upload" ? "NahrĂˇvĂˇm soubor projektu" : "PĹ™idat soubor projektu"}
+                      {busy === "project-file-upload" ? "Nahrávám soubor projektu" : "Přidat soubor projektu"}
                     </label>
                     <span className="text-xs text-slate-500">
-                      Sem patĹ™Ă­ podklady k celĂ© akci: nabĂ­dka, vĂ˝kres, PDF, fotky nebo pĹ™edĂˇvacĂ­ dokumenty.
+                      Sem patří podklady k celé akci: nabídka, výkres, PDF, fotky nebo předávací dokumenty.
                     </span>
                   </div>
                   <div className="mt-5 rounded-2xl border bg-white p-4">
-                    <SectionHeader title={"Aktivita souborĹŻ projektu"} count={selectedProjectFileActivity.length} />
+                    <SectionHeader title={"Aktivita souborů projektu"} count={selectedProjectFileActivity.length} />
                     <div className="mt-3 space-y-2">
                       {selectedProjectFileActivity.length ? (
                         selectedProjectFileActivity.map((item) => (
                           <div key={item.id} className="rounded-2xl border bg-slate-50 px-4 py-3">
                             <div className="text-sm font-semibold text-slate-950">{projectFileActivityLabel(item)}</div>
                             <div className="mt-1 text-xs text-slate-500">
-                              {(item.actor_user_id ? usersById.get(item.actor_user_id)?.name : "SystĂ©m") || "SystĂ©m"} Â· {fmtDateTime(item.created_at)}
+                              {(item.actor_user_id ? usersById.get(item.actor_user_id)?.name : "Systém") || "Systém"} · {fmtDateTime(item.created_at)}
                             </div>
                             {item.detail && Object.keys(item.detail).length ? (
                               <div className="mt-2 text-xs leading-5 text-slate-600">{projectFileActivityDetail(item.detail)}</div>
@@ -1179,11 +1174,12 @@ export default function ProjectsPage() {
                           </div>
                         ))
                       ) : (
-                        <EmptyInline text={"ZatĂ­m bez zapsanĂ© projektovĂ© aktivity kolem souborĹŻ."} />
+                        <EmptyInline text={"Zatím bez zapsané projektové aktivity kolem souborů."} />
                       )}
                     </div>
                   </div>
-                </div>                {taskFormOpen && isAdmin ? (
+                </div>
+                {taskFormOpen && isAdmin ? (
                   <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
                     <div className="text-sm font-semibold">{UI.newTask}</div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -1214,12 +1210,12 @@ export default function ProjectsPage() {
                     </Field>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <select className="flex-1 rounded-2xl border bg-white px-3 py-2 text-sm" value={taskTemplateKey} onChange={(e) => setTaskTemplateKey(e.target.value)}>
-                        <option value="">Vybrat Ĺˇablonu checklistu</option>
+                        <option value="">Vybrat šablonu checklistu</option>
                         {checklistTemplates.map((template) => (
                           <option key={template.key} value={template.key}>{template.label}</option>
                         ))}
                       </select>
-                      <Button variant="secondary" onClick={applyTemplateToTaskForm}>PouĹľĂ­t Ĺˇablonu</Button>
+                      <Button variant="secondary" onClick={applyTemplateToTaskForm}>Použít šablonu</Button>
                     </div>
                     <div className="mt-4 flex justify-end gap-2">
                       <Button variant="secondary" onClick={() => setTaskFormOpen(false)}>{UI.cancel}</Button>
@@ -1365,13 +1361,13 @@ export default function ProjectsPage() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <select className="flex-1 rounded-2xl border bg-white px-3 py-2 text-sm" value={checklistTemplateKey} onChange={(e) => setChecklistTemplateKey(e.target.value)}>
-                      <option value="">PĹ™idat checklist ze Ĺˇablony</option>
+                      <option value="">Přidat checklist ze šablony</option>
                       {checklistTemplates.map((template) => (
                         <option key={template.key} value={template.key}>{template.label}</option>
                       ))}
                     </select>
                     <Button variant="secondary" onClick={applyTemplateToSelectedTask} disabled={busy === "check-template"}>
-                      {busy === "check-template" ? "VklĂˇdĂˇm Ĺˇablonu" : "PĹ™idat Ĺˇablonu"}
+                      {busy === "check-template" ? "Vkládám šablonu" : "Přidat šablonu"}
                     </Button>
                   </div>
                 </div>
@@ -1605,9 +1601,9 @@ function activityDetail(detail: Record<string, unknown>) {
 function projectFileActivityLabel(item: ProjectFileActivityLog) {
   switch (item.action) {
     case "project_file_added":
-      return "PĹ™idanĂ˝ soubor projektu";
+      return "Přidaný soubor projektu";
     case "project_file_deleted":
-      return "SmazanĂ˝ soubor projektu";
+      return "Smazaný soubor projektu";
     default:
       return item.action;
   }

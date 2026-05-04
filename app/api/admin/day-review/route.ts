@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
+import { buildDayLink, sendNotification } from "@/lib/notify";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -18,6 +19,12 @@ function reviewKey(userId: string, day: string, siteId?: string | null) {
 
 function missingReviewTableMessage(message: string) {
   return message.includes("attendance_day_reviews") || message.includes("attendance_audit_log");
+}
+
+async function loadUserProfile(userId: string) {
+  const db = supabaseAdmin();
+  const userRes = await db.from("users").select("id,name,email").eq("id", userId).maybeSingle();
+  return userRes.data || null;
 }
 
 export async function GET(req: NextRequest) {
@@ -36,7 +43,7 @@ export async function GET(req: NextRequest) {
   const reviewRes = await reviewQuery.order("updated_at", { ascending: false }).limit(1);
 
   if (reviewRes.error && missingReviewTableMessage(reviewRes.error.message || "")) {
-    return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
   let auditQuery = db
@@ -50,7 +57,7 @@ export async function GET(req: NextRequest) {
   const auditRes = await auditQuery;
 
   if (auditRes.error && missingReviewTableMessage(auditRes.error.message || "")) {
-    return json({ error: "V databázi chybí tabulka pro audit změn. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json({ error: "V databázi chybí tabulka pro audit změn. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
   return json({ review: reviewRes.data?.[0] || null, audit: auditRes.data || [], key: reviewKey(userId, day, siteId) });
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   if (existing.error) {
     if (missingReviewTableMessage(existing.error.message || "")) {
-      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
     return json({ error: "Nešlo načíst stav dne." }, { status: 500 });
   }
@@ -104,7 +111,7 @@ export async function POST(req: NextRequest) {
 
   if (result.error) {
     if (missingReviewTableMessage(result.error.message || "")) {
-      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusťte prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
     return json({ error: result.error.message || "Nešlo uložit stav dne." }, { status: 500 });
   }
@@ -123,6 +130,24 @@ export async function POST(req: NextRequest) {
     day,
     detail: { note, status },
   });
+
+  if (status === "returned") {
+    const targetUser = await loadUserProfile(userId);
+    if (targetUser?.email) {
+      await sendNotification({
+        userId,
+        email: targetUser.email,
+        kind: "day_returned",
+        entityType: "attendance_day_review",
+        entityId: reviewKey(userId, day, siteId),
+        actorUserId: auth.session.userId,
+        subject: `FlowDesk: den ${day} je vrácen k doplnění`,
+        text: `Ahoj ${targetUser.name || ""},\n\nadmin vrátil den ${day} k doplnění.${note ? `\n\nPoznámka: ${note}` : ""}\n\nOtevři den tady: ${buildDayLink(day)}`,
+        html: `<p>Ahoj ${targetUser.name || ""},</p><p>admin vrátil den <strong>${day}</strong> k doplnění.</p>${note ? `<p><strong>Poznámka:</strong> ${note}</p>` : ""}<p><a href="${buildDayLink(day)}">Otevřít detail dne</a></p>`,
+        detail: { day, site_id: siteId, note },
+      });
+    }
+  }
 
   return json({ review: result.data });
 }

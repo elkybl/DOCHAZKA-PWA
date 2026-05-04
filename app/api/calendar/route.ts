@@ -4,9 +4,10 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 import { calendarCreateSchema, normalizeCalendarPayload } from "@/lib/calendar";
+import { buildCalendarLink, sendNotification } from "@/lib/notify";
 import { dayLocalCZFromIso, hm, toDate } from "@/lib/time";
 
-type UserRow = { id: string; name: string };
+type UserRow = { id: string; name: string; email?: string | null };
 type AttendanceEventRow = {
   user_id: string;
   site_id: string | null;
@@ -256,9 +257,10 @@ export async function POST(req: NextRequest) {
     return json({ error: "Nemůžeš plánovat za jiného pracovníka." }, { status: 403 });
   }
 
-  const targetUserIds = session.role === "admin"
-    ? [...new Set((parsed.data.user_ids && parsed.data.user_ids.length ? parsed.data.user_ids : [targetUserId]).filter(Boolean))]
-    : [session.userId];
+  const targetUserIds =
+    session.role === "admin"
+      ? [...new Set((parsed.data.user_ids && parsed.data.user_ids.length ? parsed.data.user_ids : [targetUserId]).filter(Boolean))]
+      : [session.userId];
 
   const normalizedPayload = normalizeCalendarPayload({
     ...parsed.data,
@@ -275,6 +277,30 @@ export async function POST(req: NextRequest) {
   const db = supabaseAdmin();
   const bulk = parsed.data.bulk_create;
 
+  async function notifyAssignedUsers(targetIds: string[], entityIds: string[]) {
+    if (session.role !== "admin" || !targetIds.length) return;
+    const usersRes = await db.from("users").select("id,name,email").in("id", targetIds);
+    const users = (usersRes.data || []) as UserRow[];
+    await Promise.all(
+      users
+        .filter((user) => user.id !== session.userId && user.email)
+        .map((user) =>
+          sendNotification({
+            userId: user.id,
+            email: user.email || null,
+            kind: "calendar_assignment",
+            entityType: "calendar_item",
+            entityId: entityIds[0] || `${payload.date}:${user.id}`,
+            actorUserId: session.userId,
+            subject: `FlowDesk: nová práce v kalendáři na ${payload.date}`,
+            text: `Ahoj ${user.name || ""},\n\nadmin ti přidal položku do kalendáře na ${payload.date}.\n\nNázev: ${payload.title}\n${payload.location ? `Místo: ${payload.location}\n` : ""}\nOtevřít kalendář: ${buildCalendarLink(payload.date)}`,
+            html: `<p>Ahoj ${user.name || ""},</p><p>admin ti přidal položku do kalendáře na <strong>${payload.date}</strong>.</p><p><strong>Název:</strong> ${payload.title}</p>${payload.location ? `<p><strong>Místo:</strong> ${payload.location}</p>` : ""}<p><a href="${buildCalendarLink(payload.date)}">Otevřít kalendář</a></p>`,
+            detail: { day: payload.date, title: payload.title, location: payload.location, assigned_user_id: user.id },
+          }),
+        ),
+    );
+  }
+
   if (session.role === "admin" && !bulk && targetUserIds.length > 1) {
     const rows = targetUserIds.map((userId) =>
       normalizeCalendarPayload({
@@ -284,6 +310,7 @@ export async function POST(req: NextRequest) {
     );
     const insertMany = await db.from("calendar_items").insert(rows).select("*");
     if (insertMany.error) return json({ error: "Nešlo uložit položku pro více pracovníků." }, { status: 500 });
+    await notifyAssignedUsers(targetUserIds, (insertMany.data || []).map((row) => String((row as { id: string }).id)));
     return json({ items: insertMany.data || [], created: rows.length });
   }
 
@@ -323,6 +350,8 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await db.from("calendar_items").insert(payload).select("*").single();
   if (error || !data) return json({ error: "Nešlo uložit položku kalendáře." }, { status: 500 });
+
+  await notifyAssignedUsers([String(payload.user_id)], [String(data.id)]);
 
   return json({ item: data });
 }

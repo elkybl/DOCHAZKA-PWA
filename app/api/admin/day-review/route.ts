@@ -43,7 +43,10 @@ export async function GET(req: NextRequest) {
   const reviewRes = await reviewQuery.order("updated_at", { ascending: false }).limit(1);
 
   if (reviewRes.error && missingReviewTableMessage(reviewRes.error.message || "")) {
-    return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json(
+      { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
+      { status: 500 },
+    );
   }
 
   let auditQuery = db
@@ -57,10 +60,17 @@ export async function GET(req: NextRequest) {
   const auditRes = await auditQuery;
 
   if (auditRes.error && missingReviewTableMessage(auditRes.error.message || "")) {
-    return json({ error: "V databázi chybí tabulka pro audit změn. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+    return json(
+      { error: "V databázi chybí tabulka pro audit změn. Spusť prosím SQL migraci attendance_reviews_audit." },
+      { status: 500 },
+    );
   }
 
-  return json({ review: reviewRes.data?.[0] || null, audit: auditRes.data || [], key: reviewKey(userId, day, siteId) });
+  return json({
+    review: reviewRes.data?.[0] || null,
+    audit: auditRes.data || [],
+    key: reviewKey(userId, day, siteId),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -97,7 +107,10 @@ export async function POST(req: NextRequest) {
 
   if (existing.error) {
     if (missingReviewTableMessage(existing.error.message || "")) {
-      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json(
+        { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
+        { status: 500 },
+      );
     }
     return json({ error: "Nešlo načíst stav dne." }, { status: 500 });
   }
@@ -111,7 +124,10 @@ export async function POST(req: NextRequest) {
 
   if (result.error) {
     if (missingReviewTableMessage(result.error.message || "")) {
-      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
+      return json(
+        { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
+        { status: 500 },
+      );
     }
     return json({ error: result.error.message || "Nešlo uložit stav dne." }, { status: 500 });
   }
@@ -149,5 +165,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return json({ review: result.data });
+  return json({
+    review: {
+      ...result.data,
+      key: reviewKey(userId, day, siteId),
+    },
+  });
 }

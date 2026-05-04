@@ -298,8 +298,15 @@ export default function AdminAttendancePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo uložit kontrolu dne.");
+      if (data?.review) {
+        setReviews((current) => {
+          const next = current.filter((item) => item.key !== group.key);
+          next.unshift(data.review);
+          return next;
+        });
+      }
       setInfo(status === "approved" ? "Den je schválený." : status === "returned" ? "Den je vrácený k doplnění." : "Den je znovu označený jako čekající.");
-      await load();
+      await load({ focusedDay: group.day });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Nešlo uložit kontrolu dne.");
     } finally {

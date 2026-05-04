@@ -2,10 +2,19 @@ import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 import { addProjectFileActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
+import { projectFileCategorySchema, type ProjectFileCategory } from "@/lib/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 const BUCKET = "project-files";
+
+function inferProjectFileCategory(file: File): ProjectFileCategory {
+  const name = file.name.toLowerCase();
+  if (file.type.startsWith("image/")) return "photo";
+  if (file.type.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+  if (name.endsWith(".dwg") || name.endsWith(".dxf") || name.endsWith(".ifc")) return "drawing";
+  return "other";
+}
 
 async function loadProjectFileContext(id: string, fileId: string, userId: string, role: "admin" | "worker") {
   const access = await ensureProjectAccess(id, userId, role);
@@ -14,7 +23,7 @@ async function loadProjectFileContext(id: string, fileId: string, userId: string
   const db = supabaseAdmin();
   const file = await db
     .from("project_files")
-    .select("id,project_id,file_name,file_path,content_type,size_bytes,uploaded_by,created_at")
+    .select("id,project_id,file_name,file_path,category,content_type,size_bytes,uploaded_by,created_at")
     .eq("id", fileId)
     .eq("project_id", id)
     .single();
@@ -40,6 +49,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return json({ error: "Chybí soubor k nahrání." }, { status: 400 });
   }
 
+  const categoryRaw = typeof form?.get("category") === "string" ? String(form?.get("category")) : "";
+  const categoryParsed = projectFileCategorySchema.safeParse(categoryRaw || inferProjectFileCategory(file));
+  if (!categoryParsed.success) {
+    return json({ error: "Neplatná kategorie souboru." }, { status: 400 });
+  }
+
   const db = supabaseAdmin();
   const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
   const safeExt = ext ? `.${String(ext).toLowerCase()}` : "";
@@ -61,11 +76,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
       project_id: id,
       file_name: file.name,
       file_path: safeName,
+      category: categoryParsed.data,
       content_type: file.type || null,
       size_bytes: file.size,
       uploaded_by: auth.session.userId,
     })
-    .select("id,project_id,file_name,file_path,content_type,size_bytes,uploaded_by,created_at")
+    .select("id,project_id,file_name,file_path,category,content_type,size_bytes,uploaded_by,created_at")
     .single();
 
   if (insert.error || !insert.data) {
@@ -76,6 +92,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const signed = await db.storage.from(BUCKET).createSignedUrl(safeName, 60 * 60);
   await addProjectFileActivity(id, auth.session.userId, "project_file_added", {
     file_name: file.name,
+    category: categoryParsed.data,
     size_bytes: file.size,
   });
   return json({
@@ -104,6 +121,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
   await addProjectFileActivity(id, auth.session.userId, "project_file_deleted", {
     file_name: file.file_name,
+    category: file.category,
   });
   return json({ ok: true });
 }

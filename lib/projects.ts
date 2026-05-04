@@ -3,10 +3,12 @@ import { z } from "zod";
 export const projectStatuses = ["active", "archived"] as const;
 export const taskStatuses = ["todo", "doing", "done"] as const;
 export const memberRoles = ["owner", "member"] as const;
+export const projectFileCategories = ["photo", "pdf", "drawing", "handover", "document", "other"] as const;
 
 export type ProjectStatus = (typeof projectStatuses)[number];
 export type TaskStatus = (typeof taskStatuses)[number];
 export type ProjectMemberRole = (typeof memberRoles)[number];
+export type ProjectFileCategory = (typeof projectFileCategories)[number];
 
 export const projectStatusLabel: Record<ProjectStatus, string> = {
   active: "Aktivní",
@@ -17,6 +19,15 @@ export const taskStatusLabel: Record<TaskStatus, string> = {
   todo: "K řešení",
   doing: "Probíhá",
   done: "Hotovo",
+};
+
+export const projectFileCategoryLabel: Record<ProjectFileCategory, string> = {
+  photo: "Fotky",
+  pdf: "PDF",
+  drawing: "Výkresy",
+  handover: "Předání",
+  document: "Dokumenty",
+  other: "Ostatní",
 };
 
 export const checklistTemplates = [
@@ -118,11 +129,14 @@ export const projectTaskLabelSchema = z.object({
   labels: z.array(z.string().min(1).max(40)).max(12),
 });
 
+export const projectFileCategorySchema = z.enum(projectFileCategories);
+
 export type ProjectFile = {
   id: string;
   project_id: string;
   file_name: string;
   file_path: string;
+  category: ProjectFileCategory;
   content_type: string | null;
   size_bytes: number | null;
   uploaded_by: string | null;

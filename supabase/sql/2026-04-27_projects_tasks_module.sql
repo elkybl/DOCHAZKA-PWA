@@ -81,6 +81,7 @@ create table if not exists public.project_files (
   project_id uuid not null references public.projects(id) on delete cascade,
   file_name text not null,
   file_path text not null,
+  category text not null default 'other',
   content_type text null,
   size_bytes bigint null,
   uploaded_by uuid null references public.users(id) on delete set null,
@@ -89,6 +90,12 @@ create table if not exists public.project_files (
 
 create index if not exists project_files_project_idx
   on public.project_files(project_id, created_at desc);
+
+alter table public.project_files
+  add column if not exists category text not null default 'other';
+
+create index if not exists project_files_project_category_idx
+  on public.project_files(project_id, category, created_at desc);
 
 create table if not exists public.project_file_activity_logs (
   id uuid primary key default gen_random_uuid(),
@@ -176,3 +183,16 @@ begin
 end $$;
 
 alter table public.project_tasks validate constraint project_tasks_status_check;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'project_files_category_check'
+  ) then
+    alter table public.project_files
+      add constraint project_files_category_check
+      check (category in ('photo', 'pdf', 'drawing', 'handover', 'document', 'other')) not valid;
+  end if;
+end $$;
+
+alter table public.project_files validate constraint project_files_category_check;

@@ -180,8 +180,16 @@ export default function ProjectsPage() {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
   const [projectFileCategory, setProjectFileCategory] = useState<ProjectFileCategory>("other");
+  const [projectFileTopic, setProjectFileTopic] = useState("");
+  const [projectFileCaption, setProjectFileCaption] = useState("");
   const [projectFileFilter, setProjectFileFilter] = useState<ProjectFileFilter>("all");
-  const [projectFilePreview, setProjectFilePreview] = useState<{ name: string; url: string; contentType: string | null } | null>(null);
+  const [projectFilePreview, setProjectFilePreview] = useState<{
+    name: string;
+    url: string;
+    contentType: string | null;
+    topic: string | null;
+    caption: string | null;
+  } | null>(null);
 
   useEffect(() => {
     const nextToken = getToken();
@@ -638,6 +646,8 @@ export default function ProjectsPage() {
     const form = new FormData();
     form.set("file", file);
     form.set("category", projectFileCategory);
+    form.set("topic", projectFileTopic.trim() || file.name.replace(/\.[^.]+$/, ""));
+    form.set("caption", projectFileCaption.trim());
     setBusy("project-file-upload");
     setErr(null);
     try {
@@ -649,7 +659,18 @@ export default function ProjectsPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Nešlo nahrát soubor k projektu.");
       setInfo("Soubor projektu je nahraný.");
+      if (data?.signed_url) {
+        setProjectFilePreview({
+          name: file.name,
+          url: data.signed_url,
+          contentType: file.type || null,
+          topic: projectFileTopic.trim() || file.name.replace(/\.[^.]+$/, ""),
+          caption: projectFileCaption.trim() || null,
+        });
+      }
       setProjectFileCategory("other");
+      setProjectFileTopic("");
+      setProjectFileCaption("");
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Nešlo nahrát soubor k projektu.");
@@ -711,6 +732,8 @@ export default function ProjectsPage() {
         name: file.file_name,
         url: data.signed_url,
         contentType: file.content_type,
+        topic: file.topic,
+        caption: file.caption,
       });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Nešlo načíst náhled souboru projektu.");
@@ -740,7 +763,7 @@ export default function ProjectsPage() {
   }
 
   async function deleteProjectFile(file: ProjectFile) {
-    if (!token || !selectedProject || !confirm(`Smazat soubor projektu "${file.file_name}"?`)) return;
+    if (!token || !selectedProject || !confirm(`Smazat soubor projektu "${file.topic || file.file_name}"?`)) return;
     setBusy(`project-file-delete-${file.id}`);
     setErr(null);
     try {
@@ -1049,10 +1072,10 @@ export default function ProjectsPage() {
                           >
                             <div className="aspect-[4/3] bg-slate-100">
                               <div className="flex h-full items-center justify-center px-3 text-center text-xs font-semibold text-slate-400">
-                                {file.file_name}
+                                {file.topic || file.file_name}
                               </div>
                             </div>
-                            <div className="border-t px-3 py-2 text-xs text-slate-600">{fmtDateTime(file.created_at)}</div>
+                            <div className="border-t px-3 py-2"><div className="truncate text-xs font-semibold text-slate-800">{file.topic || file.file_name}</div><div className="mt-1 text-[11px] text-slate-500">{fmtDateTime(file.created_at)}</div></div>
                           </button>
                         ))}
                       </div>
@@ -1067,7 +1090,8 @@ export default function ProjectsPage() {
                           <div key={file.id} className="rounded-2xl border bg-white px-4 py-3">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="text-sm font-semibold text-slate-950">{file.file_name}</div>
+                                <div className="text-sm font-semibold text-slate-950">{file.topic || file.file_name}</div>
+                                {file.caption ? <div className="mt-1 text-sm text-slate-600">{file.caption}</div> : null}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                   <Pill tone="neutral">{projectFileCategoryLabel[file.category]}</Pill>
                                   <span>{uploadedBy ? `${uploadedBy} · ` : ""}{fmtDateTime(file.created_at)} · {fmtSize(file.size_bytes)}</span>
@@ -1102,7 +1126,10 @@ export default function ProjectsPage() {
                     <div className="mt-4 rounded-2xl border bg-white p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-sm font-semibold text-slate-950">{projectFilePreview.name}</div>
+                          <div className="text-sm font-semibold text-slate-950">{projectFilePreview.topic || projectFilePreview.name}</div>
+                          {projectFilePreview.caption ? (
+                            <div className="mt-1 text-sm text-slate-600">{projectFilePreview.caption}</div>
+                          ) : null}
                           <div className="mt-1 text-xs text-slate-500">
                             {projectFilePreview.contentType?.includes("pdf")
                               ? "Náhled PDF"
@@ -1118,9 +1145,9 @@ export default function ProjectsPage() {
                       <div className="mt-4 overflow-hidden rounded-2xl border bg-slate-50">
                         {projectFilePreview.contentType?.startsWith("image/") ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={projectFilePreview.url} alt={projectFilePreview.name} className="max-h-[440px] w-full object-contain bg-white" />
+                          <img src={projectFilePreview.url} alt={projectFilePreview.topic || projectFilePreview.name} className="max-h-[440px] w-full object-contain bg-white" />
                         ) : projectFilePreview.contentType?.includes("pdf") ? (
-                          <iframe src={projectFilePreview.url} title={projectFilePreview.name} className="h-[440px] w-full bg-white" />
+                          <iframe src={projectFilePreview.url} title={projectFilePreview.topic || projectFilePreview.name} className="h-[440px] w-full bg-white" />
                         ) : (
                           <div className="p-6 text-sm text-slate-600">
                             Tento typ souboru nemá přímý náhled. Otevři ho přes tlačítko <span className="font-semibold">Otevřít</span>.
@@ -1129,7 +1156,7 @@ export default function ProjectsPage() {
                       </div>
                     </div>
                   ) : null}
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr_1fr_auto]">
                     <select
                       className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
                       value={projectFileCategory}
@@ -1142,6 +1169,18 @@ export default function ProjectsPage() {
                       <option value="document">Dokumenty</option>
                       <option value="other">Ostatní</option>
                     </select>
+                    <input
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+                      value={projectFileTopic}
+                      onChange={(e) => setProjectFileTopic(e.target.value)}
+                      placeholder="Téma nebo část zakázky"
+                    />
+                    <input
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+                      value={projectFileCaption}
+                      onChange={(e) => setProjectFileCaption(e.target.value)}
+                      placeholder="Krátký popisek k fotce nebo dokumentu"
+                    />
                     <label className="inline-flex cursor-pointer items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
                       <input
                         type="file"
@@ -1155,7 +1194,7 @@ export default function ProjectsPage() {
                       {busy === "project-file-upload" ? "Nahrávám soubor projektu" : "Přidat soubor projektu"}
                     </label>
                     <span className="text-xs text-slate-500">
-                      Sem patří podklady k celé akci: nabídka, výkres, PDF, fotky nebo předávací dokumenty.
+                      Sem patří podklady k celé akci: nabídka, výkres, PDF, fotky nebo předávací dokumenty. U fotek doplň téma, aby bylo hned jasné, čeho se snímek týká.
                     </span>
                   </div>
                   <div className="mt-5 rounded-2xl border bg-white p-4">
@@ -1586,7 +1625,7 @@ function activityDetail(detail: Record<string, unknown>) {
   if (typeof detail.file_name === "string") parts.push(`Soubor: ${detail.file_name}`);
   if (typeof detail.status === "string") {
     const status = detail.status as TaskStatus;
-    parts.push(`Stav: ${taskStatusLabel[status] ?? detail.status}`);
+    parts.push(`Stav: ${taskStatusLabel[status] || detail.status}`);
   }
   if (Array.isArray(detail.labels) && detail.labels.length) parts.push(`\u0160t\u00edtky: ${detail.labels.join(", ")}`);
   if (typeof detail.text === "string") parts.push(`Bod checklistu: ${detail.text}`);
@@ -1612,6 +1651,7 @@ function projectFileActivityLabel(item: ProjectFileActivityLog) {
 function projectFileActivityDetail(detail: Record<string, unknown>) {
   const parts: string[] = [];
   if (typeof detail.file_name === "string") parts.push(`Soubor: ${detail.file_name}`);
+  if (typeof detail.topic === "string" && detail.topic.trim()) parts.push(`Téma: ${detail.topic}`);
   if (typeof detail.category === "string" && detail.category in projectFileCategoryLabel) {
     parts.push(`Kategorie: ${projectFileCategoryLabel[detail.category as ProjectFileCategory]}`);
   }

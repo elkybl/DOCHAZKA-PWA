@@ -82,6 +82,8 @@ create table if not exists public.project_files (
   file_name text not null,
   file_path text not null,
   category text not null default 'other',
+  topic text null,
+  caption text null,
   content_type text null,
   size_bytes bigint null,
   uploaded_by uuid null references public.users(id) on delete set null,
@@ -93,6 +95,10 @@ create index if not exists project_files_project_idx
 
 alter table public.project_files
   add column if not exists category text not null default 'other';
+alter table public.project_files
+  add column if not exists topic text null;
+alter table public.project_files
+  add column if not exists caption text null;
 
 create index if not exists project_files_project_category_idx
   on public.project_files(project_id, category, created_at desc);

@@ -130,6 +130,8 @@ export const projectTaskLabelSchema = z.object({
 });
 
 export const projectFileCategorySchema = z.enum(projectFileCategories);
+export const projectFileTopicSchema = z.string().min(1).max(120);
+export const projectFileCaptionSchema = z.string().max(300).nullable().optional();
 
 export type ProjectFile = {
   id: string;
@@ -137,6 +139,8 @@ export type ProjectFile = {
   file_name: string;
   file_path: string;
   category: ProjectFileCategory;
+  topic: string | null;
+  caption: string | null;
   content_type: string | null;
   size_bytes: number | null;
   uploaded_by: string | null;

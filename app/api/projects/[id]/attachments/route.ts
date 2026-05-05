@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 import { addProjectFileActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
-import { projectFileCategorySchema, type ProjectFileCategory } from "@/lib/projects";
+import {
+  projectFileCaptionSchema,
+  projectFileCategorySchema,
+  projectFileTopicSchema,
+  type ProjectFileCategory,
+} from "@/lib/projects";
 import { createProjectSignedUrl, removeProjectObject, storageProviderLabel, uploadProjectObject } from "@/lib/object-storage";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -24,7 +29,7 @@ async function loadProjectFileContext(id: string, fileId: string, userId: string
   const db = supabaseAdmin();
   const file = await db
     .from("project_files")
-    .select("id,project_id,file_name,file_path,category,content_type,size_bytes,uploaded_by,created_at")
+    .select("id,project_id,file_name,file_path,category,topic,caption,content_type,size_bytes,uploaded_by,created_at")
     .eq("id", fileId)
     .eq("project_id", id)
     .single();
@@ -55,6 +60,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (!categoryParsed.success) {
     return json({ error: "Neplatná kategorie souboru." }, { status: 400 });
   }
+  const topicRaw = typeof form?.get("topic") === "string" ? String(form?.get("topic")).trim() : "";
+  const topicParsed = projectFileTopicSchema.safeParse(topicRaw || file.name.replace(/\.[^.]+$/, ""));
+  if (!topicParsed.success) {
+    return json({ error: "Doplň prosím téma nebo název souboru." }, { status: 400 });
+  }
+  const captionRaw = typeof form?.get("caption") === "string" ? String(form?.get("caption")).trim() : "";
+  const captionParsed = projectFileCaptionSchema.safeParse(captionRaw || null);
+  if (!captionParsed.success) {
+    return json({ error: "Popisek souboru je příliš dlouhý." }, { status: 400 });
+  }
 
   const db = supabaseAdmin();
   const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
@@ -79,11 +94,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
       file_name: file.name,
       file_path: safeName,
       category: categoryParsed.data,
+      topic: topicParsed.data,
+      caption: captionParsed.data ?? null,
       content_type: file.type || null,
       size_bytes: file.size,
       uploaded_by: auth.session.userId,
     })
-    .select("id,project_id,file_name,file_path,category,content_type,size_bytes,uploaded_by,created_at")
+    .select("id,project_id,file_name,file_path,category,topic,caption,content_type,size_bytes,uploaded_by,created_at")
     .single();
 
   if (insert.error || !insert.data) {
@@ -95,6 +112,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   await addProjectFileActivity(id, auth.session.userId, "project_file_added", {
     file_name: file.name,
     category: categoryParsed.data,
+    topic: topicParsed.data,
     size_bytes: file.size,
     provider: storageProviderLabel(),
   });

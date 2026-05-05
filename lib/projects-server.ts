@@ -127,7 +127,7 @@ export async function loadProjectBundle(sessionUserId: string, sessionRole: "adm
   const [projectFilesRes, projectFileActivityRes, assigneesRes, checklistRes, commentsRes, attachmentsRes, activityRes, labelsRes] = await Promise.all([
     db
       .from("project_files")
-      .select("id,project_id,file_name,file_path,category,content_type,size_bytes,uploaded_by,created_at")
+      .select("id,project_id,file_name,file_path,category,topic,caption,content_type,size_bytes,uploaded_by,created_at")
       .in("project_id", projectIdSet)
       .order("created_at", { ascending: false }),
     db

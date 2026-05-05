@@ -2,10 +2,9 @@ import { NextRequest } from "next/server";
 import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 import { addTaskActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
+import { createProjectSignedUrl, removeProjectObject, storageProviderLabel, uploadProjectObject } from "@/lib/object-storage";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-const BUCKET = "project-files";
 
 async function loadAttachmentContext(id: string, attachmentId: string, userId: string, role: "admin" | "worker") {
   const db = supabaseAdmin();
@@ -36,7 +35,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
-
   if (!(file instanceof File)) {
     return json({ error: "Chybí soubor k nahrání." }, { status: 400 });
   }
@@ -53,13 +51,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const safeName = `${id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
 
-  const upload = await db.storage.from(BUCKET).upload(safeName, bytes, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-
-  if (upload.error) {
-    return json({ error: "Nešlo nahrát soubor. Zkontroluj bucket project-files v Supabase Storage." }, { status: 500 });
+  try {
+    await uploadProjectObject({
+      key: safeName,
+      bytes,
+      contentType: file.type || "application/octet-stream",
+    });
+  } catch {
+    return json({ error: `Nešlo nahrát soubor. Zkontroluj nastavení ${storageProviderLabel()}.` }, { status: 500 });
   }
 
   const insert = await db
@@ -76,19 +75,20 @@ export async function POST(req: NextRequest, context: RouteContext) {
     .single();
 
   if (insert.error || !insert.data) {
-    await db.storage.from(BUCKET).remove([safeName]);
+    await removeProjectObject(safeName);
     return json({ error: "Soubor se nahrál, ale nepodařilo se uložit metadata." }, { status: 500 });
   }
 
-  const signed = await db.storage.from(BUCKET).createSignedUrl(safeName, 60 * 60);
+  const signedUrl = await createProjectSignedUrl(safeName, 60 * 60).catch(() => null);
   await addTaskActivity(id, auth.session.userId, "attachment_added", {
     file_name: file.name,
     size_bytes: file.size,
+    provider: storageProviderLabel(),
   });
 
   return json({
     attachment: insert.data,
-    signed_url: signed.data?.signedUrl || null,
+    signed_url: signedUrl,
   });
 }
 
@@ -106,12 +106,13 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   if ("error" in loaded) return loaded.error;
   const { db, attachment } = loaded;
 
-  await db.storage.from(BUCKET).remove([attachment.file_path]);
+  await removeProjectObject(attachment.file_path);
   const removeMeta = await db.from("project_attachments").delete().eq("id", attachmentId);
   if (removeMeta.error) return json({ error: "Nešlo smazat metadata přílohy." }, { status: 500 });
 
   await addTaskActivity(id, auth.session.userId, "attachment_deleted", {
     file_name: attachment.file_name,
+    provider: storageProviderLabel(),
   });
   return json({ ok: true });
 }
@@ -127,13 +128,13 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
   const loaded = await loadAttachmentContext(id, attachmentId, auth.session.userId, auth.session.role);
   if ("error" in loaded) return loaded.error;
-  const { db, attachment } = loaded;
+  const { attachment } = loaded;
 
-  const signed = await db.storage.from(BUCKET).createSignedUrl(attachment.file_path, 60 * 30);
-  if (signed.error || !signed.data?.signedUrl) return json({ error: "Nešlo otevřít přílohu." }, { status: 500 });
+  const signedUrl = await createProjectSignedUrl(attachment.file_path, 60 * 30).catch(() => null);
+  if (!signedUrl) return json({ error: "Nešlo otevřít přílohu." }, { status: 500 });
 
   return json({
     attachment,
-    signed_url: signed.data.signedUrl,
+    signed_url: signedUrl,
   });
 }

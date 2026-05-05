@@ -3,16 +3,17 @@ import { json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 import { addProjectFileActivity, ensureProjectAccess, requireProjectSession } from "@/lib/projects-server";
 import { projectFileCategorySchema, type ProjectFileCategory } from "@/lib/projects";
+import { createProjectSignedUrl, removeProjectObject, storageProviderLabel, uploadProjectObject } from "@/lib/object-storage";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-const BUCKET = "project-files";
 
 function inferProjectFileCategory(file: File): ProjectFileCategory {
   const name = file.name.toLowerCase();
   if (file.type.startsWith("image/")) return "photo";
   if (file.type.includes("pdf") || name.endsWith(".pdf")) return "pdf";
   if (name.endsWith(".dwg") || name.endsWith(".dxf") || name.endsWith(".ifc")) return "drawing";
+  if (name.includes("predani") || name.includes("předání")) return "handover";
+  if (name.endsWith(".doc") || name.endsWith(".docx") || name.endsWith(".xls") || name.endsWith(".xlsx")) return "document";
   return "other";
 }
 
@@ -61,13 +62,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const safeName = `project-${id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
 
-  const upload = await db.storage.from(BUCKET).upload(safeName, bytes, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-
-  if (upload.error) {
-    return json({ error: "Nešlo nahrát soubor. Zkontroluj bucket project-files v Supabase Storage." }, { status: 500 });
+  try {
+    await uploadProjectObject({
+      key: safeName,
+      bytes,
+      contentType: file.type || "application/octet-stream",
+    });
+  } catch {
+    return json({ error: `Nešlo nahrát soubor. Zkontroluj nastavení ${storageProviderLabel()}.` }, { status: 500 });
   }
 
   const insert = await db
@@ -85,19 +87,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
     .single();
 
   if (insert.error || !insert.data) {
-    await db.storage.from(BUCKET).remove([safeName]);
+    await removeProjectObject(safeName);
     return json({ error: "Soubor se nahrál, ale nepodařilo se uložit metadata projektu." }, { status: 500 });
   }
 
-  const signed = await db.storage.from(BUCKET).createSignedUrl(safeName, 60 * 60);
+  const signedUrl = await createProjectSignedUrl(safeName, 60 * 60).catch(() => null);
   await addProjectFileActivity(id, auth.session.userId, "project_file_added", {
     file_name: file.name,
     category: categoryParsed.data,
     size_bytes: file.size,
+    provider: storageProviderLabel(),
   });
+
   return json({
     file: insert.data,
-    signed_url: signed.data?.signedUrl || null,
+    signed_url: signedUrl,
   });
 }
 
@@ -115,13 +119,14 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   if ("error" in loaded) return loaded.error;
   const { db, file } = loaded;
 
-  await db.storage.from(BUCKET).remove([file.file_path]);
+  await removeProjectObject(file.file_path);
   const removeMeta = await db.from("project_files").delete().eq("id", fileId);
   if (removeMeta.error) return json({ error: "Nešlo smazat metadata souboru projektu." }, { status: 500 });
 
   await addProjectFileActivity(id, auth.session.userId, "project_file_deleted", {
     file_name: file.file_name,
     category: file.category,
+    provider: storageProviderLabel(),
   });
   return json({ ok: true });
 }
@@ -137,13 +142,13 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
   const loaded = await loadProjectFileContext(id, fileId, auth.session.userId, auth.session.role);
   if ("error" in loaded) return loaded.error;
-  const { db, file } = loaded;
+  const { file } = loaded;
 
-  const signed = await db.storage.from(BUCKET).createSignedUrl(file.file_path, 60 * 30);
-  if (signed.error || !signed.data?.signedUrl) return json({ error: "Nešlo otevřít soubor projektu." }, { status: 500 });
+  const signedUrl = await createProjectSignedUrl(file.file_path, 60 * 30).catch(() => null);
+  if (!signedUrl) return json({ error: "Nešlo otevřít soubor projektu." }, { status: 500 });
 
   return json({
     file,
-    signed_url: signed.data.signedUrl,
+    signed_url: signedUrl,
   });
 }

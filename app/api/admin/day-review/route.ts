@@ -14,7 +14,7 @@ async function requireAdmin(req: NextRequest) {
 }
 
 function reviewKey(userId: string, day: string, siteId?: string | null) {
-  return `${userId}__${day}__${siteId || ""}`;
+  return `${day}__${userId}__${siteId || ""}`;
 }
 
 function missingReviewTableMessage(message: string) {
@@ -43,27 +43,15 @@ export async function GET(req: NextRequest) {
   const reviewRes = await reviewQuery.order("updated_at", { ascending: false }).limit(1);
 
   if (reviewRes.error && missingReviewTableMessage(reviewRes.error.message || "")) {
-    return json(
-      { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
-      { status: 500 },
-    );
+    return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
-  let auditQuery = db
-    .from("attendance_audit_log")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("day", day)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  let auditQuery = db.from("attendance_audit_log").select("*").eq("user_id", userId).eq("day", day).order("created_at", { ascending: false }).limit(20);
   auditQuery = siteId ? auditQuery.eq("site_id", siteId) : auditQuery.is("site_id", null);
   const auditRes = await auditQuery;
 
   if (auditRes.error && missingReviewTableMessage(auditRes.error.message || "")) {
-    return json(
-      { error: "V databázi chybí tabulka pro audit změn. Spusť prosím SQL migraci attendance_reviews_audit." },
-      { status: 500 },
-    );
+    return json({ error: "V databázi chybí tabulka pro audit změn. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
   }
 
   return json({
@@ -107,27 +95,20 @@ export async function POST(req: NextRequest) {
 
   if (existing.error) {
     if (missingReviewTableMessage(existing.error.message || "")) {
-      return json(
-        { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
-        { status: 500 },
-      );
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
     return json({ error: "Nešlo načíst stav dne." }, { status: 500 });
   }
 
   const current = existing.data?.[0] || null;
   const duplicateIds = (existing.data || []).slice(1).map((row) => row.id);
-
   const result = current?.id
     ? await db.from("attendance_day_reviews").update(payload).eq("id", current.id).select("*").single()
     : await db.from("attendance_day_reviews").insert(payload).select("*").single();
 
   if (result.error) {
     if (missingReviewTableMessage(result.error.message || "")) {
-      return json(
-        { error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." },
-        { status: 500 },
-      );
+      return json({ error: "V databázi chybí tabulka pro schvalování dnů. Spusť prosím SQL migraci attendance_reviews_audit." }, { status: 500 });
     }
     return json({ error: result.error.message || "Nešlo uložit stav dne." }, { status: 500 });
   }

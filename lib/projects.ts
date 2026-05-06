@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const projectStatuses = ["active", "archived"] as const;
 export const taskStatuses = ["todo", "doing", "done"] as const;
@@ -273,13 +273,3 @@ export type ProjectBundle = {
   users: ProjectUser[];
   sites: ProjectSite[];
 };
-
-export function isProjectMember(sessionUserId: string, projectId: string, members: ProjectMember[]) {
-  return members.some((member) => member.project_id === projectId && member.user_id === sessionUserId);
-}
-
-export function isProjectOwner(sessionUserId: string, projectId: string, members: ProjectMember[]) {
-  return members.some(
-    (member) => member.project_id === projectId && member.user_id === sessionUserId && member.role === "owner",
-  );
-}

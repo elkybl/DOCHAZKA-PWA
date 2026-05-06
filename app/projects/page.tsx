@@ -183,6 +183,7 @@ export default function ProjectsPage() {
   const [projectFileTopic, setProjectFileTopic] = useState("");
   const [projectFileCaption, setProjectFileCaption] = useState("");
   const [projectFileFilter, setProjectFileFilter] = useState<ProjectFileFilter>("all");
+  const [projectFileThumbs, setProjectFileThumbs] = useState<Record<string, string>>({});
   const [projectFilePreview, setProjectFilePreview] = useState<{
     name: string;
     url: string;
@@ -409,7 +410,44 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     setProjectFilePreview(null);
+    setProjectFileThumbs({});
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!token || !selectedProject || !projectGalleryFiles.length) return;
+
+    let cancelled = false;
+
+    const loadThumbs = async () => {
+      const entries = await Promise.all(
+        projectGalleryFiles.map(async (file) => {
+          try {
+            const res = await fetch(
+              `/api/projects/${selectedProject.id}/attachments?file_id=${encodeURIComponent(file.id)}`,
+              {
+                method: "GET",
+                headers: { authorization: `Bearer ${token}` },
+              },
+            );
+            const data = (await res.json().catch(() => ({}))) as { signed_url?: string | null };
+            if (!res.ok || !data.signed_url) return null;
+            return [file.id, data.signed_url] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+      setProjectFileThumbs(Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, string]>));
+    };
+
+    void loadThumbs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectGalleryFiles, selectedProject, token]);
 
   async function createProject() {
     if (!token) return;
@@ -1008,11 +1046,11 @@ export default function ProjectsPage() {
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {selectedProject.status === "active" ? (
                       <Button variant="secondary" onClick={() => updateProjectStatus("archived")} disabled={busy === "project-status"}>
-                        {busy === "project-status" ? "Ukládám" : "Přesunout do archivu"}
+                        {busy === "project-status" ? "Ukl\u00e1d\u00e1m" : "P\u0159esunout do archivu"}
                       </Button>
                     ) : (
                       <Button variant="secondary" onClick={() => updateProjectStatus("active")} disabled={busy === "project-status"}>
-                        {busy === "project-status" ? "Ukládám" : "Vrátit mezi aktivní"}
+                        {busy === "project-status" ? "Ukl\u00e1d\u00e1m" : "Vr\u00e1tit mezi aktivn\u00ed"}
                       </Button>
                     )}
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
@@ -1021,17 +1059,22 @@ export default function ProjectsPage() {
                   </div>
                 ) : null}
 
-                <div className="mt-5 rounded-3xl border bg-slate-50 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Pill tone="neutral">Moje otevřené úkoly {myTasks.filter((task) => task.status !== "done").length}</Pill>
-                    <Pill tone={overdueTasks.length ? "warn" : "ok"}>Po termínu {overdueTasks.length}</Pill>
-                    <Pill tone="neutral">Poslední změny {recentProjectActivity.length}</Pill>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Moje otevřené úkoly</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{myTasks.filter((task) => task.status !== "done").length}</div>
+                    <p className="mt-2 text-sm text-slate-600">Úkoly, které mám v projektu právě přiřazené.</p>
                   </div>
-                  <p className="mt-3 text-sm text-slate-600">
-                    {recentProjectActivity.length
-                      ? `Poslední pohyb: ${activityLabel(recentProjectActivity[0])}.`
-                      : "Projekt je klidný a připravený na další práci."}
-                  </p>
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Po termínu</div>
+                    <div className={`mt-2 text-2xl font-semibold ${overdueTasks.length ? "text-amber-600" : "text-slate-950"}`}>{overdueTasks.length}</div>
+                    <p className="mt-2 text-sm text-slate-600">Úkoly, které potřebují vyřešit jako první.</p>
+                  </div>
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Poslední změny</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{recentProjectActivity.length}</div>
+                    <p className="mt-2 text-sm text-slate-600">{recentProjectActivity.length ? `Poslední pohyb: ${activityLabel(recentProjectActivity[0])}.` : "Projekt je připravený na další práci."}</p>
+                  </div>
                 </div>
 
                 <div className="mt-5 rounded-3xl border bg-slate-50 p-5">
@@ -1062,22 +1105,39 @@ export default function ProjectsPage() {
                   {projectGalleryFiles.length ? (
                     <div className="mt-4">
                       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fotogalerie projektu</div>
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
-                        {projectGalleryFiles.map((file) => (
-                          <button
-                            key={`gallery-${file.id}`}
-                            type="button"
-                            onClick={() => previewProjectFile(file)}
-                            className="overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:border-blue-200 hover:shadow"
-                          >
-                            <div className="aspect-[4/3] bg-slate-100">
-                              <div className="flex h-full items-center justify-center px-3 text-center text-xs font-semibold text-slate-400">
-                                {file.topic || file.file_name}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                        {projectGalleryFiles.map((file) => {
+                          const thumbUrl = projectFileThumbs[file.id];
+                          return (
+                            <button
+                              key={`gallery-${file.id}`}
+                              type="button"
+                              onClick={() => previewProjectFile(file)}
+                              className="group overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:border-blue-200 hover:shadow-md"
+                            >
+                              <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+                                {thumbUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={thumbUrl}
+                                    alt={file.topic || file.file_name}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center px-4 text-center text-xs font-semibold text-slate-400">
+                                    Načítám náhled
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                            <div className="border-t px-3 py-2"><div className="truncate text-xs font-semibold text-slate-800">{file.topic || file.file_name}</div><div className="mt-1 text-[11px] text-slate-500">{fmtDateTime(file.created_at)}</div></div>
-                          </button>
-                        ))}
+                              <div className="border-t px-3 py-2">
+                                <div className="truncate text-xs font-semibold text-slate-900">{file.topic || file.file_name}</div>
+                                <div className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                                  {file.caption || "Fotka nebo podklad k této části zakázky."}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}
@@ -1150,7 +1210,7 @@ export default function ProjectsPage() {
                           <iframe src={projectFilePreview.url} title={projectFilePreview.topic || projectFilePreview.name} className="h-[440px] w-full bg-white" />
                         ) : (
                           <div className="p-6 text-sm text-slate-600">
-                            Tento typ souboru nemá přímý náhled. Otevři ho přes tlačítko <span className="font-semibold">Otevřít</span>.
+                            Tento typ souboru nemá přímý náhled. Otevři ho přes tlačítko ho přes tlačítko <span className="font-semibold">Otevřít</span>.
                           </div>
                         )}
                       </div>

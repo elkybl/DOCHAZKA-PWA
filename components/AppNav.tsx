@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -98,8 +98,10 @@ export function AppShell({
   });
 
   const resolvedArea = area === "auto" ? (isAdmin ? "mixed" : "worker") : area;
-  const showAdmin = resolvedArea === "admin" || resolvedArea === "mixed";
-  const showWorker = resolvedArea === "worker" || resolvedArea === "mixed";
+  const inAdminSection = !!pathname?.startsWith("/admin");
+  const showAdmin = resolvedArea === "admin" || (resolvedArea === "mixed" && inAdminSection);
+  const showWorker = resolvedArea === "worker" || (resolvedArea === "mixed" && !inAdminSection);
+  const mixedBottomVariant = inAdminSection ? "admin" : "mixed";
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-28 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
@@ -133,7 +135,9 @@ export function AppShell({
                         {link.label}
                       </Link>
                     ))}
-                  {showAdmin ? <span className="mx-1 h-6 w-px bg-slate-200" /> : null}
+
+                  {showAdmin && showWorker ? <span className="mx-1 h-6 w-px bg-slate-200" /> : null}
+
                   {showAdmin &&
                     [...adminLinks, ...adminMoreLinks].map((link) => (
                       <Link
@@ -151,7 +155,7 @@ export function AppShell({
             </div>
           </div>
 
-          {(title || subtitle || actions) ? (
+          {title || subtitle || actions ? (
             <div className="flex flex-wrap items-end justify-between gap-3 px-4 py-5 sm:px-5">
               <div>
                 {title ? <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h1> : null}
@@ -165,7 +169,7 @@ export function AppShell({
         {children}
       </div>
 
-      <BottomNav variant={resolvedArea === "admin" ? "admin" : resolvedArea === "mixed" ? "mixed" : "worker"} />
+      <BottomNav variant={resolvedArea === "admin" ? "admin" : resolvedArea === "mixed" ? mixedBottomVariant : "worker"} />
     </main>
   );
 }

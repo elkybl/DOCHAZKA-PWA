@@ -103,6 +103,9 @@ export default function PaymentsPage() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<StatusFilter>("unpaid");
   const [query, setQuery] = useState("");
+  const [selectedUser, setSelectedUser] = useState("");
+  const [selectedSite, setSelectedSite] = useState("");
+  const [selectedDay, setSelectedDay] = useState("");
 
   const token = useMemo(() => getToken(), []);
 
@@ -203,39 +206,60 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (sum, row) => {
-        const summary = summarizeRow(row);
-        return {
-          unpaid: sum.unpaid + summary.unpaidAmount,
-          paid: sum.paid + summary.paidAmount,
-          hours: sum.hours + (Number(row.hours) || 0) + (Number(row.programming_hours) || 0),
-          km: sum.km + (Number(row.km) || 0),
-        };
-      },
-      { unpaid: 0, paid: 0, hours: 0, km: 0 }
-    );
-  }, [rows]);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
-      .map((row) => ({ ...row, visibleDays: getVisibleDays(row, status) }))
+      .map((row) => {
+        const visibleDays = getVisibleDays(row, status).filter((day) => !selectedDay || day.day === selectedDay);
+        return { ...row, visibleDays };
+      })
       .filter((row) => {
         if (status === "all") return true;
         return row.visibleDays.length > 0;
       })
+      .filter((row) => (!selectedUser ? true : row.user_id === selectedUser))
+      .filter((row) => (!selectedSite ? true : (row.site_id || "") === selectedSite))
       .filter((row) => {
         if (!q) return true;
         return `${row.user_name} ${row.site_name || ""}`.toLowerCase().includes(q);
       });
-  }, [rows, status, query]);
+  }, [rows, status, query, selectedUser, selectedSite, selectedDay]);
+
+  const userOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of rows) map.set(row.user_id, row.user_name);
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "cs"));
+  }, [rows]);
+
+  const siteOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      if (row.site_id) map.set(row.site_id, row.site_name || "Bez stavby");
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "cs"));
+  }, [rows]);
 
   const visibleDayCount = useMemo(
     () => filtered.reduce((sum, row) => sum + row.visibleDays.length, 0),
     [filtered]
   );
+
+  const totals = useMemo(() => {
+    return filtered.reduce(
+      (sum, row) => {
+        const summary = summarizeDays(row.visibleDays);
+        const paidAmount = row.visibleDays.reduce((acc, day) => acc + (day.paid ? Number(day.total) || 0 : 0), 0);
+        const unpaidAmount = row.visibleDays.reduce((acc, day) => acc + (!day.paid ? Number(day.total) || 0 : 0), 0);
+        return {
+          unpaid: sum.unpaid + unpaidAmount,
+          paid: sum.paid + paidAmount,
+          hours: sum.hours + summary.hours + summary.programmingHours,
+          km: sum.km + summary.km,
+        };
+      },
+      { unpaid: 0, paid: 0, hours: 0, km: 0 }
+    );
+  }, [filtered]);
 
   return (
     <AppShell
@@ -256,7 +280,7 @@ export default function PaymentsPage() {
       </section>
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[160px_160px_220px_1fr]">
+        <div className="grid gap-3 md:grid-cols-[150px_150px_220px_1fr] xl:grid-cols-[150px_150px_220px_1fr_220px_220px]">
           <Field label="Od"><input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="Do"><input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
           <div>
@@ -271,6 +295,21 @@ export default function PaymentsPage() {
           </div>
           <Field label="Hledat">
             <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pracovník nebo stavba" />
+          </Field>
+          <Field label="Pracovník">
+            <select className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
+              <option value="">Všichni</option>
+              {userOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </Field>
+          <Field label="Stavba / akce">
+            <select className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={selectedSite} onChange={(e) => setSelectedSite(e.target.value)}>
+              <option value="">Všechny</option>
+              {siteOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </Field>
+          <Field label="Konkrétní den">
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} />
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs">

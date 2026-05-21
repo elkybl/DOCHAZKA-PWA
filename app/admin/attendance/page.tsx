@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
-import { fmtTimeCZFromIso } from "@/lib/time";
+import { fmtTimeCZFromIso, parseReportedLeftAtCZ } from "@/lib/time";
 
 type Site = { id: string; name: string };
 type User = { id: string; name: string };
@@ -37,6 +37,8 @@ type EditState = {
   km: string;
   material: string;
   hours: string;
+  time_from: string;
+  time_to: string;
 };
 
 type Group = {
@@ -96,6 +98,17 @@ function initialDateParam(name: string) {
 function numInput(value: string) {
   const trimmed = value.trim();
   return trimmed === "" ? null : Number(trimmed.replace(",", "."));
+}
+
+function inputTimeFromIso(value: string | null) {
+  if (!value) return "";
+  const formatted = fmtTimeCZFromIso(value);
+  return formatted === "—" ? "" : formatted;
+}
+
+function buildLocalIso(day: string, hhmm: string) {
+  const instant = parseReportedLeftAtCZ(hhmm, `${day}T00:00:00Z`);
+  return instant ? instant.toISOString() : null;
 }
 
 function sourceLabel(kind: Row["sourceKind"]) {
@@ -196,7 +209,7 @@ export default function AdminAttendancePage() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "" });
+  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "", time_from: "", time_to: "" });
   const editNoteRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -252,6 +265,8 @@ export default function AdminAttendancePage() {
       km: String(r.km || ""),
       material: String(r.material || ""),
       hours: String(r.hours || ""),
+      time_from: inputTimeFromIso(r.first_in),
+      time_to: inputTimeFromIso(r.last_out),
     });
     setErr(null);
     setInfo(null);
@@ -323,9 +338,16 @@ export default function AdminAttendancePage() {
       const sitePayload = { site_id: edit.site_id || null };
       if (r.sourceKind === "WORK") {
         for (const id of r.sourceIds || []) await patchEvent(id, sitePayload);
+        const inId = r.sourceIds?.[0];
+        if (inId && edit.time_from) {
+          const inIso = buildLocalIso(r.day, edit.time_from);
+          if (inIso) await patchEvent(inId, { server_time: inIso });
+        }
         if (r.sourceId) {
+          const outIso = edit.time_to ? buildLocalIso(r.day, edit.time_to) : null;
           await patchEvent(r.sourceId, {
             ...sitePayload,
+            ...(outIso ? { server_time: outIso } : {}),
             note_work: edit.note,
             km: numInput(edit.km),
             material_amount: numInput(edit.material),
@@ -640,6 +662,16 @@ export default function AdminAttendancePage() {
                                     {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                                   </select>
                                 </Field>
+                                {r.sourceKind === "WORK" ? (
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <Field label="Od">
+                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.time_from} onChange={(e) => setEdit((p) => ({ ...p, time_from: e.target.value }))} />
+                                    </Field>
+                                    <Field label="Do">
+                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.time_to} onChange={(e) => setEdit((p) => ({ ...p, time_to: e.target.value }))} />
+                                    </Field>
+                                  </div>
+                                ) : null}
                                 <Field label={r.sourceKind === "PROGRAM" || r.sourceKind === "OFFSITE" ? "Hodiny" : "Kilometry"}>
                                   <input
                                     className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"

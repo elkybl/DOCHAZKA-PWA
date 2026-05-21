@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
+import { dayLocalCZFromIso } from "@/lib/time";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -33,6 +34,10 @@ function buildPatch(body: Record<string, unknown>) {
   if (body.offsite_hours !== undefined) patch.offsite_hours = body.offsite_hours === null ? null : Number(body.offsite_hours) || 0;
   if (body.programming_hours !== undefined) patch.programming_hours = body.programming_hours === null ? null : Number(body.programming_hours) || 0;
   if (typeof body.programming_note === "string") patch.programming_note = body.programming_note.trim();
+  if (typeof body.server_time === "string" && body.server_time.trim()) {
+    patch.server_time = body.server_time.trim();
+    patch.day_local = dayLocalCZFromIso(body.server_time.trim()) || null;
+  }
   return patch;
 }
 

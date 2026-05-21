@@ -195,6 +195,7 @@ export default function AttendancePage() {
   const [manualDayFrom, setManualDayFrom] = useState("08:00");
   const [manualDayTo, setManualDayTo] = useState("16:00");
   const [manualDaySiteId, setManualDaySiteId] = useState<string | null>(null);
+  const [manualDayKind, setManualDayKind] = useState<"work" | "shopping" | "offsite" | "service">("work");
   const [manualDayNote, setManualDayNote] = useState("");
   const [manualDayKm, setManualDayKm] = useState("");
   const endCardRef = useRef<HTMLDivElement | null>(null);
@@ -579,6 +580,7 @@ export default function AttendancePage() {
           time_from: manualDayFrom,
           time_to: manualDayTo,
           site_id: manualDaySiteId,
+          kind: manualDayKind,
           note_work: manualDayNote.trim(),
           km: kmVal,
         }),
@@ -589,6 +591,7 @@ export default function AttendancePage() {
 
       setInfo("Pracovní den byl doplněn.");
       setManualDayOpen(false);
+      setManualDayKind("work");
       setManualDayNote("");
       setManualDayKm("");
     } catch (error: unknown) {
@@ -680,25 +683,27 @@ export default function AttendancePage() {
                 </div>
               </div>
             ) : null}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-            <LinkCard href="/calendar" title="Kalendář" desc="Plán práce, volno, lékař i vlastní položky." />
-            <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě, uhrazeno a detail dnů." />
-            <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-              <div className="text-sm font-semibold text-slate-950">Doplnit den</div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">Ruční doplnění dne, když nebyla poloha nebo jste den dodělávali zpětně.</div>
-            </button>
-            <LinkCard href="/me/edit" title="Upravit den" desc="Doplnění práce, materiálu a přesné opravy dne." />
-          </div>
-
-          <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h3 className="text-base font-semibold text-amber-950">Ukončení bez polohy</h3>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-amber-900">
-                  Použijte jen při výpadku GPS nebo když odchod doplňujete dodatečně. Hodí se hlavně na počítači, když potřebujete den rychle uzavřít ručně.
-                </p>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Co se řeší nejčastěji</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <LinkCard href="/calendar" title="Kalendář" desc="Plán práce, volno, lékař i vlastní položky." />
+                <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě, uhrazeno a detail dnů." />
+                <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                  <div className="text-sm font-semibold text-slate-950">Doplnit den / nákup</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">Použijte pro ruční doplnění dne, nákup materiálu nebo práci mimo lokaci.</div>
+                </button>
+                <LinkCard href="/me/edit" title="Upravit den" desc="Doplnění práce, materiálu a přesné opravy dne." />
               </div>
-              <div className="grid gap-2 sm:grid-cols-[180px_auto] sm:items-end">
+            </div>
+
+            <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Ruční ukončení</div>
+              <h3 className="mt-2 text-base font-semibold text-amber-950">Ukončení bez polohy</h3>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                Použijte jen při výpadku GPS nebo když odchod doplňujete dodatečně. Hodí se hlavně na počítači, když potřebujete den rychle uzavřít ručně.
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-[180px_auto] sm:items-end">
                 <input ref={manualOutTimeRef} type="time" value={manualOutTime} onChange={(e) => { setManualOutTime(e.target.value); if (outField === "manual_out_time") setOutField(null); }} disabled={busy || !present} className={`w-full rounded-xl border bg-white px-3 py-3 text-sm ${outField === "manual_out_time" ? "border-red-300" : "border-amber-300"}`} />
                 <button type="button" disabled={busy || !present} onClick={() => doOut(true)} className="rounded-xl border border-amber-400 bg-white px-4 py-3 text-sm font-semibold text-amber-950 shadow-sm disabled:opacity-45">
                   Ukončit bez polohy
@@ -871,8 +876,26 @@ export default function AttendancePage() {
       ) : null}
 
       {manualDayOpen ? (
-        <Modal title="Doplnit pracovní den" onClose={() => setManualDayOpen(false)}>
-          <p className="text-sm leading-6 text-slate-600">Vytvoří se příchod i odchod. Hodiny se vypočítají podle času od-do.</p>
+        <Modal title="Doplnit den, nákup nebo práci mimo lokaci" onClose={() => setManualDayOpen(false)}>
+          <p className="text-sm leading-6 text-slate-600">Vytvoří se příchod i odchod. Hodiny se vypočítají podle času od-do. Když jde o nákup nebo jinou práci mimo stavbu, vyberte odpovídající typ, aby bylo všem hned jasné, kam čas patří.</p>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            {([
+              ["work", "Práce na stavbě"],
+              ["shopping", "Nákup materiálu"],
+              ["offsite", "Práce mimo lokaci"],
+              ["service", "Servis / řešení"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setManualDayKind(value)}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${manualDayKind === value ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-600"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3">
             <label className="text-sm font-medium text-slate-700">
@@ -892,6 +915,16 @@ export default function AttendancePage() {
             </label>
           </div>
 
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            {manualDayKind === "shopping"
+              ? "Použijte pro nákup materiálu, cestu po skladu nebo vyřizování věcí mimo stavbu. Do popisu napište, co se nakupovalo nebo řešilo."
+              : manualDayKind === "offsite"
+                ? "Použijte pro práci mimo stavbu, která patří k danému dni. Do popisu napište, proč jste byli mimo lokaci a kolik času to zabralo."
+                : manualDayKind === "service"
+                  ? "Použijte pro kratší servis, dohledání závady nebo řešení drobností mimo hlavní stavbu."
+                  : "Použijte pro klasickou práci na stavbě včetně ručně doplněného dne."}
+          </div>
+
           <div className="mt-3 grid grid-cols-2 gap-3">
             <label className="text-sm font-medium text-slate-700">
               Od
@@ -903,7 +936,21 @@ export default function AttendancePage() {
             </label>
           </div>
 
-          <textarea className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Popis práce" value={manualDayNote} onChange={(e) => setManualDayNote(e.target.value)} />
+          <textarea
+            className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            rows={3}
+            placeholder={
+              manualDayKind === "shopping"
+                ? "Např. nákup kabelů, jističů a svorek do rozvaděče"
+                : manualDayKind === "offsite"
+                  ? "Např. příprava podkladů, odvoz materiálu, řešení u dodavatele"
+                  : manualDayKind === "service"
+                    ? "Např. dohledání závady, výměna drobného dílu, rychlý servis"
+                    : "Popis práce"
+            }
+            value={manualDayNote}
+            onChange={(e) => setManualDayNote(e.target.value)}
+          />
           <input className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" inputMode="decimal" placeholder="Kilometry (volitelné)" value={manualDayKm} onChange={(e) => setManualDayKm(e.target.value)} />
 
           <div className="mt-3 flex justify-end gap-2">
@@ -936,7 +983,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
         <div className="flex items-center justify-between gap-3">
           <div className="text-lg font-semibold">{title}</div>
           <button type="button" className="rounded-xl border border-slate-300 px-3 py-1 text-sm" onClick={onClose}>
-            Zavrit
+            Zavřít
           </button>
         </div>
         <div className="mt-4">{children}</div>

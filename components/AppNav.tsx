@@ -3,8 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 const workerLinks = [
   { href: "/attendance", label: "Docházka", short: "Docházka" },
@@ -15,37 +14,33 @@ const workerLinks = [
 ];
 
 const adminLinks = [
-  { href: "/admin", label: "Admin", short: "Admin" },
+  { href: "/admin", label: "Přehled", short: "Přehled" },
+  { href: "/admin/attendance", label: "Docházka", short: "Docházka" },
   { href: "/admin/calendar", label: "Kalendář", short: "Kalendář" },
-  { href: "/projects", label: "Projekty", short: "Projekty" },
-  { href: "/admin/attendance", label: "Přehled", short: "Přehled" },
   { href: "/admin/payments", label: "Výplaty", short: "Výplaty" },
   { href: "/admin/users", label: "Lidé", short: "Lidé" },
-];
-
-const adminMoreLinks = [
-  { href: "/admin/sites", label: "Stavby" },
-  { href: "/admin/site-requests", label: "Žádosti" },
+  { href: "/admin/sites", label: "Stavby", short: "Stavby" },
+  { href: "/admin/site-requests", label: "Žádosti", short: "Žádosti" },
 ];
 
 function isActivePath(pathname: string | null, href: string) {
   return pathname === href || (href !== "/" && !!pathname?.startsWith(`${href}/`));
 }
 
-export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin" | "mixed" }) {
+function readIsAdmin() {
+  try {
+    if (typeof window === "undefined") return false;
+    const raw = localStorage.getItem("user");
+    const user = raw ? JSON.parse(raw) : null;
+    return user?.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
+export function BottomNav({ variant = "worker" }: { variant?: "worker" | "admin" }) {
   const pathname = usePathname();
-  const links =
-    variant === "admin"
-      ? adminLinks
-      : variant === "mixed"
-        ? [
-            { href: "/attendance", label: "Docházka", short: "Docházka" },
-            { href: "/calendar", label: "Kalendář", short: "Kalendář" },
-            { href: "/projects", label: "Projekty", short: "Projekty" },
-            { href: "/me", label: "Moje výdělky", short: "Výdělky" },
-            { href: "/admin", label: "Admin", short: "Admin" },
-          ]
-        : workerLinks;
+  const links = variant === "admin" ? adminLinks.slice(0, 5) : workerLinks;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/98 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-16px_36px_rgba(15,23,42,0.14)] backdrop-blur md:hidden">
@@ -86,22 +81,25 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const pathname = usePathname();
-  const [isAdmin] = useState(() => {
-    try {
-      if (typeof window === "undefined") return false;
-      const raw = localStorage.getItem("user");
-      const user = raw ? JSON.parse(raw) : null;
-      return user?.role === "admin";
-    } catch {
-      return false;
-    }
-  });
+  const [isAdmin] = useState(readIsAdmin);
 
-  const resolvedArea = area === "auto" ? (isAdmin ? "mixed" : "worker") : area;
   const inAdminSection = !!pathname?.startsWith("/admin");
-  const showAdmin = resolvedArea === "admin" || (resolvedArea === "mixed" && inAdminSection);
-  const showWorker = resolvedArea === "worker" || (resolvedArea === "mixed" && !inAdminSection);
-  const mixedBottomVariant = inAdminSection ? "admin" : "mixed";
+  const resolvedArea = area === "auto" ? (inAdminSection ? "admin" : "worker") : area === "mixed" ? (inAdminSection ? "admin" : "worker") : area;
+  const navLinks = resolvedArea === "admin" ? adminLinks : workerLinks;
+  const bottomVariant = resolvedArea === "admin" ? "admin" : "worker";
+
+  const headerMeta = useMemo(() => {
+    if (resolvedArea === "admin") {
+      return {
+        eyebrow: "Admin režim",
+        helper: "Kontrola dnů, kalendáře, výplat a lidí.",
+      };
+    }
+    return {
+      eyebrow: "Pracovní režim",
+      helper: "Docházka, kalendář, projekty a vlastní přehled.",
+    };
+  }, [resolvedArea]);
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-28 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
@@ -115,44 +113,47 @@ export function AppShell({
                   alt="Lukáš Kýbl"
                   width={920}
                   height={320}
-                  className="h-auto w-[280px] max-w-full object-contain sm:w-[360px]"
+                  className="h-auto w-[240px] max-w-full object-contain sm:w-[320px]"
                   unoptimized
                   priority
                 />
               </Link>
 
-              <div className="hidden items-center gap-3 md:flex">
-                <nav className="hidden flex-wrap items-center gap-2 xl:flex">
-                  {showWorker &&
-                    workerLinks.map((link) => (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                          isActivePath(pathname, link.href) ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-                        }`}
-                      >
-                        {link.label}
-                      </Link>
-                    ))}
-
-                  {showAdmin && showWorker ? <span className="mx-1 h-6 w-px bg-slate-200" /> : null}
-
-                  {showAdmin &&
-                    [...adminLinks, ...adminMoreLinks].map((link) => (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                          isActivePath(pathname, link.href) ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-                        }`}
-                      >
-                        {link.label}
-                      </Link>
-                    ))}
-                </nav>
+              <div className="hidden items-center gap-4 md:flex">
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{headerMeta.eyebrow}</div>
+                  <div className="mt-1 text-xs text-slate-600">{headerMeta.helper}</div>
+                </div>
+                {isAdmin ? (
+                  <Link
+                    href={resolvedArea === "admin" ? "/attendance" : "/admin"}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {resolvedArea === "admin" ? "Zpět do docházky" : "Přejít do adminu"}
+                  </Link>
+                ) : null}
               </div>
             </div>
+          </div>
+
+          <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+            <nav className="hidden flex-wrap items-center gap-2 md:flex">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    isActivePath(pathname, link.href)
+                      ? resolvedArea === "admin"
+                        ? "bg-slate-950 text-white"
+                        : "bg-blue-600 text-white"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
           </div>
 
           {title || subtitle || actions ? (
@@ -169,7 +170,7 @@ export function AppShell({
         {children}
       </div>
 
-      <BottomNav variant={resolvedArea === "admin" ? "admin" : resolvedArea === "mixed" ? mixedBottomVariant : "worker"} />
+      <BottomNav variant={bottomVariant} />
     </main>
   );
 }

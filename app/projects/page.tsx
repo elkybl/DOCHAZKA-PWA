@@ -927,7 +927,7 @@ export default function ProjectsPage() {
         </>
       }
     >
-      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
+      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_340px]">
         <Card>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1105,7 +1105,7 @@ export default function ProjectsPage() {
                   {projectGalleryFiles.length ? (
                     <div className="mt-4">
                       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fotogalerie projektu</div>
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
                         {projectGalleryFiles.map((file) => {
                           const thumbUrl = projectFileThumbs[file.id];
                           return (
@@ -1155,13 +1155,23 @@ export default function ProjectsPage() {
                         return (
                           <div key={file.id} className="rounded-2xl border bg-white px-4 py-3">
                             <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
+                              <div className="flex min-w-0 items-start gap-3">
+                                {isImageFile(file) && projectFileThumbs[file.id] ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={projectFileThumbs[file.id]}
+                                    alt={file.topic || file.file_name}
+                                    className="h-16 w-16 rounded-2xl object-cover"
+                                  />
+                                ) : null}
+                                <div className="min-w-0">
                                 <div className="text-sm font-semibold text-slate-950">{file.topic || file.file_name}</div>
                                 {file.caption ? <div className="mt-1 text-sm text-slate-600">{file.caption}</div> : null}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                   <Pill tone="neutral">{projectFileCategoryLabel[file.category]}</Pill>
                                   <span>{uploadedBy ? `${uploadedBy} · ` : ""}{fmtDateTime(file.created_at)} · {fmtSize(file.size_bytes)}</span>
                                 </div>
+                              </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <Button variant="secondary" onClick={() => previewProjectFile(file)} disabled={busy === `project-file-preview-${file.id}`}>
@@ -1222,7 +1232,7 @@ export default function ProjectsPage() {
                       </div>
                     </div>
                   ) : null}
-                  <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr_1fr_auto]">
+                  <div className="mt-3 grid gap-3 xl:grid-cols-[180px_minmax(0,1fr)_auto]">
                     <select
                       className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
                       value={projectFileCategory}
@@ -1236,13 +1246,13 @@ export default function ProjectsPage() {
                       <option value="other">Ostatní</option>
                     </select>
                     <input
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 xl:col-span-2"
                       value={projectFileTopic}
                       onChange={(e) => setProjectFileTopic(e.target.value)}
                       placeholder="Téma nebo část zakázky"
                     />
                     <input
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 xl:col-span-2"
                       value={projectFileCaption}
                       onChange={(e) => setProjectFileCaption(e.target.value)}
                       placeholder="Krátký popisek k fotce nebo dokumentu"
@@ -1259,7 +1269,7 @@ export default function ProjectsPage() {
                       />
                       {busy === "project-file-upload" ? "Nahrávám soubor projektu" : "Přidat soubor projektu"}
                     </label>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-slate-500 xl:col-span-3">
                       Sem patří podklady k celé akci: nabídka, výkres, PDF, fotky nebo předávací dokumenty. U fotek doplň téma, aby bylo hned jasné, čeho se snímek týká.
                     </span>
                   </div>

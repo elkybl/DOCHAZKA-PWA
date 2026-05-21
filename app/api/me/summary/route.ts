@@ -2,11 +2,10 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { dayLocalCZFromIso, ceilMinutesTo30 } from "@/lib/time";
+import { ceilMinutesTo30 } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 import {
   applyPaymentAmount,
-  bucketForGroupedFallback,
   bucketFromPaidFlag,
   emptyPaymentAllocation,
   finalizePaymentAllocation,
@@ -151,21 +150,6 @@ export async function GET(req: NextRequest) {
   if (evErr) return json({ error: "DB chyba (events)." }, { status: 500 });
   const events = (evs || []) as Ev[];
 
-  const { data: trips, error: tErr } = await db
-    .from("trips")
-    .select("id,start_time,distance_km,distance_km_user")
-    .eq("user_id", userId)
-    .gte("start_time", fromIso)
-    .lte("start_time", toIso);
-
-  if (tErr) return json({ error: "DB chyba (trips)." }, { status: 500 });
-
-  const tripKmByDay = new Map<string, number>();
-  for (const t of (trips || []) as any[]) {
-    const day = dayLocalCZFromIso(t.start_time);
-    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
-  }
-
   const byDay = new Map<string, Ev[]>();
   for (const e of events) {
     const day = e.day_local || dayKeyPrague(e.server_time);
@@ -308,7 +292,8 @@ export async function GET(req: NextRequest) {
     const hours = round2(workHours + offHours);
     const hoursPay = round2(workPay + offPay);
 
-    // km override: if user entered km in OUT, prefer that. Otherwise use trips.
+    // Kilometry v /me držíme ve stejné logice jako export a výplaty:
+    // počítají se jen z ručně zadaných kilometrů na OUT eventech.
     let kmManual = 0;
     let kmManualPay = 0;
     let kmManualAny = false;
@@ -334,17 +319,7 @@ export async function GET(req: NextRequest) {
       payment = applyPaymentAmount(payment, pay, bucketFromPaidFlag(!!o.is_paid));
     }
 
-    if (!kmManualAny) {
-      const tripKm = toNum(tripKmByDay.get(day), 0);
-      if (tripKm > 0) {
-        km_source = "trips";
-        km = round1(tripKm);
-        kmPay = round2(tripKm * defaultKm);
-
-        const bucket = bucketForGroupedFallback(list);
-        if (bucket) payment = applyPaymentAmount(payment, kmPay, bucket);
-      }
-    }
+    if (!kmManualAny) km_source = "none";
 
     const materialNotes: string[] = [];
     let material = 0;

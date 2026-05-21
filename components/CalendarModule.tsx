@@ -455,10 +455,10 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr_auto] lg:items-end">
+      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] xl:items-end">
           <div>
-            <div className="text-xs font-medium text-slate-600">Zobrazení</div>
+            <div className="text-xs font-medium text-slate-600">Pohled</div>
             <div className="mt-2 grid grid-cols-2 rounded-lg border bg-slate-50 p-1">
               {(["month", "week"] as const).map((item) => (
                 <button key={item} onClick={() => setView(item)} className={`rounded-md px-3 py-2 text-xs font-semibold ${view === item ? "bg-slate-950 text-white" : "text-slate-600"}`}>
@@ -476,9 +476,9 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
               </select>
             </label>
           ) : (
-            <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-4 py-3">
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3">
               <div className="text-xs font-medium text-cyan-800">Moje dostupnost</div>
-              <div className="mt-1 text-sm text-cyan-950">V období máš zadaných {workerAvailabilityCount} dostupností.</div>
+              <div className="mt-1 text-sm text-cyan-950">V zobrazeném období máš zadaných {workerAvailabilityCount} dostupností.</div>
             </div>
           )}
           <label className="block text-xs font-medium text-slate-600">
@@ -497,7 +497,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
         {info ? <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div> : null}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-xl font-semibold capitalize">{formatMonth(anchor)}</div>
@@ -512,23 +512,23 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500">
           {["Po", "Út", "St", "Čt", "Pá", "So", "Ne"].map((d) => <div key={d} className="py-1">{d}</div>)}
         </div>
-        <div className="mt-1 grid grid-cols-7 gap-1">
+        <div className="mt-2 grid grid-cols-7 gap-2">
           {range.days.map((day) => {
             const dayItems = byDay.get(day) || [];
             const active = day === selectedDay;
             const muted = day.slice(0, 7) !== anchor.slice(0, 7) && view === "month";
             return (
-              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-24 rounded-lg border p-1.5 text-left transition sm:min-h-28 sm:p-2 ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
+              <button key={day} onClick={() => setSelectedDay(day)} className={`min-h-28 rounded-2xl border p-2 text-left transition sm:min-h-32 sm:p-3 ${active ? "border-blue-600 bg-blue-50 shadow-sm" : "border-slate-200 bg-white hover:bg-slate-50"} ${muted ? "opacity-50" : ""}`}>
                 <div className="text-xs font-semibold">{formatDate(day)}</div>
-                <div className="mt-1.5 space-y-1">
+                <div className="mt-2 space-y-1">
                   <div className="sm:hidden">
                     {dayItems.length ? (
                       <>
-                        <div className="rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-[10px] font-semibold text-slate-700">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-700">
                           {dayItems.length} {dayItems.length === 1 ? "položka" : dayItems.length < 5 ? "položky" : "položek"}
                         </div>
-                        <div className="mt-1 truncate text-[10px] text-slate-500">
-                          {admin ? dayItems[0]?.user_name || "Pracovník" : dayItems[0]?.title}
+                        <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                          {admin ? `${dayItems[0]?.user_name || "Pracovník"} · ${dayItems[0]?.title || ""}` : dayItems[0]?.title}
                         </div>
                       </>
                     ) : null}
@@ -549,12 +549,13 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_380px]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Detail dne</h2>
-              <div className="mt-1 text-sm text-slate-500">{selectedDay}</div>
+              <h2 className="text-lg font-semibold">Vybraný den</h2>
+              <div className="mt-1 text-sm text-slate-500">Tady držíme přehled toho, co je na den naplánované a co je potřeba doplnit.</div>
+              <div className="mt-2 text-sm font-semibold text-slate-800">{selectedDay}</div>
             </div>
             <div className="flex gap-2">
               {!admin ? <button className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-900" onClick={() => openCreate(selectedDay, "availability")}>Dostupnost</button> : null}
@@ -563,7 +564,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           </div>
           {admin && selectedUserCounts.length ? <div className="mt-3 flex flex-wrap gap-2">{selectedUserCounts.map(([name, count]) => <span key={name} className="rounded-full border bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{name}: {count}</span>)}</div> : null}
           {admin ? (
-            <div className="mt-4 rounded-lg border border-cyan-100 bg-cyan-50 p-4">
+            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-cyan-950">Dostupnost pracovníků</h3>
@@ -581,7 +582,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
                     {item.notes ? <div className="mt-1 text-xs text-slate-500">{item.notes}</div> : null}
                   </div>
                 )) : (
-                  <div className="rounded-lg border border-dashed border-cyan-200 bg-white px-3 py-4 text-sm text-slate-500">
+                  <div className="rounded-2xl border border-dashed border-cyan-200 bg-white px-3 py-4 text-sm text-slate-500">
                     <div>Na tento den ještě nikdo nezadal dostupnost.</div>
                     <div className="mt-1">To ale neblokuje plánování. Klidně můžeš práci přiřadit rovnou jako otevřený plán.</div>
                     <button
@@ -598,12 +599,12 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           ) : null}
           <div className="mt-4 space-y-3">
             {selectedItems.map((item) => <CalendarCard key={item.id} item={item} admin={admin} currentUserId={me?.id || ""} busy={busy === item.id} onEdit={() => openEdit(item)} onDelete={() => deleteItem(item)} onPatch={(patch) => patchItem(item, patch)} />)}
-            {!selectedItems.length ? <div className="rounded-lg border bg-slate-50 p-5 text-center text-sm text-slate-500">Na tento den není nic naplánované.</div> : null}
+            {!selectedItems.length ? <div className="rounded-2xl border bg-slate-50 p-5 text-center text-sm text-slate-500">Na tento den není nic naplánované. Vyber jiný den nebo přidej novou položku.</div> : null}
           </div>
         </div>
 
-        <div ref={formPanelRef} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Rychlý přehled"}</h2>
+        <div ref={formPanelRef} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+          <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Další krok"}</h2>
           {formOpen ? (
             <div className="mt-4 space-y-3">
               {admin ? (
@@ -803,7 +804,23 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
               ) : null}
               <div className="flex justify-end gap-2"><button className="rounded-lg border px-4 py-2 text-sm" onClick={() => setFormOpen(false)}>Zrušit</button><button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={busy === "form"} onClick={saveForm}>{busy === "form" ? "Ukládám" : "Uložit"}</button></div>
             </div>
-          ) : <div className="mt-4 grid gap-2"><Mini label="Polozky v obdobi" value={String(items.length)} /><Mini label="Vybraný den" value={String(selectedItems.length)} /><Mini label="Nepřečtené" value={String(items.filter((x) => !x.seen_confirmed && x.source !== "attendance").length)} /></div>}
+          ) : (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-900">Vyber si jednoduchý postup</div>
+                <div className="mt-2 space-y-2 text-sm text-slate-600">
+                  <div>1. Klikni na den v kalendáři.</div>
+                  <div>2. Zkontroluj detail dne vlevo.</div>
+                  <div>3. Teprve potom přidej dostupnost nebo novou práci.</div>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Mini label="Položky v období" value={String(items.length)} />
+                <Mini label="Vybraný den" value={String(selectedItems.length)} />
+                <Mini label="Nepřečtené" value={String(items.filter((x) => !x.seen_confirmed && x.source !== "attendance").length)} />
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </div>

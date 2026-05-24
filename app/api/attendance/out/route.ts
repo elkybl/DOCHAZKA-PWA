@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
 
-  const site_id = body?.site_id as string | undefined;
+  const requested_site_id = body?.site_id as string | undefined;
   const allow_without_location = !!body?.allow_without_location;
   const reported_left_at = (body?.reported_left_at ?? "").toString().trim();
 
@@ -44,8 +44,6 @@ export async function POST(req: NextRequest) {
 
   const programming_hours = body?.programming_hours != null ? Number(body.programming_hours) : null;
   const programming_note = (body?.programming_note ?? "").toString().trim() || null;
-
-  if (!site_id) return json({ error: "Chybí stavba." }, { status: 400 });
 
   if (
     programming_hours != null &&
@@ -100,6 +98,18 @@ export async function POST(req: NextRequest) {
     return json(
       { error: "Nemáš otevřenou směnu (chybí příchod). Nejdřív dej PŘÍCHOD." },
       { status: 409 }
+    );
+  }
+
+  const site_id = requested_site_id || (last[0].site_id ? String(last[0].site_id) : undefined);
+
+  if (!site_id) {
+    return json(
+      {
+        error:
+          "Nepodařilo se určit stavbu k ukončení dne. Vyberte stavbu ručně nebo použijte ruční doplnění dne.",
+      },
+      { status: 400 }
     );
   }
 

@@ -171,6 +171,18 @@ function roundedHoursFromIsoRange(startIso: string | null, end: Date) {
   return Math.ceil(mins / 30) * 0.5;
 }
 
+function roundedHoursFromIsoAndManualTime(startIso: string | null, hhmm: string) {
+  if (!startIso || !hhmm) return 0;
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) return 0;
+  const [hours, minutes] = hhmm.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+  const end = new Date(start);
+  end.setHours(hours, minutes, 0, 0);
+  if (end.getTime() < start.getTime()) end.setDate(end.getDate() + 1);
+  return roundedHoursFromIsoRange(startIso, end);
+}
+
 type WorkSplitRow = {
   id: string;
   category: string;
@@ -180,6 +192,12 @@ type WorkSplitRow = {
 
 const WORK_CATEGORY_OPTIONS = [
   { value: "cn", label: "CN / hodinovka", helper: "Práce účtovaná přímo do konkrétní CN nebo hodinovky." },
+  { value: "viceprace", label: "Vícepráce", helper: "Práce mimo původní rozsah, kterou je potřeba oddělit a popsat samostatně." },
+  { value: "svetla", label: "Světla", helper: "Montáž, úpravy nebo servis svítidel, okruhů a ovládání světel." },
+  { value: "hruba_stavba", label: "Hrubá stavba", helper: "Tahání tras, sekání, jádra, průrazy a příprava před kompletací." },
+  { value: "klientske_zmeny", label: "Klientské změny", helper: "Dodatečné změny podle přání klienta oproti původnímu zadání." },
+  { value: "kompletace", label: "Kompletace", helper: "Dokončovací práce, osazování, finální kompletace a předání." },
+  { value: "rozvadec", label: "Rozvaděč", helper: "Osazování, úpravy, zapojování a kontrola rozvaděče." },
   { value: "montaz", label: "Montáž", helper: "Běžná montáž, tahání kabelů, osazování a kompletace." },
   { value: "servis", label: "Servis", helper: "Opravy, výjezdy, dohledání závad a krátké zásahy." },
   { value: "nakup", label: "Nákup materiálu", helper: "Čas strávený nákupem nebo vyzvednutím materiálu." },
@@ -226,6 +244,13 @@ function todayIso() {
 
 function fmtHours(value: number) {
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
+}
+
+function defaultCategoryForManualKind(kind: "work" | "shopping" | "offsite" | "service") {
+  if (kind === "shopping") return "nakup";
+  if (kind === "offsite") return "mimo_lokaci";
+  if (kind === "service") return "servis";
+  return "cn";
 }
 
 export default function AttendancePage() {
@@ -285,16 +310,18 @@ export default function AttendancePage() {
   }, [manualSiteId, nearest, sites]);
 
   const currentRoundedHours = useMemo(() => {
-    const end = manualOutTime.trim()
-      ? (() => {
-          const [hours, minutes] = manualOutTime.split(":").map(Number);
-          const dt = new Date();
-          dt.setHours(hours || 0, minutes || 0, 0, 0);
-          return dt;
-        })()
-      : new Date();
-    return roundedHoursFromIsoRange(activeInTime, end);
+    if (manualOutTime.trim()) return roundedHoursFromIsoAndManualTime(activeInTime, manualOutTime.trim());
+    return roundedHoursFromIsoRange(activeInTime, new Date());
   }, [activeInTime, manualOutTime]);
+
+  const openDurationHours = useMemo(() => {
+    if (!activeInTime) return 0;
+    const start = new Date(activeInTime);
+    if (Number.isNaN(start.getTime())) return 0;
+    return Math.max(0, (Date.now() - start.getTime()) / 3600000);
+  }, [activeInTime]);
+
+  const staleOpenShift = openDurationHours >= 18;
 
   const manualRoundedHours = useMemo(
     () => roundedHoursFromTimes(manualDayFrom, manualDayTo),
@@ -313,7 +340,6 @@ export default function AttendancePage() {
 
   const completionItems = useMemo(() => {
     return [
-      { label: "Popis práce", done: note.trim().length > 0 },
       { label: "Kilometry", done: km.trim().length > 0 },
       { label: "Rozpad hodin", done: currentRoundedHours <= 0 || Math.abs(splitHoursTotal - currentRoundedHours) < 0.01 },
       {
@@ -321,11 +347,21 @@ export default function AttendancePage() {
         done: !me?.is_programmer || !didProgram || (progHours.trim().length > 0 && progNote.trim().length > 0),
       },
     ];
-  }, [note, km, currentRoundedHours, splitHoursTotal, me?.is_programmer, didProgram, progHours, progNote]);
+  }, [km, currentRoundedHours, splitHoursTotal, me?.is_programmer, didProgram, progHours, progNote]);
 
   const completedCount = completionItems.filter((item) => item.done).length;
   const missingCompletionItems = completionItems.filter((item) => !item.done);
   const canSubmitOut = present && missingCompletionItems.length === 0 && !busy;
+
+  useEffect(() => {
+    setManualSplitRows((current) => {
+      if (current.length !== 1) return current;
+      const [first] = current;
+      if (first.hours || first.note) return current;
+      if (first.category === defaultCategoryForManualKind(manualDayKind)) return current;
+      return [{ ...first, category: defaultCategoryForManualKind(manualDayKind) }];
+    });
+  }, [manualDayKind]);
 
   function focusOutField(field: string, message: string) {
     setOutErr(message);
@@ -384,7 +420,7 @@ export default function AttendancePage() {
   function openEndFormHint() {
     setOutErr("Nejdřív doplňte údaje k odchodu. Formulář je níž na stránce.");
     endCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => noteRef.current?.focus(), 120);
+    window.setTimeout(() => kmRef.current?.focus(), 120);
   }
 
   function submitOutFromCard() {
@@ -400,9 +436,9 @@ export default function AttendancePage() {
     }
 
     const fieldMap: Record<string, { field: string; message: string }> = {
-      "Popis práce": { field: "note", message: "Nejdřív doplňte popis práce. Pak půjde den ukončit." },
       Kilometry: { field: "km", message: "Nejdřív doplňte kilometry. Pokud žádné nejsou, zadejte 0." },
       "Programování": { field: "prog_hours", message: "Pokud se dnes programovalo, doplňte hodiny a poznámku k programování." },
+      "Rozpad hodin": { field: "note", message: "Nejdřív správně rozdělte hodiny do kategorií, aby jejich součet seděl na celý den." },
     };
 
     const target = fieldMap[firstMissing.label] ?? { field: "note", message: "Před ukončením dne ještě doplňte chybějící údaje." };
@@ -614,7 +650,6 @@ export default function AttendancePage() {
     try {
       const token = await getToken();
       if (!token) throw new Error("Chybí přihlášení.");
-      if (!note.trim()) return focusOutField("note", "Doplňte popis práce před ukončením docházky.");
       if (!km.trim()) return focusOutField("km", "Doplňte kilometry. Pokud žádné nejsou, zadejte 0.");
 
       const kmVal = Number(km.replace(",", "."));
@@ -654,10 +689,8 @@ export default function AttendancePage() {
         if (bestAny) siteId = bestAny.site.id;
       }
 
-      if (!siteId) throw new Error("Nepodařilo se určit stavbu pro odchod.");
-
       const payload: Record<string, string | number | boolean | null | undefined> = {
-        site_id: siteId,
+        site_id: siteId || undefined,
         note_work: composeWorkNote(note, splitRows) || undefined,
         km: kmVal,
         material_desc: matDesc.trim() || undefined,
@@ -712,7 +745,6 @@ export default function AttendancePage() {
       const hours = hoursFromTimes(manualDayFrom, manualDayTo);
       if (!manualDayDate) throw new Error("Vyberte datum.");
       if (!(hours > 0)) throw new Error("Čas Do musí být později než Od.");
-      if (!manualDayNote.trim()) throw new Error("Doplňte popis práce.");
       const splitError = validateSplitRows(manualSplitRows, manualRoundedHours);
       if (splitError) throw new Error(splitError);
 
@@ -738,7 +770,7 @@ export default function AttendancePage() {
 
       setInfo("Pracovní den byl doplněn.");
       setManualDayOpen(false);
-      setManualSplitRows([makeSplitRow()]);
+      setManualSplitRows([makeSplitRow(defaultCategoryForManualKind("work"))]);
       setManualDayKind("work");
       setManualDayNote("");
       setManualDayKm("");
@@ -816,31 +848,16 @@ export default function AttendancePage() {
               </button>
             </div>
 
-            {present ? (
-              <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-blue-950">Před ukončením docházky doplňte údaje k odchodu</div>
-                    <div className="mt-1 text-xs leading-5 text-blue-900">
-                      Povinné jsou popis práce, čas a kilometry. Materiál můžete doplnit jen tehdy, když je potřeba.
-                    </div>
-                  </div>
-                  <button type="button" onClick={openEndFormHint} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100/60">
-                    Otevřít formulář
-                  </button>
-                </div>
-              </div>
-            ) : null}
             <div className="mt-6 border-t border-slate-100 pt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rychlé kroky pro dnešek</div>
-                  <div className="mt-1 text-sm text-slate-600">Důležité odkazy, ruční doplnění dne a nouzové uzavření držíme pohromadě a bez zbytečných boxů navíc.</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dnešní práce</div>
+                  <div className="mt-1 text-sm text-slate-600">Kalendář, ruční doplnění i opravy dne držíme pohromadě. Když je potřeba dodatečný odchod, použijte nouzové uzavření níže.</div>
                 </div>
                 {present ? (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
-                    Nejdřív doplň formulář vpravo, pak ukonči den.
-                  </span>
+                  <button type="button" onClick={openEndFormHint} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
+                    Přejít na ukončení dne
+                  </button>
                 ) : null}
               </div>
 
@@ -854,14 +871,19 @@ export default function AttendancePage() {
                 <LinkCard href="/me/edit" title="Upravit den" desc="Oprava práce, materiálu a přesného času dne." />
               </div>
 
-              <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4">
+              <div className={`mt-4 rounded-[24px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="max-w-xl">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Nouzové uzavření</div>
-                    <h3 className="mt-2 text-base font-semibold text-amber-950">Ukončení bez polohy</h3>
-                    <p className="mt-1 text-sm leading-6 text-amber-900">
+                    <div className={`text-xs font-semibold uppercase tracking-[0.16em] ${staleOpenShift ? "text-rose-800" : "text-amber-800"}`}>Nouzové uzavření</div>
+                    <h3 className={`mt-2 text-base font-semibold ${staleOpenShift ? "text-rose-950" : "text-amber-950"}`}>Ukončení bez polohy</h3>
+                    <p className={`mt-1 text-sm leading-6 ${staleOpenShift ? "text-rose-900" : "text-amber-900"}`}>
                       Použijte jen při výpadku GPS nebo když odchod doplňujete dodatečně. Je to záložní varianta, ne hlavní workflow dne.
                     </p>
+                    {staleOpenShift ? (
+                      <div className="mt-3 rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm font-medium text-rose-900">
+                        Tenhle den běží už déle než 18 hodin. Nejbezpečnější je zadat skutečný čas odchodu a ukončit ho tady ručně.
+                      </div>
+                    ) : null}
                   </div>
                   <div className="grid min-w-[260px] gap-2 sm:grid-cols-[180px_auto] sm:items-end">
                     <input ref={manualOutTimeRef} type="time" value={manualOutTime} onChange={(e) => { setManualOutTime(e.target.value); if (outField === "manual_out_time") setOutField(null); }} disabled={busy || !present} className={`w-full rounded-xl border bg-white px-3 py-3 text-sm ${outField === "manual_out_time" ? "border-red-300" : "border-amber-300"}`} />
@@ -880,7 +902,7 @@ export default function AttendancePage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Ukončení docházky</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Popis práce, čas a kilometry jdou do výplat, přehledu i exportu. Materiál je volitelný doplněk.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Rozpad hodin, čas a kilometry jdou do výplat, přehledu i exportu. Souhrn dne i materiál jsou volitelné doplňky.</p>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinné</span>
             </div>
@@ -895,7 +917,7 @@ export default function AttendancePage() {
                   </div>
                   <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
                     {canSubmitOut
-                      ? "Popis práce i kilometry jsou hotové. Teď už můžete docházku bez obav ukončit."
+                      ? "Rozpad hodin i kilometry jsou hotové. Teď už můžete docházku bez obav ukončit."
                       : "Tady hned vidíte, co ještě chybí. Když stisknete ukončení moc brzy, formulář vás přesně navede na první chybějící pole."}
                   </div>
                 </div>
@@ -931,8 +953,9 @@ export default function AttendancePage() {
 
             <div className="mt-4 grid gap-3">
               <label className="block text-xs font-semibold text-slate-600">
-                Popis práce
+                Souhrn dne (volitelné)
                 <textarea ref={noteRef} className={`mt-1 min-h-28 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes dělalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
+                <span className="mt-2 block text-[11px] font-medium text-slate-500">Nemusíte znovu opisovat celý den. Povinný detail patří do kategorií níže. Tohle je jen krátké shrnutí navíc.</span>
               </label>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -941,14 +964,14 @@ export default function AttendancePage() {
                     <div className="text-sm font-semibold text-slate-900">Rozpad hodin do kategorií</div>
                     <div className="mt-1 text-xs text-slate-500">Za dnešek je potřeba rozdělit přesně {fmtHours(currentRoundedHours)} h. Součet níže musí sedět, jinak den nepůjde ukončit.</div>
                   </div>
-                  <button type="button" onClick={() => setSplitRows((current) => [...current, makeSplitRow()])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                  <button type="button" onClick={() => setSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || "cn")])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
                     Přidat kategorii
                   </button>
                 </div>
                 <div className="mt-3 space-y-3">
                   {splitRows.map((row, index) => (
                     <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="grid gap-3 md:grid-cols-[180px_120px_minmax(0,1fr)_auto]">
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_120px_auto]">
                         <label className="text-xs font-semibold text-slate-600">
                           Kategorie
                           <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateSplitRow(row.id, { category: e.target.value })}>
@@ -961,16 +984,16 @@ export default function AttendancePage() {
                           Hodiny
                           <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
                         </label>
-                        <label className="text-xs font-semibold text-slate-600">
-                          Co se dělalo
-                          <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Krátký popis práce v téhle kategorii" value={row.note} onChange={(e) => updateSplitRow(row.id, { note: e.target.value })} />
-                        </label>
                         <div className="flex items-end">
-                          <button type="button" onClick={() => setSplitRows((current) => current.length === 1 ? [makeSplitRow()] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                          <button type="button" onClick={() => setSplitRows((current) => current.length === 1 ? [makeSplitRow(row.category)] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
                             {index === 0 && splitRows.length === 1 ? "Vyčistit" : "Smazat"}
                           </button>
                         </div>
                       </div>
+                      <label className="mt-3 block text-xs font-semibold text-slate-600">
+                        Co se dělalo v téhle kategorii
+                        <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Např. dokončení světel v obýváku, úprava rozvaděče, klientská změna v kuchyni" value={row.note} onChange={(e) => updateSplitRow(row.id, { note: e.target.value })} />
+                      </label>
                       <div className="mt-2 text-xs text-slate-500">{splitCategoryHelper(row.category)}</div>
                     </div>
                   ))}
@@ -1123,9 +1146,9 @@ export default function AttendancePage() {
 
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
             {manualDayKind === "shopping"
-              ? "Použijte pro nákup materiálu, cestu po skladu nebo vyřizování věcí mimo stavbu. Do popisu napište, co se nakupovalo nebo řešilo."
+              ? "Použijte pro nákup materiálu, cestu po skladu nebo vyřizování věcí mimo stavbu. Čas se tak správně oddělí od montáže na stavbě."
               : manualDayKind === "offsite"
-                ? "Použijte pro práci mimo stavbu, která patří k danému dni. Do popisu napište, proč jste byli mimo lokaci a kolik času to zabralo."
+                ? "Použijte pro práci mimo stavbu, která patří k danému dni. Tohle nevypíná běžící docházku, jen doplňuje samostatný ruční řádek."
                 : manualDayKind === "service"
                   ? "Použijte pro kratší servis, dohledání závady nebo řešení drobností mimo hlavní stavbu."
                   : "Použijte pro klasickou práci na stavbě včetně ručně doplněného dne."}
@@ -1148,14 +1171,14 @@ export default function AttendancePage() {
                 <div className="text-sm font-semibold text-slate-900">Rozpad hodin do kategorií</div>
                 <div className="mt-1 text-xs text-slate-500">Za tenhle ručně doplněný den je potřeba rozdělit přesně {fmtHours(manualRoundedHours)} h.</div>
               </div>
-              <button type="button" onClick={() => setManualSplitRows((current) => [...current, makeSplitRow()])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+              <button type="button" onClick={() => setManualSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || defaultCategoryForManualKind(manualDayKind))])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
                 Přidat kategorii
               </button>
             </div>
             <div className="mt-3 space-y-3">
               {manualSplitRows.map((row, index) => (
                 <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="grid gap-3 md:grid-cols-[180px_120px_minmax(0,1fr)_auto]">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_120px_auto]">
                     <label className="text-xs font-semibold text-slate-600">
                       Kategorie
                       <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateManualSplitRow(row.id, { category: e.target.value })}>
@@ -1168,16 +1191,16 @@ export default function AttendancePage() {
                       Hodiny
                       <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateManualSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
                     </label>
-                    <label className="text-xs font-semibold text-slate-600">
-                      Co se dělalo
-                      <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Krátký popis práce v téhle kategorii" value={row.note} onChange={(e) => updateManualSplitRow(row.id, { note: e.target.value })} />
-                    </label>
                     <div className="flex items-end">
-                      <button type="button" onClick={() => setManualSplitRows((current) => current.length === 1 ? [makeSplitRow()] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                      <button type="button" onClick={() => setManualSplitRows((current) => current.length === 1 ? [makeSplitRow(defaultCategoryForManualKind(manualDayKind))] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
                         {index === 0 && manualSplitRows.length === 1 ? "Vyčistit" : "Smazat"}
                       </button>
                     </div>
                   </div>
+                  <label className="mt-3 block text-xs font-semibold text-slate-600">
+                    Co se dělalo v téhle kategorii
+                    <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Např. nákup světel, kompletace rozvaděče, klientská změna v koupelně" value={row.note} onChange={(e) => updateManualSplitRow(row.id, { note: e.target.value })} />
+                  </label>
                   <div className="mt-2 text-xs text-slate-500">{splitCategoryHelper(row.category)}</div>
                 </div>
               ))}
@@ -1187,21 +1210,25 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          <textarea
-            className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            rows={3}
-            placeholder={
-              manualDayKind === "shopping"
-                ? "Např. nákup kabelů, jističů a svorek do rozvaděče"
-                : manualDayKind === "offsite"
-                  ? "Např. příprava podkladů, odvoz materiálu, řešení u dodavatele"
-                  : manualDayKind === "service"
-                    ? "Např. dohledání závady, výměna drobného dílu, rychlý servis"
-                    : "Popis práce"
-            }
-            value={manualDayNote}
-            onChange={(e) => setManualDayNote(e.target.value)}
-          />
+          <label className="mt-3 block text-sm font-medium text-slate-700">
+            Souhrn dne (volitelné)
+            <textarea
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              rows={3}
+              placeholder={
+                manualDayKind === "shopping"
+                  ? "Např. nákup kabelů, jističů a svorek do rozvaděče"
+                  : manualDayKind === "offsite"
+                    ? "Např. příprava podkladů, odvoz materiálu, řešení u dodavatele"
+                    : manualDayKind === "service"
+                      ? "Např. dohledání závady, výměna drobného dílu, rychlý servis"
+                      : "Krátké shrnutí dne navíc"
+              }
+              value={manualDayNote}
+              onChange={(e) => setManualDayNote(e.target.value)}
+            />
+            <span className="mt-2 block text-xs text-slate-500">Pokud je rozpad hodin vyplněný poctivě, stačí sem napsat jen krátké shrnutí navíc.</span>
+          </label>
           <input className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" inputMode="decimal" placeholder="Kilometry (volitelné)" value={manualDayKm} onChange={(e) => setManualDayKm(e.target.value)} />
 
           <div className="mt-3 flex justify-end gap-2">

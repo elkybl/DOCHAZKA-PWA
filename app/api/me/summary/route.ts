@@ -81,6 +81,15 @@ type Ev = {
   is_paid: boolean;
 };
 
+function hasOpenShift(events: Ev[]) {
+  let balance = 0;
+  for (const event of events) {
+    if (event.type === "IN") balance += 1;
+    if (event.type === "OUT" && balance > 0) balance -= 1;
+  }
+  return balance > 0;
+}
+
 export async function GET(req: NextRequest) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
@@ -334,7 +343,15 @@ export async function GET(req: NextRequest) {
     }
     material = round2(material);
 
+    const isOpenDay = hasOpenShift(list);
     payment = finalizePaymentAllocation(payment);
+    if (isOpenDay && payment.paid_total <= 0 && payment.unpaid_total <= 0 && payment.unknown_total <= 0) {
+      payment = {
+        ...payment,
+        payment_state: "unpaid",
+        paid: false,
+      };
+    }
 
     const total = round2(hoursPay + kmPay + material);
 
@@ -352,6 +369,7 @@ export async function GET(req: NextRequest) {
       paid_total: payment.paid_total,
       unpaid_total: payment.unpaid_total,
       unknown_total: payment.unknown_total,
+      is_open_day: isOpenDay,
 
       first_in: firstInRounded,
       last_out: lastOutRounded,

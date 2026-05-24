@@ -452,6 +452,8 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
   }
 
   const workerAvailabilityCount = items.filter((item) => item.type === "availability" && item.source !== "attendance").length;
+  const selectedWorkCount = selectedItems.filter((item) => isWorkRelated(item.type)).length;
+  const selectedNonWorkCount = selectedItems.filter((item) => !isWorkRelated(item.type) && item.source !== "attendance").length;
 
   return (
     <div className="space-y-4">
@@ -491,6 +493,9 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {!admin ? <button className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-900 shadow-sm" onClick={() => openCreate(selectedDay, "availability")}>Nastavit dostupnost</button> : null}
             <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm" onClick={() => openCreate(selectedDay, admin ? "work_shift" : "custom")}>Přidat položku</button>
+            <button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm" onClick={() => { setUserFilter("ALL"); setTypeFilter("ALL"); setSelectedDay(todayKey()); setAnchor(todayKey()); }}>
+              Vyčistit pohled
+            </button>
           </div>
         </div>
         {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
@@ -554,13 +559,18 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Vybraný den</h2>
-              <div className="mt-1 text-sm text-slate-500">Tady držíme přehled toho, co je na den naplánované a co je potřeba doplnit.</div>
+              <div className="mt-1 text-sm text-slate-500">Klikni na den nahoře a tady hned uvidíš plán i rychlé akce bez zbytečného přepínání.</div>
               <div className="mt-2 text-sm font-semibold text-slate-800">{selectedDay}</div>
             </div>
             <div className="flex gap-2">
               {!admin ? <button className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-900" onClick={() => openCreate(selectedDay, "availability")}>Dostupnost</button> : null}
               <button className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={() => openCreate(selectedDay, admin ? "work_shift" : "custom")}>Přidat</button>
             </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <Mini label="Položky dne" value={String(selectedItems.length)} />
+            <Mini label="Práce a směny" value={String(selectedWorkCount)} />
+            <Mini label="Ostatní" value={String(selectedNonWorkCount)} />
           </div>
           {admin && selectedUserCounts.length ? <div className="mt-3 flex flex-wrap gap-2">{selectedUserCounts.map(([name, count]) => <span key={name} className="rounded-full border bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{name}: {count}</span>)}</div> : null}
           {admin ? (
@@ -604,7 +614,7 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
         </div>
 
         <div ref={formPanelRef} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-          <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Další krok"}</h2>
+          <h2 className="text-lg font-semibold">{formOpen ? (form.id ? "Upravit položku" : "Nová položka") : "Rychlé akce"}</h2>
           {formOpen ? (
             <div className="mt-4 space-y-3">
               {admin ? (
@@ -806,13 +816,30 @@ export function CalendarModule({ admin = false }: { admin?: boolean }) {
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-sm font-semibold text-slate-900">Vyber si jednoduchý postup</div>
-                <div className="mt-2 space-y-2 text-sm text-slate-600">
-                  <div>1. Klikni na den v kalendáři.</div>
-                  <div>2. Zkontroluj detail dne vlevo.</div>
-                  <div>3. Teprve potom přidej dostupnost nebo novou práci.</div>
-                </div>
+              <div className="grid gap-3">
+                {!admin ? (
+                  <>
+                    <button className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-left shadow-sm" onClick={() => openCreate(selectedDay, "availability")}>
+                      <div className="text-sm font-semibold text-cyan-950">Zadat dostupnost na vybraný den</div>
+                      <div className="mt-1 text-xs text-cyan-800">Nejrychlejší cesta, když si chceš jen označit, kdy můžeš.</div>
+                    </button>
+                    <button className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm" onClick={() => openCreate(selectedDay, "custom")}>
+                      <div className="text-sm font-semibold text-slate-950">Přidat vlastní položku</div>
+                      <div className="mt-1 text-xs text-slate-600">Lékař, volno, osobní blok nebo jiná poznámka k dni.</div>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-left shadow-sm" onClick={() => openCreate(selectedDay, "work_shift")}>
+                      <div className="text-sm font-semibold text-blue-950">Přidat práci na vybraný den</div>
+                      <div className="mt-1 text-xs text-blue-800">Použij to, když potřebuješ rychle přiřadit směnu nebo práci bez dalšího hledání.</div>
+                    </button>
+                    <button className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm" onClick={() => openCreate(selectedDay, "meeting")}>
+                      <div className="text-sm font-semibold text-slate-950">Přidat jinou položku</div>
+                      <div className="mt-1 text-xs text-slate-600">Schůzka, školení, absence nebo jiný plán pro víc lidí i jednotlivce.</div>
+                    </button>
+                  </>
+                )}
               </div>
               <div className="grid gap-2">
                 <Mini label="Položky v období" value={String(items.length)} />

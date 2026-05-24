@@ -45,6 +45,7 @@ type DayRow = {
   paid_total?: number;
   unpaid_total?: number;
   unknown_total?: number;
+  is_open_day?: boolean;
   first_in: string | null;
   last_out: string | null;
   hours: number;
@@ -405,8 +406,8 @@ function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen
           </div>
         </div>
         <div className="text-right">
-          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${paymentClass(row.payment_state, row.paid)}`}>
-            {paymentLabel(row.payment_state, row.paid)}
+          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${row.is_open_day ? "border-slate-200 bg-slate-100 text-slate-800" : paymentClass(row.payment_state, row.paid)}`}>
+            {row.is_open_day ? "Otevřený den" : paymentLabel(row.payment_state, row.paid)}
           </span>
           <div className="mt-2 text-xl font-semibold">{fmt(row.total)} Kč</div>
           <div className="mt-2 flex flex-wrap justify-end gap-2">
@@ -427,7 +428,15 @@ function DayCard({ row, active, onOpen }: { row: DayRow; active: boolean; onOpen
         <MiniStat
           label="Platba dne"
           value={`${fmt(row.unpaid_total || 0)} Kč`}
-          sub={paidAmount > 0 ? `Uhrazeno ${fmt(paidAmount)} Kč` : row.unknown_total ? `Nerozřazeno ${fmt(row.unknown_total)} Kč` : "Bez uhrazené části"}
+          sub={
+            row.is_open_day
+              ? "Den je stále otevřený"
+              : paidAmount > 0
+                ? `Uhrazeno ${fmt(paidAmount)} Kč`
+                : row.unknown_total
+                  ? `Nerozřazeno ${fmt(row.unknown_total)} Kč`
+                  : "Bez uhrazené části"
+          }
         />
       </div>
 
@@ -458,7 +467,11 @@ function DayDrawer({ row, detailRef }: { row: DayRow | null; detailRef: React.Re
   const timeline = [
     row.first_in ? { label: "Příchod", time: timeHM(row.first_in), tone: "blue" } : null,
     row.last_out ? { label: "Odchod", time: timeHM(row.last_out), tone: "slate" } : null,
-    { label: paymentLabel(row.payment_state, row.paid), time: `${fmt(row.unpaid_total || 0)} Kč k úhradě`, tone: row.paid ? "emerald" : row.payment_state === "partial" ? "blue" : "amber" },
+    {
+      label: row.is_open_day ? "Otevřený den" : paymentLabel(row.payment_state, row.paid),
+      time: row.is_open_day ? "Docházka ještě není ukončená" : `${fmt(row.unpaid_total || 0)} Kč k úhradě`,
+      tone: row.is_open_day ? "slate" : row.paid ? "emerald" : row.payment_state === "partial" ? "blue" : "amber",
+    },
   ].filter(Boolean) as Array<{ label: string; time: string; tone: "blue" | "slate" | "emerald" | "amber" }>;
 
   return (
@@ -483,7 +496,11 @@ function DayDrawer({ row, detailRef }: { row: DayRow | null; detailRef: React.Re
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         <MiniStat label="Celkem" value={`${fmt(row.total)} Kč`} sub="Součet dne" />
         <MiniStat label="Uhrazeno" value={`${fmt(row.paid_total || 0)} Kč`} sub="Už zaplacená část" />
-        <MiniStat label="K úhradě" value={`${fmt(row.unpaid_total || 0)} Kč`} sub={row.payment_state === "partial" ? "Den je částečně uhrazený" : row.paid ? "Den je uzavřený" : "Čeká na úhradu"} />
+        <MiniStat
+          label="K úhradě"
+          value={`${fmt(row.unpaid_total || 0)} Kč`}
+          sub={row.is_open_day ? "Den ještě není ukončený" : row.payment_state === "partial" ? "Den je částečně uhrazený" : row.paid ? "Den je uzavřený" : "Čeká na úhradu"}
+        />
       </div>
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">

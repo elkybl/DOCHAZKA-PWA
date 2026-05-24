@@ -244,6 +244,14 @@ export default function PaymentsPage() {
     [filtered]
   );
 
+  function clearFilters() {
+    setQuery("");
+    setSelectedUser("");
+    setSelectedSite("");
+    setSelectedDay("");
+    setStatus("unpaid");
+  }
+
   const totals = useMemo(() => {
     return filtered.reduce(
       (sum, row) => {
@@ -322,6 +330,15 @@ export default function PaymentsPage() {
           <span className={`rounded-full px-3 py-2 ${status === "paid" ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : status === "unpaid" ? "border border-amber-200 bg-amber-50 text-amber-800" : "border border-slate-200 bg-slate-50 text-slate-700"}`}>
             {status === "paid" ? "Režim: vracení uhrazených dnů" : status === "unpaid" ? "Režim: označování k úhradě" : "Režim: kontrola všech dnů"}
           </span>
+          <button onClick={() => setSelectedDay(new Date().toISOString().slice(0, 10))} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-700">
+            Jen dnešek
+          </button>
+          <button onClick={() => { setSelectedDay(""); setSelectedSite(""); setSelectedUser(""); }} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-700">
+            Zrušit výběr dne / stavby / člověka
+          </button>
+          <button onClick={clearFilters} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-700">
+            Vyčistit vše
+          </button>
         </div>
         <button onClick={load} className="mt-3 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Načíst období</button>
         {err ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
@@ -342,6 +359,24 @@ export default function PaymentsPage() {
                   <div className="text-base font-semibold">{row.user_name}</div>
                   <div className="mt-1 text-xs text-slate-500">
                     {row.site_name || "Bez stavby"} • {row.from_day} - {row.to_day} • zobrazeno {visibleDays.length} d.
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUser(row.user_id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${selectedUser === row.user_id ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700"}`}
+                    >
+                      Jen {row.user_name}
+                    </button>
+                    {row.site_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSite(row.site_id || "")}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${selectedSite === (row.site_id || "") ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700"}`}
+                      >
+                        Jen {row.site_name}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 <div className="text-right">
@@ -371,7 +406,13 @@ export default function PaymentsPage() {
                     return (
                       <div key={`${key}_${day.day}`} className="grid gap-3 px-3 py-3 text-sm lg:grid-cols-[110px_1fr_160px] lg:items-start">
                         <div>
-                          <div className="font-semibold text-slate-950">{day.day}</div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDay(day.day)}
+                            className={`font-semibold ${selectedDay === day.day ? "text-blue-700" : "text-slate-950"}`}
+                          >
+                            {day.day}
+                          </button>
                           <div className={`mt-1 text-xs font-medium ${day.paid ? "text-emerald-700" : "text-amber-700"}`}>
                             {day.paid ? "Uhrazeno" : "K úhradě"}
                           </div>

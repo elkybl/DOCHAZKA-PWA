@@ -799,41 +799,49 @@ export default function AttendancePage() {
         </div>
       }
     >
-      <section className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-        <div className="order-2 space-y-5 xl:order-1">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-4">
-
-                <div>
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${present ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-800"}`}>
-                    {present ? "Docházka běží" : "Připraveno k zahájení"}
+      <section className="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
+        <div className="order-2 space-y-6 xl:order-1">
+          <div className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+            <div className="border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,#dbeafe_0,#eff6ff_28%,#ffffff_72%)] p-5 sm:p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${present ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-800"}`}>
+                  {present ? "Docházka běží" : "Připraveno k zahájení"}
+                </span>
+                {present ? (
+                  <span className="inline-flex rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+                    Aktivní den
                   </span>
-                  <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
-                    {present ? activeSiteName || "Aktivní stavba není určená" : selectedSite?.name || "Vyberte stavbu nebo použijte polohu"}
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                    {present
-                      ? "Před ukončením dne doplňte práci a kilometry. Přechod na další akci ve stejný čas zůstává uložený odděleně jako samostatný záznam."
-                      : "Aplikace vybere nejbližší stavbu podle polohy. Když poloha nesedí, vyberte stavbu ručně nebo vytvořte dočasnou."}
-                  </p>
-                </div>
+                ) : null}
               </div>
 
-              <div className="grid min-w-[240px] gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm xl:w-[260px]">
-                <div>
-                  <div className="text-xs font-medium text-slate-500">Přihlášený uživatel</div>
-                  <div className="mt-1 font-semibold text-slate-950">{me?.name || "-"}</div>
+              <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 max-w-2xl">
+                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                    {present ? activeSiteName || "Aktivní stavba není určená" : selectedSite?.name || "Vyberte stavbu nebo použijte polohu"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {present
+                      ? "Den už běží. Doplňte rozpad hodin, kilometry a případné programování. Nouzové ukončení nechte jen jako záložní variantu."
+                      : "Aplikace umí použít nejbližší stavbu podle polohy. Když poloha nesedí, stavbu přepněte ručně nebo si založte dočasnou."}
+                  </p>
                 </div>
-                <div>
-                  <div className="text-xs font-medium text-slate-500">Poloha / stavba</div>
-                  <div className="mt-1 font-semibold text-slate-950">{nearestLabel || "Nenalezena v dosahu"}</div>
-                  <div className="mt-1 text-xs text-slate-500">Přesnost: {pos ? `${Math.round(pos.accuracy)} m` : "bez polohy"}</div>
+
+                <div className="grid min-w-[240px] gap-3 rounded-[24px] border border-slate-200 bg-white/90 p-4 text-sm shadow-sm xl:w-[280px]">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Přihlášený uživatel</div>
+                    <div className="mt-1 font-semibold text-slate-950">{me?.name || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Poloha / stavba</div>
+                    <div className="mt-1 font-semibold text-slate-950">{nearestLabel || "Nenalezena v dosahu"}</div>
+                    <div className="mt-1 text-xs text-slate-500">Přesnost: {pos ? `${Math.round(pos.accuracy)} m` : "bez polohy"}</div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="p-5 sm:p-6">
+              <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
                 <div className="text-sm font-semibold">Zahájit docházku</div>
                 <div className="mt-1 text-xs text-emerald-50">Použije nejbližší stavbu nebo ruční výběr.</div>
@@ -848,20 +856,21 @@ export default function AttendancePage() {
               </button>
             </div>
 
-            <div className="mt-6 border-t border-slate-100 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dnešní práce</div>
-                  <div className="mt-1 text-sm text-slate-600">Kalendář, ruční doplnění i opravy dne držíme pohromadě. Když je potřeba dodatečný odchod, použijte nouzové uzavření níže.</div>
+            <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rychlé kroky pro dnešek</div>
+                    <div className="mt-1 text-sm text-slate-600">Kalendář, výdělky a ruční doplnění dne držíme pohromadě bez zbytečných boxů navíc.</div>
+                  </div>
+                  {present ? (
+                    <button type="button" onClick={openEndFormHint} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
+                      Přejít na ukončení dne
+                    </button>
+                  ) : null}
                 </div>
-                {present ? (
-                  <button type="button" onClick={openEndFormHint} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
-                    Přejít na ukončení dne
-                  </button>
-                ) : null}
-              </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <LinkCard href="/calendar" title="Kalendář" desc="Dnešní plán, volno i vlastní položky." />
                 <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě a detail jednotlivých dnů." />
                 <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
@@ -869,9 +878,10 @@ export default function AttendancePage() {
                   <div className="mt-1 text-xs leading-5 text-slate-600">Ruční doplnění dne, nákup materiálu nebo práce mimo lokaci.</div>
                 </button>
                 <LinkCard href="/me/edit" title="Upravit den" desc="Oprava práce, materiálu a přesného času dne." />
+                </div>
               </div>
 
-              <div className={`mt-4 rounded-[24px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="max-w-xl">
                     <div className={`text-xs font-semibold uppercase tracking-[0.16em] ${staleOpenShift ? "text-rose-800" : "text-amber-800"}`}>Nouzové uzavření</div>
@@ -894,7 +904,8 @@ export default function AttendancePage() {
                 </div>
               </div>
             </div>
-        </div>
+            </div>
+          </div>
         </div>
 
         <aside className="order-3 space-y-4 xl:order-2 xl:sticky xl:top-24 xl:self-start">
@@ -1047,10 +1058,17 @@ export default function AttendancePage() {
             <div className="mt-3 space-y-2">
               {todayCalendar.slice(0, 4).map((item) => (
                 <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-xs font-semibold text-slate-500">{calendarTypeLabels[item.type]}</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-950">{item.title}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {item.all_day ? "Celý den" : item.start_time ? `${item.start_time.slice(0, 5)}${item.end_time ? ` - ${item.end_time.slice(0, 5)}` : ""}` : "Bez času"}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500">{calendarTypeLabels[item.type]}</div>
+                      <div className="mt-1 text-sm font-semibold text-slate-950">{item.title}</div>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      {item.all_day ? "Celý den" : item.start_time ? item.start_time.slice(0, 5) : "Bez času"}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {item.all_day ? "Bez pevného času" : item.start_time ? `${item.start_time.slice(0, 5)}${item.end_time ? ` - ${item.end_time.slice(0, 5)}` : ""}` : "Bez času"}
                     {item.location ? ` - ${item.location}` : ""}
                   </div>
                 </div>
@@ -1247,9 +1265,12 @@ export default function AttendancePage() {
 
 function LinkCard({ href, title, desc }: { href: string; title: string; desc: string }) {
   return (
-    <a href={href} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-      <div className="text-sm font-semibold text-slate-950">{title}</div>
-      <div className="mt-1 text-xs leading-5 text-slate-600">{desc}</div>
+    <a href={href} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/40">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-950">{title}</div>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">Otevřít</span>
+      </div>
+      <div className="mt-2 text-xs leading-5 text-slate-600">{desc}</div>
     </a>
   );
 }

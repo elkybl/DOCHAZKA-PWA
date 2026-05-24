@@ -84,7 +84,16 @@ export function AppShell({
   const [isAdmin] = useState(readIsAdmin);
 
   const inAdminSection = !!pathname?.startsWith("/admin");
-  const resolvedArea = area === "auto" ? (inAdminSection ? "admin" : "worker") : area === "mixed" ? (inAdminSection ? "admin" : "worker") : area;
+  const resolvedArea =
+    area === "auto"
+      ? inAdminSection
+        ? "admin"
+        : "worker"
+      : area === "mixed"
+        ? inAdminSection
+          ? "admin"
+          : "worker"
+        : area;
   const navLinks = resolvedArea === "admin" ? adminLinks : workerLinks;
   const bottomVariant = resolvedArea === "admin" ? "admin" : "worker";
 
@@ -92,19 +101,19 @@ export function AppShell({
     if (resolvedArea === "admin") {
       return {
         eyebrow: "Admin režim",
-        helper: "Kontrola dnů, kalendáře, výplat a lidí.",
+        helper: "Kontrola dnů, výplat, kalendáře a provozních detailů.",
       };
     }
     return {
       eyebrow: "Pracovní režim",
-      helper: "Docházka, kalendář, projekty a vlastní přehled.",
+      helper: "Docházka, kalendář, projekty a vlastní přehled na jednom místě.",
     };
   }, [resolvedArea]);
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f8fbff_22%,#f4f7fb_100%)] px-3 pb-28 pt-4 text-slate-950 sm:px-5 md:pb-10 md:pt-6">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+        <header className="mb-6 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
           <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link href="/attendance" className="flex min-w-0 items-center gap-4">

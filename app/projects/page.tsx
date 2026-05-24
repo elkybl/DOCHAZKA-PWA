@@ -27,34 +27,34 @@ import {
 const UI = {
   title: "Akce a úkoly",
   subtitle:
-    "Přehled zakázek, servisů, checklistů, komentářů a souborů na jednom místě bez zbytečného chaosu.",
+    "Přehled zakázek, servisu, checklistů, komentářů a souborů na jednom místě bez zbytečného chaosu.",
   refresh: "Obnovit",
-  newProject: "Nov\u00fd projekt",
-  newTask: "Nov\u00fd \u00fakol",
+  newProject: "Nový projekt",
+  newTask: "Nový úkol",
   projects: "Projekty",
   projectsSubtitle: "Zakázky, servis, realizace i interní úkoly v jednom workflow.",
-  createProject: "Ulo\u017eit projekt",
-  saveTask: "Ulo\u017eit \u00fakol",
-  saveChanges: "Ulo\u017eit zm\u011bny",
-  save: "Ulo\u017eit",
-  cancel: "Zru\u0161it",
-  close: "Zav\u0159\u00edt",
+  createProject: "Uložit projekt",
+  saveTask: "Uložit úkol",
+  saveChanges: "Uložit změny",
+  save: "Uložit",
+  cancel: "Zrušit",
+  close: "Zavřít",
   delete: "Smazat",
-  open: "Otev\u0159\u00edt",
-  add: "P\u0159idat",
-  uploadAttachment: "P\u0159idat p\u0159\u00edlohu",
-  addComment: "P\u0159idat koment\u00e1\u0159",
-  editTask: "Upravit \u00fakol",
-  searchProjects: "Hledat v projektech, \u00fakolech a koment\u00e1\u0159\u00edch",
-  noDeadline: "Bez term\u00ednu",
-  noProjectDescription: "Bez dopl\u0148uj\u00edc\u00edho popisu projektu.",
-  noTaskDescription: "Bez dopl\u0148uj\u00edc\u00edho popisu \u00fakolu.",
-  noItems: "Zat\u00edm bez polo\u017eek.",
-  emptyProjectsTitle: "Zat\u00edm tu nen\u00ed \u017e\u00e1dn\u00fd projekt",
-  emptyProjectsText: "Za\u010dni zalo\u017een\u00edm prvn\u00ed akce, ke kter\u00e9 pak p\u0159id\u00e1\u0161 \u00fakoly, checklist a koment\u00e1\u0159e.",
+  open: "Otevřít",
+  add: "Přidat",
+  uploadAttachment: "Přidat přílohu",
+  addComment: "Přidat komentář",
+  editTask: "Upravit úkol",
+  searchProjects: "Hledat v projektech, úkolech a komentářích",
+  noDeadline: "Bez termínu",
+  noProjectDescription: "Bez doplňujícího popisu projektu.",
+  noTaskDescription: "Bez doplňujícího popisu úkolu.",
+  noItems: "Zatím bez položek.",
+  emptyProjectsTitle: "Zatím tu není žádný projekt",
+  emptyProjectsText: "Začni založením první akce, ke které pak přidáš úkoly, checklist a komentáře.",
   emptyProjectTitle: "Vyber projekt",
   emptyProjectText: "Po výběru projektu tady uvidíš board úkolů, projektové soubory i navazující detail.",
-  emptyTaskTitle: "Vyber \u00fakol",
+  emptyTaskTitle: "Vyber úkol",
   emptyTaskText: "Po kliknutí na kartu úkolu tady uvidíš detail, checklist, komentáře, přílohy a historii změn.",
 };
 
@@ -927,8 +927,9 @@ export default function ProjectsPage() {
         </>
       }
     >
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_340px]">
-        <Card>
+      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1.15fr)_360px]">
+        <div className="xl:sticky xl:top-24 xl:self-start">
+          <Card>
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">{UI.projects}</h2>
@@ -937,14 +938,14 @@ export default function ProjectsPage() {
             <Pill tone="neutral">{filteredProjects.length}</Pill>
           </div>
 
-          <div className="mt-4 space-y-3 rounded-3xl border bg-slate-50 p-4">
+          <div className="mt-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <input
-              className="w-full rounded-2xl border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
               placeholder={UI.searchProjects}
               value={projectQuery}
               onChange={(e) => setProjectQuery(e.target.value)}
             />
-            <div className="grid grid-cols-3 gap-2 rounded-2xl border bg-white p-1">
+            <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-1">
               {([
                 ["active", `Aktivní ${activeProjectCount}`],
                 ["archived", `Archiv ${archivedProjectCount}`],
@@ -1005,7 +1006,7 @@ export default function ProjectsPage() {
               const count = projectTaskCounts.get(project.id) || 0;
               const site = project.site_id ? sitesById.get(project.site_id)?.name : null;
               return (
-                <button key={project.id} type="button" onClick={() => setSelectedProjectId(project.id)} className={`w-full rounded-2xl border px-4 py-4 text-left transition ${active ? "border-blue-200 bg-blue-50 shadow-sm" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
+                <button key={project.id} type="button" onClick={() => setSelectedProjectId(project.id)} className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${active ? "border-blue-200 bg-blue-50 shadow-[0_16px_36px_rgba(37,99,235,0.12)]" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-950">{project.title}</div>
@@ -1021,9 +1022,10 @@ export default function ProjectsPage() {
               );
             }) : <EmptyState title={UI.emptyProjectsTitle} text={"Na zvolený filtr nebo hledání teď nic nesedí."} />}
           </div>
-        </Card>
+          </Card>
+        </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Card>
             {selectedProject ? (
               <>
@@ -1077,10 +1079,10 @@ export default function ProjectsPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-3xl border bg-slate-50 p-5">
+                <div className="mt-5 rounded-[28px] border border-slate-200 bg-slate-50 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <SectionHeader title={"Soubory projektu"} count={selectedProjectFiles.length} />
-                    <div className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-1 sm:grid-cols-5">
+                    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-5">
                       {([
                         ["all", "Vše"],
                         ["photo", "Fotky"],
@@ -1105,7 +1107,7 @@ export default function ProjectsPage() {
                   {projectGalleryFiles.length ? (
                     <div className="mt-4">
                       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fotogalerie projektu</div>
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
+                      <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                         {projectGalleryFiles.map((file) => {
                           const thumbUrl = projectFileThumbs[file.id];
                           return (
@@ -1153,7 +1155,7 @@ export default function ProjectsPage() {
                       filteredProjectFiles.map((file) => {
                         const uploadedBy = file.uploaded_by ? usersById.get(file.uploaded_by)?.name : null;
                         return (
-                          <div key={file.id} className="rounded-2xl border bg-white px-4 py-3">
+                          <div key={file.id} className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex min-w-0 items-start gap-3">
                                 {isImageFile(file) && projectFileThumbs[file.id] ? (
@@ -1161,7 +1163,7 @@ export default function ProjectsPage() {
                                   <img
                                     src={projectFileThumbs[file.id]}
                                     alt={file.topic || file.file_name}
-                                    className="h-16 w-16 rounded-2xl object-cover"
+                                    className="h-20 w-20 rounded-[20px] object-cover"
                                   />
                                 ) : null}
                                 <div className="min-w-0">

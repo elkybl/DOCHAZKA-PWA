@@ -1144,14 +1144,14 @@ export default function AttendancePage() {
             ))}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium text-slate-700">
               Datum
-              <input type="date" className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={manualDayDate} onChange={(e) => setManualDayDate(e.target.value)} />
+              <input type="date" className="mt-1 h-12 w-full rounded-2xl border border-slate-300 px-4 py-3 text-base" value={manualDayDate} onChange={(e) => setManualDayDate(e.target.value)} />
             </label>
             <label className="text-sm font-medium text-slate-700">
               Stavba
-              <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={manualDaySiteId ?? ""} onChange={(e) => setManualDaySiteId(e.target.value || null)}>
+              <select className="mt-1 h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base" value={manualDaySiteId ?? ""} onChange={(e) => setManualDaySiteId(e.target.value || null)}>
                 <option value="">Bez stavby</option>
                 {sites.map((site) => (
                   <option key={site.id} value={site.id}>
@@ -1172,34 +1172,34 @@ export default function AttendancePage() {
                   : "Použijte pro klasickou práci na stavbě včetně ručně doplněného dne."}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium text-slate-700">
               Od
-              <input type="time" className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={manualDayFrom} onChange={(e) => setManualDayFrom(e.target.value)} />
+              <input type="time" className="mt-1 h-14 w-full rounded-2xl border border-slate-300 px-4 py-3 text-lg font-semibold tracking-wide" value={manualDayFrom} onChange={(e) => setManualDayFrom(e.target.value)} />
             </label>
             <label className="text-sm font-medium text-slate-700">
               Do
-              <input type="time" className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={manualDayTo} onChange={(e) => setManualDayTo(e.target.value)} />
+              <input type="time" className="mt-1 h-14 w-full rounded-2xl border border-slate-300 px-4 py-3 text-lg font-semibold tracking-wide" value={manualDayTo} onChange={(e) => setManualDayTo(e.target.value)} />
             </label>
           </div>
 
-          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="mt-4 rounded-[26px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-sm font-semibold text-slate-900">Rozpad hodin do kategorií</div>
                 <div className="mt-1 text-xs text-slate-500">Za tenhle ručně doplněný den je potřeba rozdělit přesně {fmtHours(manualRoundedHours)} h.</div>
               </div>
-              <button type="button" onClick={() => setManualSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || defaultCategoryForManualKind(manualDayKind))])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+              <button type="button" onClick={() => setManualSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || defaultCategoryForManualKind(manualDayKind))])} className="self-start rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">
                 Přidat kategorii
               </button>
             </div>
             <div className="mt-3 space-y-3">
               {manualSplitRows.map((row, index) => (
-                <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_120px_auto]">
+                <div key={row.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
                     <label className="text-xs font-semibold text-slate-600">
                       Kategorie
-                      <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateManualSplitRow(row.id, { category: e.target.value })}>
+                      <select className="mt-1 h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base" value={row.category} onChange={(e) => updateManualSplitRow(row.id, { category: e.target.value })}>
                         {WORK_CATEGORY_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
@@ -1207,18 +1207,18 @@ export default function AttendancePage() {
                     </label>
                     <label className="text-xs font-semibold text-slate-600">
                       Hodiny
-                      <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateManualSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
+                      <input className="mt-1 h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base font-semibold" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateManualSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
                     </label>
-                    <div className="flex items-end">
-                      <button type="button" onClick={() => setManualSplitRows((current) => current.length === 1 ? [makeSplitRow(defaultCategoryForManualKind(manualDayKind))] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        {index === 0 && manualSplitRows.length === 1 ? "Vyčistit" : "Smazat"}
-                      </button>
-                    </div>
                   </div>
                   <label className="mt-3 block text-xs font-semibold text-slate-600">
                     Co se dělalo v téhle kategorii
-                    <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Např. nákup světel, kompletace rozvaděče, klientská změna v koupelně" value={row.note} onChange={(e) => updateManualSplitRow(row.id, { note: e.target.value })} />
+                    <input className="mt-1 h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base" placeholder="Např. nákup světel, kompletace rozvaděče, klientská změna v koupelně" value={row.note} onChange={(e) => updateManualSplitRow(row.id, { note: e.target.value })} />
                   </label>
+                  <div className="mt-3 flex justify-end">
+                    <button type="button" onClick={() => setManualSplitRows((current) => current.length === 1 ? [makeSplitRow(defaultCategoryForManualKind(manualDayKind))] : current.filter((item) => item.id !== row.id))} className="min-w-32 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                      {index === 0 && manualSplitRows.length === 1 ? "Vyčistit" : "Smazat"}
+                    </button>
+                  </div>
                   <div className="mt-2 text-xs text-slate-500">{splitCategoryHelper(row.category)}</div>
                 </div>
               ))}
@@ -1249,7 +1249,7 @@ export default function AttendancePage() {
           </label>
           <input className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" inputMode="decimal" placeholder="Kilometry (volitelné)" value={manualDayKm} onChange={(e) => setManualDayKm(e.target.value)} />
 
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4">
             <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setManualDayOpen(false)}>
               Zrušit
             </button>
@@ -1277,15 +1277,15 @@ function LinkCard({ href, title, desc }: { href: string; title: string; desc: st
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-4 md:items-center">
-      <div className="w-full max-w-lg rounded-[28px] bg-white p-5 shadow-xl">
-        <div className="flex items-center justify-between gap-3">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-2 sm:p-4 md:items-center">
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] bg-white shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div className="text-lg font-semibold">{title}</div>
           <button type="button" className="rounded-xl border border-slate-300 px-3 py-1 text-sm" onClick={onClose}>
             Zavřít
           </button>
         </div>
-        <div className="mt-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
       </div>
     </div>
   );

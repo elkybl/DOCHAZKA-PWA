@@ -900,54 +900,32 @@ export default function AttendancePage() {
             </div>
 
             <div className="space-y-6 p-5 sm:p-6">
-              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
                     <div className="text-sm font-semibold">{present ? "Docházka už běží" : "Zahájit docházku"}</div>
                     <div className="mt-1 text-xs text-emerald-50">{present ? "Nejdřív dokončete aktivní den. Až potom založte další stavbu nebo nový začátek." : "Použije nejbližší stavbu nebo ruční výběr."}</div>
                   </button>
-                  <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                    <div className="text-sm font-semibold text-slate-950">{present ? "Připravit další stavbu" : "Vybrat stavbu"}</div>
-                    <div className="mt-1 text-xs text-slate-600">{present ? "Novou stavbu vyberte až po uzavření dne. Teď si ji můžete jen předpřipravit." : "Přepnutí stavby bez čekání na GPS."}</div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (present) {
+                        setOutErr("Pro změnu stavby nejdřív ukončete aktivní den. Až potom zvolte další stavbu.");
+                        openEndFormHint();
+                        return;
+                      }
+                      setManualPickOpen(true);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
+                  >
+                    <div className="text-sm font-semibold text-slate-950">{present ? "Nejdřív ukončit den" : "Vybrat stavbu"}</div>
+                    <div className="mt-1 text-xs text-slate-600">{present ? "Aktivní den nejde přepnout na jinou stavbu. Nejdřív ho dokončete v průvodci vpravo." : "Vyberte správnou stavbu ručně, když GPS nesedí."}</div>
                   </button>
-                  <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                    <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
-                    <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
-                  </button>
-                </div>
-
-                <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Co udělat teď</div>
-                  {present ? (
-                    <>
-                      <div className="mt-3 text-lg font-semibold text-slate-950">
-                        {currentStep === 2
-                          ? "Zvolte, jak den ukončujete"
-                          : currentStep === 3
-                            ? "Rozepište hodiny a doplňte kilometry"
-                            : "Zkontrolujte shrnutí a odešlete docházku"}
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {currentStep === 2
-                          ? "Nejdřív rozhodněte, jestli jste ještě na místě a jde použít poloha, nebo už potřebujete ruční čas odchodu."
-                          : currentStep === 3
-                            ? "Jakmile je jasné, jak den končí, rozdělte hodiny do kategorií a doplňte kilometry."
-                            : "Všechno podstatné je vyplněné. Ještě jednou zkontrolujte den a odešlete docházku."}
-                      </p>
-                      <button type="button" onClick={openEndFormHint} className="mt-4 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
-                        Přejít na ukončení dne
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="mt-3 text-lg font-semibold text-slate-950">Nejdřív vyberte stavbu a zahajte den</div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">Když poloha sedí, můžete rovnou spustit docházku. Když nesedí, vyberte stavbu ručně nebo si založte dočasnou.</p>
-                    </>
-                  )}
                 </div>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid gap-4">
                 <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -965,19 +943,6 @@ export default function AttendancePage() {
                     </button>
                     <LinkCard href="/me/edit" title="Upravit den" desc="Oprava práce, materiálu a přesného času dne." />
                   </div>
-                </div>
-
-                <div id="manual-close-card" className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Když zlobí poloha</div>
-                  <h3 className="mt-2 text-base font-semibold text-amber-950">Ruční ukončení jako záloha</h3>
-                  <p className="mt-1 text-sm leading-6 text-amber-900">
-                    Tahle karta je jen pro případy, kdy běžné ukončení selže na poloze nebo když kolega odchod doplňuje později. Hlavní průchod dne je vpravo.
-                  </p>
-                  {staleOpenShift ? (
-                    <div className="mt-3 rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm font-medium text-rose-900">
-                      Tenhle den běží už déle než 18 hodin. Nejbezpečnější je vybrat ruční čas odchodu a den uzavřít bez polohy.
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>
@@ -1023,6 +988,12 @@ export default function AttendancePage() {
                 ) : null}
               </div>
 
+              {staleOpenShift ? (
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-medium text-rose-900">
+                  Tenhle den běží už déle než 18 hodin. Nejbezpečnější je zvolit ruční čas odchodu a den uzavřít bez polohy.
+                </div>
+              ) : null}
+
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
@@ -1034,8 +1005,8 @@ export default function AttendancePage() {
                   }}
                   className={`rounded-2xl border px-4 py-4 text-left transition ${closeMode === "onsite" ? "border-blue-300 bg-blue-50 shadow-sm" : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40"} disabled:opacity-45`}
                 >
-                  <div className="text-sm font-semibold text-slate-950">Jsem pořád na místě</div>
-                  <div className="mt-1 text-xs leading-5 text-slate-600">Až bude den připravený, aplikace při odeslání ověří polohu a ukončí docházku běžně.</div>
+                  <div className="text-sm font-semibold text-slate-950">Jsem ještě na stavbě</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">Použijte běžné ukončení. Aplikace při odeslání ověří polohu a den uzavře automaticky.</div>
                 </button>
                 <button
                   type="button"
@@ -1048,7 +1019,7 @@ export default function AttendancePage() {
                   className={`rounded-2xl border px-4 py-4 text-left transition ${closeMode === "manual" ? "border-amber-300 bg-amber-50 shadow-sm" : "border-slate-200 bg-white hover:border-amber-200 hover:bg-amber-50/40"} disabled:opacity-45`}
                 >
                   <div className="text-sm font-semibold text-slate-950">Už jsem mimo stavbu</div>
-                  <div className="mt-1 text-xs leading-5 text-slate-600">Použijte ruční čas odchodu. To je správná cesta, když už GPS nesedí nebo kolega odjíždí později.</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">Zadejte čas, kdy jste odjel nebo odešel ze stavby. Docházka se potom uzavře ručně bez polohy.</div>
                 </button>
               </div>
 
@@ -1126,31 +1097,13 @@ export default function AttendancePage() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-semibold text-slate-900">Volitelné doplňky</div>
-              <div className="mt-1 text-xs text-slate-500">Souhrn dne, materiál a programování slouží jen jako doplněk navíc. Povinný základ je způsob ukončení, rozpad hodin a kilometry.</div>
+              <div className="text-sm font-semibold text-slate-900">Popis práce navíc</div>
+              <div className="mt-1 text-xs text-slate-500">Sem patří jen krátké shrnutí dne navíc. Hlavní obsah práce už je rozepsaný v kategoriích výše.</div>
 
               <label className="mt-4 block text-xs font-semibold text-slate-600">
-                Souhrn dne (volitelné)
+                Popis práce (volitelné)
                 <textarea ref={noteRef} className={`mt-1 min-h-24 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes dělalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
               </label>
-
-              <label className="mt-3 block text-xs font-semibold text-slate-600">
-                Popis materiálu
-                <input ref={matDescRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material_desc" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Například kabel, jistič, svorky. Pokud materiál nebyl, nechte prázdné." value={matDesc} onChange={(e) => { setMatDesc(e.target.value); if (outField === "material_desc") setOutField(null); }} />
-              </label>
-
-              {me?.is_programmer ? (
-                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                    <input type="checkbox" checked={didProgram} onChange={(e) => setDidProgram(e.target.checked)} />
-                    Dnes se programovalo
-                  </label>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <input ref={progHoursRef} className={`w-full rounded-2xl border p-3 text-sm disabled:bg-slate-100 ${outField === "prog_hours" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Hodiny" inputMode="decimal" value={progHours} onChange={(e) => { setProgHours(e.target.value); if (outField === "prog_hours") setOutField(null); }} disabled={!didProgram} />
-                    <input className="w-full rounded-2xl border border-slate-300 p-3 text-sm disabled:bg-slate-100" placeholder="Poznámka" value={progNote} onChange={(e) => setProgNote(e.target.value)} disabled={!didProgram} />
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             <div className={`mt-4 rounded-2xl border p-4 ${canSubmitOut ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>

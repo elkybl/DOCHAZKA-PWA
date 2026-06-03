@@ -279,6 +279,7 @@ export default function AttendancePage() {
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
   const [manualOutTime, setManualOutTime] = useState("");
+  const [closeMode, setCloseMode] = useState<"onsite" | "manual">("onsite");
   const [didProgram, setDidProgram] = useState(false);
   const [progHours, setProgHours] = useState("");
   const [progNote, setProgNote] = useState("");
@@ -309,10 +310,14 @@ export default function AttendancePage() {
     return `${nearest.site.name} - ${Math.round(nearest.dist)} m`;
   }, [manualSiteId, nearest, sites]);
 
+  const hasManualTime = manualOutTime.trim().length > 0;
   const currentRoundedHours = useMemo(() => {
-    if (manualOutTime.trim()) return roundedHoursFromIsoAndManualTime(activeInTime, manualOutTime.trim());
+    if (closeMode === "manual") {
+      if (!hasManualTime) return 0;
+      return roundedHoursFromIsoAndManualTime(activeInTime, manualOutTime.trim());
+    }
     return roundedHoursFromIsoRange(activeInTime, new Date());
-  }, [activeInTime, manualOutTime]);
+  }, [activeInTime, manualOutTime, closeMode, hasManualTime]);
 
   const openDurationHours = useMemo(() => {
     if (!activeInTime) return 0;
@@ -341,19 +346,23 @@ export default function AttendancePage() {
 
   const completionItems = useMemo(() => {
     return [
+      { label: "Způsob ukončení", done: closeMode === "onsite" || hasManualTime },
       { label: "Kilometry", done: km.trim().length > 0 },
-      { label: "Rozpad hodin", done: currentRoundedHours <= 0 || Math.abs(splitHoursTotal - currentRoundedHours) < 0.01 },
+      {
+        label: "Rozpad hodin",
+        done: currentRoundedHours > 0 && Math.abs(splitHoursTotal - currentRoundedHours) < 0.01,
+      },
       {
         label: "Programování",
         done: !me?.is_programmer || !didProgram || (progHours.trim().length > 0 && progNote.trim().length > 0),
       },
     ];
-  }, [km, currentRoundedHours, splitHoursTotal, me?.is_programmer, didProgram, progHours, progNote]);
+  }, [closeMode, hasManualTime, km, currentRoundedHours, splitHoursTotal, me?.is_programmer, didProgram, progHours, progNote]);
 
   const completedCount = completionItems.filter((item) => item.done).length;
   const missingCompletionItems = completionItems.filter((item) => !item.done);
   const canSubmitOut = present && missingCompletionItems.length === 0 && !busy;
-  const currentStep = !present ? 1 : missingCompletionItems.length > 0 ? 2 : hasTrackedPosition ? 3 : 4;
+  const currentStep = !present ? 1 : !completionItems[0]?.done ? 2 : !completionItems[2]?.done || !completionItems[1]?.done ? 3 : 4;
 
   useEffect(() => {
     setManualSplitRows((current) => {
@@ -365,9 +374,23 @@ export default function AttendancePage() {
     });
   }, [manualDayKind]);
 
+  useEffect(() => {
+    if (!present) {
+      setCloseMode("onsite");
+      setManualOutTime("");
+      return;
+    }
+    if (staleOpenShift) {
+      setCloseMode("manual");
+    }
+  }, [present, staleOpenShift]);
+
   function focusOutField(field: string, message: string) {
     setOutErr(message);
     setOutField(field);
+    if (field === "manual_out_time") {
+      setCloseMode("manual");
+    }
     const map: Record<string, HTMLInputElement | HTMLTextAreaElement | null> = {
       note: noteRef.current,
       km: kmRef.current,
@@ -434,11 +457,16 @@ export default function AttendancePage() {
     const firstMissing = missingCompletionItems[0];
     if (!firstMissing) {
       setOutErr(null);
+      if (closeMode === "manual") {
+        void doOut(true);
+        return;
+      }
       const currentPos = pos || (await getPosition().catch(() => null));
       if (!currentPos) {
+        setCloseMode("manual");
         setOutField("manual_out_time");
         setOutErr("Nepodařilo se získat polohu pro běžné ukončení. Zadejte čas odchodu v nouzovém uzavření níže a ukončete den bez polohy.");
-        document.getElementById("manual-close-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.getElementById("close-mode-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
         window.setTimeout(() => manualOutTimeRef.current?.focus(), 120);
         return;
       }
@@ -448,6 +476,7 @@ export default function AttendancePage() {
     }
 
     const fieldMap: Record<string, { field: string; message: string }> = {
+      "Způsob ukončení": { field: "manual_out_time", message: "Vyberte, jak den ukončujete. Pokud už nejste na stavbě, zadejte čas odchodu bez polohy." },
       Kilometry: { field: "km", message: "Nejdřív doplňte kilometry. Pokud žádné nejsou, zadejte 0." },
       "Programování": { field: "prog_hours", message: "Pokud se dnes programovalo, doplňte hodiny a poznámku k programování." },
       "Rozpad hodin": { field: "note", message: "Nejdřív správně rozdělte hodiny do kategorií, aby jejich součet seděl na celý den." },
@@ -681,7 +710,7 @@ export default function AttendancePage() {
 
       setBusy(true);
 
-      const currentPos = forceWithoutLocation ? null : await getPosition().catch(() => null);
+      const currentPos = forceWithoutLocation ? null : pos || (await getPosition().catch(() => null));
       if (currentPos) setPos(currentPos);
 
       let siteId: string | null = manualSiteId || activeSiteId || null;
@@ -870,70 +899,87 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="p-5 sm:p-6">
-              <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
-                  <div className="text-sm font-semibold">{present ? "Docházka už běží" : "Zahájit docházku"}</div>
-                  <div className="mt-1 text-xs text-emerald-50">{present ? "Nejdřív ukončete aktivní den a až pak zahajte další stavbu." : "Použije nejbližší stavbu nebo ruční výběr."}</div>
-                </button>
-                <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                  <div className="text-sm font-semibold text-slate-950">{present ? "Vybrat další stavbu" : "Vybrat stavbu"}</div>
-                  <div className="mt-1 text-xs text-slate-600">{present ? "Výběr si připravte, ale nový den spustíte až po ukončení aktivního." : "Přepnutí stavby bez čekání na GPS."}</div>
-                </button>
-                <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                  <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
-                  <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
-                </button>
+            <div className="space-y-6 p-5 sm:p-6">
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
+                    <div className="text-sm font-semibold">{present ? "Docházka už běží" : "Zahájit docházku"}</div>
+                    <div className="mt-1 text-xs text-emerald-50">{present ? "Nejdřív dokončete aktivní den. Až potom založte další stavbu nebo nový začátek." : "Použije nejbližší stavbu nebo ruční výběr."}</div>
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                    <div className="text-sm font-semibold text-slate-950">{present ? "Připravit další stavbu" : "Vybrat stavbu"}</div>
+                    <div className="mt-1 text-xs text-slate-600">{present ? "Novou stavbu vyberte až po uzavření dne. Teď si ji můžete jen předpřipravit." : "Přepnutí stavby bez čekání na GPS."}</div>
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                    <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
+                    <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
+                  </button>
+                </div>
+
+                <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Co udělat teď</div>
+                  {present ? (
+                    <>
+                      <div className="mt-3 text-lg font-semibold text-slate-950">
+                        {currentStep === 2
+                          ? "Zvolte, jak den ukončujete"
+                          : currentStep === 3
+                            ? "Rozepište hodiny a doplňte kilometry"
+                            : "Zkontrolujte shrnutí a odešlete docházku"}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {currentStep === 2
+                          ? "Nejdřív rozhodněte, jestli jste ještě na místě a jde použít poloha, nebo už potřebujete ruční čas odchodu."
+                          : currentStep === 3
+                            ? "Jakmile je jasné, jak den končí, rozdělte hodiny do kategorií a doplňte kilometry."
+                            : "Všechno podstatné je vyplněné. Ještě jednou zkontrolujte den a odešlete docházku."}
+                      </p>
+                      <button type="button" onClick={openEndFormHint} className="mt-4 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
+                        Přejít na ukončení dne
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mt-3 text-lg font-semibold text-slate-950">Nejdřív vyberte stavbu a zahajte den</div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">Když poloha sedí, můžete rovnou spustit docházku. Když nesedí, vyberte stavbu ručně nebo si založte dočasnou.</p>
+                    </>
+                  )}
+                </div>
               </div>
 
-            <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rychlé kroky pro dnešek</div>
-                    <div className="mt-1 text-sm text-slate-600">Kalendář, výdělky a ruční doplnění dne držíme pohromadě bez zbytečných boxů navíc.</div>
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rychlé kroky pro dnešek</div>
+                      <div className="mt-1 text-sm text-slate-600">Kalendář, výdělky a ruční doplnění dne držíme pohromadě bez zbytečných bočních boxů.</div>
+                    </div>
                   </div>
-                  {present ? (
-                    <button type="button" onClick={openEndFormHint} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900">
-                      Přejít na ukončení dne
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <LinkCard href="/calendar" title="Kalendář" desc="Dnešní plán, volno i vlastní položky." />
+                    <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě a detail jednotlivých dnů." />
+                    <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                      <div className="text-sm font-semibold text-slate-950">Doplnit den / nákup</div>
+                      <div className="mt-1 text-xs leading-5 text-slate-600">Ruční doplnění dne, nákup materiálu nebo práce mimo lokaci.</div>
                     </button>
+                    <LinkCard href="/me/edit" title="Upravit den" desc="Oprava práce, materiálu a přesného času dne." />
+                  </div>
+                </div>
+
+                <div id="manual-close-card" className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Když zlobí poloha</div>
+                  <h3 className="mt-2 text-base font-semibold text-amber-950">Ruční ukončení jako záloha</h3>
+                  <p className="mt-1 text-sm leading-6 text-amber-900">
+                    Tahle karta je jen pro případy, kdy běžné ukončení selže na poloze nebo když kolega odchod doplňuje později. Hlavní průchod dne je vpravo.
+                  </p>
+                  {staleOpenShift ? (
+                    <div className="mt-3 rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm font-medium text-rose-900">
+                      Tenhle den běží už déle než 18 hodin. Nejbezpečnější je vybrat ruční čas odchodu a den uzavřít bez polohy.
+                    </div>
                   ) : null}
                 </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <LinkCard href="/calendar" title="Kalendář" desc="Dnešní plán, volno i vlastní položky." />
-                <LinkCard href="/me" title="Moje výdělky" desc="Přehled k úhradě a detail jednotlivých dnů." />
-                <button type="button" onClick={() => setManualDayOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                  <div className="text-sm font-semibold text-slate-950">Doplnit den / nákup</div>
-                  <div className="mt-1 text-xs leading-5 text-slate-600">Ruční doplnění dne, nákup materiálu nebo práce mimo lokaci.</div>
-                </button>
-                <LinkCard href="/me/edit" title="Upravit den" desc="Oprava práce, materiálu a přesného času dne." />
-                </div>
               </div>
-
-              <div id="manual-close-card" className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="max-w-xl">
-                    <div className={`text-xs font-semibold uppercase tracking-[0.16em] ${staleOpenShift ? "text-rose-800" : "text-amber-800"}`}>Nouzové uzavření</div>
-                    <h3 className={`mt-2 text-base font-semibold ${staleOpenShift ? "text-rose-950" : "text-amber-950"}`}>Ukončení bez polohy</h3>
-                    <p className={`mt-1 text-sm leading-6 ${staleOpenShift ? "text-rose-900" : "text-amber-900"}`}>
-                      Použijte při výpadku GPS, když odchod doplňujete dodatečně nebo když běžné ukončení nešlo dokončit kvůli poloze. Tohle je bezpečná ruční cesta, která den opravdu uzavře.
-                    </p>
-                    {staleOpenShift ? (
-                      <div className="mt-3 rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm font-medium text-rose-900">
-                        Tenhle den běží už déle než 18 hodin. Nejbezpečnější je zadat skutečný čas odchodu a ukončit ho tady ručně.
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="grid min-w-[260px] gap-2 sm:grid-cols-[180px_auto] sm:items-end">
-                    <input ref={manualOutTimeRef} type="time" value={manualOutTime} onChange={(e) => { setManualOutTime(e.target.value); if (outField === "manual_out_time") setOutField(null); }} disabled={busy || !present} className={`w-full rounded-xl border bg-white px-3 py-3 text-sm ${outField === "manual_out_time" ? "border-red-300" : "border-amber-300"}`} />
-                    <button type="button" disabled={busy || !present} onClick={() => doOut(true)} className="rounded-xl border border-amber-400 bg-white px-4 py-3 text-sm font-semibold text-amber-950 shadow-sm disabled:opacity-45">
-                      Ukončit bez polohy
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
             </div>
           </div>
         </div>
@@ -942,111 +988,134 @@ export default function AttendancePage() {
           <section ref={endCardRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] xl:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">Ukončení docházky</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Rozpad hodin, čas a kilometry jdou do výplat, přehledu i exportu. Souhrn dne i materiál jsou volitelné doplňky.</p>
+                <h2 className="text-base font-semibold">Ukončení docházky krok po kroku</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Nejdřív určete způsob ukončení dne. Pak rozdělte hodiny, doplňte kilometry a nakonec všechno odešlete.</p>
               </div>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Povinné</span>
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Průvodce</span>
             </div>
 
             {outErr ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{outErr}</div> : null}
 
-            <div className={`mt-4 rounded-2xl border p-4 ${canSubmitOut ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              {[
+                { title: "1", label: "Způsob ukončení", active: currentStep === 2, done: completionItems[0]?.done },
+                { title: "2", label: "Rozpad hodin", active: currentStep === 3, done: completionItems[2]?.done },
+                { title: "3", label: "Kilometry", active: currentStep === 3 && !completionItems[1]?.done, done: completionItems[1]?.done },
+                { title: "4", label: "Odeslat den", active: currentStep === 4, done: canSubmitOut },
+              ].map((step) => (
+                <div key={step.title} className={`rounded-2xl border px-3 py-3 text-center ${step.active ? "border-blue-200 bg-blue-50" : step.done ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
+                  <div className={`text-xs font-semibold ${step.active ? "text-blue-800" : step.done ? "text-emerald-800" : "text-slate-500"}`}>Krok {step.title}</div>
+                  <div className={`mt-1 text-xs font-medium ${step.active ? "text-blue-950" : step.done ? "text-emerald-950" : "text-slate-700"}`}>{step.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div id="close-mode-card" className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className={`text-sm font-semibold ${canSubmitOut ? "text-emerald-950" : "text-amber-950"}`}>
-                    {canSubmitOut ? "Den je připravený k ukončení" : `Před ukončením doplňte ještě ${missingCompletionItems.length} položky`}
-                  </div>
-                  <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
-                    {canSubmitOut
-                      ? "Rozpad hodin i kilometry jsou hotové. Teď už můžete docházku bez obav ukončit."
-                      : "Tady hned vidíte, co ještě chybí. Když stisknete ukončení moc brzy, formulář vás přesně navede na první chybějící pole."}
-                  </div>
+                  <div className="text-sm font-semibold text-slate-900">Krok 1: Jak den končí?</div>
+                  <div className="mt-1 text-xs text-slate-500">Vyberte, jestli jste ještě na místě a může se použít poloha, nebo už jste mimo stavbu a potřebujete ruční čas odchodu.</div>
                 </div>
-                <div className="flex min-w-[220px] flex-col items-stretch gap-2">
-                  <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${canSubmitOut ? "bg-white text-emerald-800" : "bg-white text-amber-800"}`}>
-                    {canSubmitOut ? (hasTrackedPosition ? "Připraveno k ukončení" : "Chybí poloha pro běžné ukončení") : `${completedCount}/${completionItems.length} údajů připraveno`}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy || !present}
-                    onClick={submitOutFromCard}
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45 ${canSubmitOut ? "bg-blue-700" : "bg-amber-600 hover:bg-amber-700"}`}
-                  >
-                    {canSubmitOut ? (hasTrackedPosition ? "Ukončit docházku" : "Přejít na nouzové ukončení") : "Zkontrolovat a doplnit"}
+                {present ? (
+                  <button type="button" onClick={() => setCloseMode(staleOpenShift ? "manual" : "onsite")} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                    Reset kroku
                   </button>
-                </div>
+                ) : null}
               </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={!present}
+                  onClick={() => {
+                    setCloseMode("onsite");
+                    setOutErr(null);
+                    setOutField(null);
+                  }}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${closeMode === "onsite" ? "border-blue-300 bg-blue-50 shadow-sm" : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40"} disabled:opacity-45`}
+                >
+                  <div className="text-sm font-semibold text-slate-950">Jsem pořád na místě</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">Až bude den připravený, aplikace při odeslání ověří polohu a ukončí docházku běžně.</div>
+                </button>
+                <button
+                  type="button"
+                  disabled={!present}
+                  onClick={() => {
+                    setCloseMode("manual");
+                    setOutErr(null);
+                    setOutField(null);
+                  }}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${closeMode === "manual" ? "border-amber-300 bg-amber-50 shadow-sm" : "border-slate-200 bg-white hover:border-amber-200 hover:bg-amber-50/40"} disabled:opacity-45`}
+                >
+                  <div className="text-sm font-semibold text-slate-950">Už jsem mimo stavbu</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">Použijte ruční čas odchodu. To je správná cesta, když už GPS nesedí nebo kolega odjíždí později.</div>
+                </button>
+              </div>
+
+              {closeMode === "manual" ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-white p-4">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Čas, kdy jste opustil místo
+                    <input ref={manualOutTimeRef} type="time" value={manualOutTime} onChange={(e) => { setManualOutTime(e.target.value); if (outField === "manual_out_time") setOutField(null); }} disabled={busy || !present} className={`mt-1 w-full rounded-xl border bg-white px-3 py-3 text-sm ${outField === "manual_out_time" ? "border-red-300" : "border-amber-300"}`} />
+                  </label>
+                  <div className="mt-2 text-xs text-slate-500">Podle tohohle času se spočítají hodiny dne i rozpad práce.</div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-emerald-900">
+                  Běžné ukončení použije aktuální čas a při odeslání si zkusí sáhnout na polohu. Když to nevyjde, průvodce vás sám přesměruje na ruční čas.
+                </div>
+              )}
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-900">Stav formuláře</div>
-                <div className="text-xs font-semibold text-slate-500">{completedCount}/{completionItems.length} připraveno</div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Krok 2: Rozpad hodin a práce</div>
+                  <div className="mt-1 text-xs text-slate-500">Za dnešek je potřeba rozdělit přesně {fmtHours(currentRoundedHours)} h. Každá kategorie musí mít svůj popis.</div>
+                </div>
+                <button type="button" onClick={() => setSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || "cn")])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                  Přidat kategorii
+                </button>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {completionItems.map((item) => (
-                  <div key={item.label} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${item.done ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {item.done ? "Hotovo" : "Chybí"} - {item.label}
+
+              <div className="mt-3 space-y-3">
+                {splitRows.map((row, index) => (
+                  <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
+                      <label className="text-xs font-semibold text-slate-600">
+                        Kategorie
+                        <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateSplitRow(row.id, { category: e.target.value })}>
+                          {WORK_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-semibold text-slate-600">
+                        Hodiny
+                        <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
+                      </label>
+                      <div className="flex items-end">
+                        <button type="button" onClick={() => setSplitRows((current) => current.length === 1 ? [makeSplitRow(row.category)] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                          {index === 0 && splitRows.length === 1 ? "Vyčistit" : "Smazat"}
+                        </button>
+                      </div>
+                    </div>
+                    <label className="mt-3 block text-xs font-semibold text-slate-600">
+                      Co se dělalo v téhle kategorii
+                      <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Např. dokončení světel v obýváku, úprava rozvaděče, klientská změna v kuchyni" value={row.note} onChange={(e) => updateSplitRow(row.id, { note: e.target.value })} />
+                    </label>
+                    <div className="mt-2 text-xs text-slate-500">{splitCategoryHelper(row.category)}</div>
                   </div>
                 ))}
               </div>
-            </div>
 
-            <div className="mt-4 grid gap-3">
-              <label className="block text-xs font-semibold text-slate-600">
-                Souhrn dne (volitelné)
-                <textarea ref={noteRef} className={`mt-1 min-h-28 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes dělalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
-                <span className="mt-2 block text-[11px] font-medium text-slate-500">Nemusíte znovu opisovat celý den. Povinný detail patří do kategorií níže. Tohle je jen krátké shrnutí navíc.</span>
-              </label>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">Krok 1: Rozpad hodin do kategorií</div>
-                    <div className="mt-1 text-xs text-slate-500">Za dnešek je potřeba rozdělit přesně {fmtHours(currentRoundedHours)} h. Nejprve rozdělte hodiny, pak doplňte kilometry a nakonec den ukončete.</div>
-                  </div>
-                  <button type="button" onClick={() => setSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || "cn")])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-                    Přidat kategorii
-                  </button>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {splitRows.map((row, index) => (
-                    <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
-                        <label className="text-xs font-semibold text-slate-600">
-                          Kategorie
-                          <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateSplitRow(row.id, { category: e.target.value })}>
-                            {WORK_CATEGORY_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="text-xs font-semibold text-slate-600">
-                          Hodiny
-                          <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0" value={row.hours} onChange={(e) => updateSplitRow(row.id, { hours: e.target.value.replace(/[^\d.,]/g, "") })} />
-                        </label>
-                        <div className="flex items-end">
-                          <button type="button" onClick={() => setSplitRows((current) => current.length === 1 ? [makeSplitRow(row.category)] : current.filter((item) => item.id !== row.id))} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                            {index === 0 && splitRows.length === 1 ? "Vyčistit" : "Smazat"}
-                          </button>
-                        </div>
-                      </div>
-                      <label className="mt-3 block text-xs font-semibold text-slate-600">
-                        Co se dělalo v téhle kategorii
-                        <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Např. dokončení světel v obýváku, úprava rozvaděče, klientská změna v kuchyni" value={row.note} onChange={(e) => updateSplitRow(row.id, { note: e.target.value })} />
-                      </label>
-                      <div className="mt-2 text-xs text-slate-500">{splitCategoryHelper(row.category)}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${Math.abs(splitHoursTotal - currentRoundedHours) < 0.01 && currentRoundedHours > 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                  Součet kategorií: {fmtHours(splitHoursTotal)} h z {fmtHours(currentRoundedHours)} h
-                </div>
+              <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${Math.abs(splitHoursTotal - currentRoundedHours) < 0.01 && currentRoundedHours > 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                Součet kategorií: {fmtHours(splitHoursTotal)} h z {fmtHours(currentRoundedHours)} h
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs font-semibold text-slate-600">
-                  Krok 2: Kilometry
+                  Krok 3: Kilometry
                   <input ref={kmRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "km" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={km} onChange={(e) => { setKm(e.target.value); if (outField === "km") setOutField(null); }} />
                 </label>
                 <label className="block text-xs font-semibold text-slate-600">
@@ -1054,24 +1123,64 @@ export default function AttendancePage() {
                   <input ref={matAmountRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={matAmount} onChange={(e) => { setMatAmount(e.target.value); if (outField === "material") setOutField(null); }} />
                 </label>
               </div>
+            </div>
 
-              <label className="block text-xs font-semibold text-slate-600">
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-semibold text-slate-900">Volitelné doplňky</div>
+              <div className="mt-1 text-xs text-slate-500">Souhrn dne, materiál a programování slouží jen jako doplněk navíc. Povinný základ je způsob ukončení, rozpad hodin a kilometry.</div>
+
+              <label className="mt-4 block text-xs font-semibold text-slate-600">
+                Souhrn dne (volitelné)
+                <textarea ref={noteRef} className={`mt-1 min-h-24 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes dělalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
+              </label>
+
+              <label className="mt-3 block text-xs font-semibold text-slate-600">
                 Popis materiálu
                 <input ref={matDescRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material_desc" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Například kabel, jistič, svorky. Pokud materiál nebyl, nechte prázdné." value={matDesc} onChange={(e) => { setMatDesc(e.target.value); if (outField === "material_desc") setOutField(null); }} />
               </label>
 
               {me?.is_programmer ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                     <input type="checkbox" checked={didProgram} onChange={(e) => setDidProgram(e.target.checked)} />
                     Dnes se programovalo
                   </label>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <input ref={progHoursRef} className={`w-full rounded-2xl border p-3 text-sm disabled:bg-slate-100 ${outField === "prog_hours" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Hodiny" inputMode="decimal" value={progHours} onChange={(e) => { setProgHours(e.target.value); if (outField === "prog_hours") setOutField(null); }} disabled={!didProgram} />
                     <input className="w-full rounded-2xl border border-slate-300 p-3 text-sm disabled:bg-slate-100" placeholder="Poznámka" value={progNote} onChange={(e) => setProgNote(e.target.value)} disabled={!didProgram} />
                   </div>
                 </div>
               ) : null}
+            </div>
+
+            <div className={`mt-4 rounded-2xl border p-4 ${canSubmitOut ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className={`text-sm font-semibold ${canSubmitOut ? "text-emerald-950" : "text-amber-950"}`}>
+                    {canSubmitOut ? "Krok 4: Den je připravený k odeslání" : `Před odesláním chybí ještě ${missingCompletionItems.length} položky`}
+                  </div>
+                  <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
+                    {canSubmitOut
+                      ? closeMode === "manual"
+                        ? `Den se odešle s ručním časem odchodu ${manualOutTime}.`
+                        : "Den se odešle jako běžné ukončení s aktuální polohou."
+                      : "Průvodce vás po kliknutí navede na první chybějící krok."}
+                  </div>
+                </div>
+                <div className="flex min-w-[220px] flex-col items-stretch gap-2">
+                  <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${canSubmitOut ? "bg-white text-emerald-800" : "bg-white text-amber-800"}`}>
+                    {canSubmitOut ? "Připraveno k odeslání" : `${completedCount}/${completionItems.length} kroků hotovo`}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy || !present}
+                    onClick={submitOutFromCard}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45 ${canSubmitOut ? "bg-blue-700" : "bg-amber-600 hover:bg-amber-700"}`}
+                  >
+                    {canSubmitOut ? "Odeslat docházku" : "Dokončit chybějící kroky"}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 

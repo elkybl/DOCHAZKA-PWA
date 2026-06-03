@@ -322,6 +322,7 @@ export default function AttendancePage() {
   }, [activeInTime]);
 
   const staleOpenShift = openDurationHours >= 18;
+  const hasTrackedPosition = !!pos;
 
   const manualRoundedHours = useMemo(
     () => roundedHoursFromTimes(manualDayFrom, manualDayTo),
@@ -352,6 +353,7 @@ export default function AttendancePage() {
   const completedCount = completionItems.filter((item) => item.done).length;
   const missingCompletionItems = completionItems.filter((item) => !item.done);
   const canSubmitOut = present && missingCompletionItems.length === 0 && !busy;
+  const currentStep = !present ? 1 : missingCompletionItems.length > 0 ? 2 : hasTrackedPosition ? 3 : 4;
 
   useEffect(() => {
     setManualSplitRows((current) => {
@@ -423,7 +425,7 @@ export default function AttendancePage() {
     window.setTimeout(() => kmRef.current?.focus(), 120);
   }
 
-  function submitOutFromCard() {
+  async function submitOutFromCard() {
     if (!present) {
       setOutErr("Nejdřív zahajte docházku na stavbě.");
       return;
@@ -431,6 +433,16 @@ export default function AttendancePage() {
 
     const firstMissing = missingCompletionItems[0];
     if (!firstMissing) {
+      setOutErr(null);
+      const currentPos = pos || (await getPosition().catch(() => null));
+      if (!currentPos) {
+        setOutField("manual_out_time");
+        setOutErr("Nepodařilo se získat polohu pro běžné ukončení. Zadejte čas odchodu v nouzovém uzavření níže a ukončete den bez polohy.");
+        document.getElementById("manual-close-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => manualOutTimeRef.current?.focus(), 120);
+        return;
+      }
+      setPos(currentPos);
       void doOut(false);
       return;
     }
@@ -824,6 +836,24 @@ export default function AttendancePage() {
                       ? "Den už běží. Doplňte rozpad hodin, kilometry a případné programování. Nouzové ukončení nechte jen jako záložní variantu."
                       : "Aplikace umí použít nejbližší stavbu podle polohy. Když poloha nesedí, stavbu přepněte ručně nebo si založte dočasnou."}
                   </p>
+                  {present ? (
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        { id: 1, title: "Krok 1", desc: "Docházka běží", active: currentStep === 1, done: currentStep > 1 },
+                        { id: 2, title: "Krok 2", desc: "Rozepište hodiny a kilometry", active: currentStep === 2, done: currentStep > 2 },
+                        { id: 3, title: "Krok 3", desc: "Ukončete se zapnutou polohou", active: currentStep === 3, done: currentStep > 3 },
+                        { id: 4, title: "Krok 4", desc: "Když není poloha, použijte nouzové uzavření", active: currentStep === 4, done: false },
+                      ].map((step) => (
+                        <div
+                          key={step.id}
+                          className={`rounded-2xl border px-3 py-3 text-sm ${step.active ? "border-blue-200 bg-blue-50 text-blue-950" : step.done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white text-slate-600"}`}
+                        >
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em]">{step.title}</div>
+                          <div className="mt-1 leading-5">{step.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid min-w-[240px] gap-3 rounded-[24px] border border-slate-200 bg-white/90 p-4 text-sm shadow-sm xl:w-[280px]">
@@ -842,19 +872,19 @@ export default function AttendancePage() {
 
             <div className="p-5 sm:p-6">
               <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
-                <div className="text-sm font-semibold">Zahájit docházku</div>
-                <div className="mt-1 text-xs text-emerald-50">Použije nejbližší stavbu nebo ruční výběr.</div>
-              </button>
-              <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                <div className="text-sm font-semibold text-slate-950">Vybrat stavbu</div>
-                <div className="mt-1 text-xs text-slate-600">Přepnutí stavby bez čekání na GPS.</div>
-              </button>
-              <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
-                <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
-              </button>
-            </div>
+                <button type="button" disabled={busy || present} onClick={doIn} className="rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-[0_18px_40px_rgba(5,150,105,0.24)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">
+                  <div className="text-sm font-semibold">{present ? "Docházka už běží" : "Zahájit docházku"}</div>
+                  <div className="mt-1 text-xs text-emerald-50">{present ? "Nejdřív ukončete aktivní den a až pak zahajte další stavbu." : "Použije nejbližší stavbu nebo ruční výběr."}</div>
+                </button>
+                <button type="button" disabled={busy} onClick={() => setManualPickOpen(true)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                  <div className="text-sm font-semibold text-slate-950">{present ? "Vybrat další stavbu" : "Vybrat stavbu"}</div>
+                  <div className="mt-1 text-xs text-slate-600">{present ? "Výběr si připravte, ale nový den spustíte až po ukončení aktivního." : "Přepnutí stavby bez čekání na GPS."}</div>
+                </button>
+                <button type="button" disabled={busy} onClick={() => refreshGeo(sites)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                  <div className="text-sm font-semibold text-slate-950">Obnovit polohu</div>
+                  <div className="mt-1 text-xs text-slate-600">Znovu ověří nejbližší stavbu podle GPS.</div>
+                </button>
+              </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-4">
@@ -881,13 +911,13 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
+              <div id="manual-close-card" className={`rounded-[26px] border px-5 py-4 ${staleOpenShift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="max-w-xl">
                     <div className={`text-xs font-semibold uppercase tracking-[0.16em] ${staleOpenShift ? "text-rose-800" : "text-amber-800"}`}>Nouzové uzavření</div>
                     <h3 className={`mt-2 text-base font-semibold ${staleOpenShift ? "text-rose-950" : "text-amber-950"}`}>Ukončení bez polohy</h3>
                     <p className={`mt-1 text-sm leading-6 ${staleOpenShift ? "text-rose-900" : "text-amber-900"}`}>
-                      Použijte jen při výpadku GPS nebo když odchod doplňujete dodatečně. Je to záložní varianta, ne hlavní workflow dne.
+                      Použijte při výpadku GPS, když odchod doplňujete dodatečně nebo když běžné ukončení nešlo dokončit kvůli poloze. Tohle je bezpečná ruční cesta, která den opravdu uzavře.
                     </p>
                     {staleOpenShift ? (
                       <div className="mt-3 rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm font-medium text-rose-900">
@@ -934,7 +964,7 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex min-w-[220px] flex-col items-stretch gap-2">
                   <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${canSubmitOut ? "bg-white text-emerald-800" : "bg-white text-amber-800"}`}>
-                    {canSubmitOut ? "Připraveno k ukončení" : `${completedCount}/${completionItems.length} údajů připraveno`}
+                    {canSubmitOut ? (hasTrackedPosition ? "Připraveno k ukončení" : "Chybí poloha pro běžné ukončení") : `${completedCount}/${completionItems.length} údajů připraveno`}
                   </div>
                   <button
                     type="button"
@@ -942,7 +972,7 @@ export default function AttendancePage() {
                     onClick={submitOutFromCard}
                     className={`rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45 ${canSubmitOut ? "bg-blue-700" : "bg-amber-600 hover:bg-amber-700"}`}
                   >
-                    {canSubmitOut ? "Ukončit docházku" : "Zkontrolovat a doplnit"}
+                    {canSubmitOut ? (hasTrackedPosition ? "Ukončit docházku" : "Přejít na nouzové ukončení") : "Zkontrolovat a doplnit"}
                   </button>
                 </div>
               </div>
@@ -970,10 +1000,10 @@ export default function AttendancePage() {
               </label>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">Rozpad hodin do kategorií</div>
-                    <div className="mt-1 text-xs text-slate-500">Za dnešek je potřeba rozdělit přesně {fmtHours(currentRoundedHours)} h. Součet níže musí sedět, jinak den nepůjde ukončit.</div>
+                    <div className="text-sm font-semibold text-slate-900">Krok 1: Rozpad hodin do kategorií</div>
+                    <div className="mt-1 text-xs text-slate-500">Za dnešek je potřeba rozdělit přesně {fmtHours(currentRoundedHours)} h. Nejprve rozdělte hodiny, pak doplňte kilometry a nakonec den ukončete.</div>
                   </div>
                   <button type="button" onClick={() => setSplitRows((current) => [...current, makeSplitRow(current.at(-1)?.category || "cn")])} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
                     Přidat kategorii
@@ -982,7 +1012,7 @@ export default function AttendancePage() {
                 <div className="mt-3 space-y-3">
                   {splitRows.map((row, index) => (
                     <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_120px_auto]">
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
                         <label className="text-xs font-semibold text-slate-600">
                           Kategorie
                           <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={row.category} onChange={(e) => updateSplitRow(row.id, { category: e.target.value })}>
@@ -1014,9 +1044,9 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs font-semibold text-slate-600">
-                  Kilometry
+                  Krok 2: Kilometry
                   <input ref={kmRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "km" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={km} onChange={(e) => { setKm(e.target.value); if (outField === "km") setOutField(null); }} />
                 </label>
                 <label className="block text-xs font-semibold text-slate-600">

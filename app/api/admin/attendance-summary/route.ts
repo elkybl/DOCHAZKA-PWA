@@ -10,7 +10,7 @@ function round2(n: number) { return Math.round(n * 100) / 100; }
 function isDay(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function startOfDayIso(v: string) { return isDay(v) ? `${v}T00:00:00.000Z` : v; }
 function endOfDayIso(v: string) { return isDay(v) ? `${v}T23:59:59.999Z` : v; }
-function reviewKey(userId: string, day: string, siteId: string | null) { return `${userId}__${day}__${siteId || ""}`; }
+function reviewKey(userId: string, day: string, siteId: string | null) { return `${day}__${userId}__${siteId || ""}`; }
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -81,6 +81,8 @@ export async function GET(req: NextRequest) {
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     let lastIn: any = null;
+    let firstInEventId: string | null = null;
+    let lastOutEventId: string | null = null;
     let workHours = 0, workPay = 0, totalKm = 0, kmPay = 0, mat = 0;
     let firstIn: string | null = null, lastOut: string | null = null;
     const workNotes: string[] = [];
@@ -92,10 +94,14 @@ export async function GET(req: NextRequest) {
       if (e.type === "IN") {
         lastIn = e;
         workDeleteIds.push(e.id);
-        if (!firstIn) firstIn = e.server_time;
+        if (!firstIn) {
+          firstIn = e.server_time;
+          firstInEventId = e.id;
+        }
       } else if (e.type === "OUT") {
         workDeleteIds.push(e.id);
         lastOut = e.server_time;
+        lastOutEventId = e.id;
         if (lastIn) {
           const mins = Math.max(0, Math.round((toDate(e.server_time).getTime() - toDate(lastIn.server_time).getTime()) / 60000));
           const h = round2(mins / 60);
@@ -111,19 +117,21 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (workHours > 0 || totalKm > 0 || mat > 0 || workNotes.length) {
+    if (workDeleteIds.length > 0 || workHours > 0 || totalKm > 0 || mat > 0 || workNotes.length) {
       rows.push({
         id: `work__${uid}__${day}__${sid || "none"}`,
         sourceKind: "WORK",
         sourceId: workDeleteIds[workDeleteIds.length - 1] || null,
         sourceIds: workDeleteIds,
+        first_in_event_id: firstInEventId,
+        last_out_event_id: lastOutEventId,
         user_id: uid,
         user_name: uname,
         site_id: sid,
         site_name: sname,
         day,
         paid: paidAll,
-        title: "Práce",
+        title: lastOut ? "Práce" : "Otevřený den",
         first_in: firstIn,
         last_out: lastOut,
         hours: round2(workHours),

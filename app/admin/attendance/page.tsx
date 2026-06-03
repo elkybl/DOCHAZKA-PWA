@@ -1,9 +1,9 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
-import { fmtTimeCZFromIso, parseReportedLeftAtCZ } from "@/lib/time";
+import { fmtTimeCZFromIso } from "@/lib/time";
 
 type Site = { id: string; name: string };
 type User = { id: string; name: string };
@@ -12,6 +12,8 @@ type Row = {
   sourceKind: "WORK" | "PROGRAM" | "OFFSITE";
   sourceId: string | null;
   sourceIds?: string[];
+  first_in_event_id?: string | null;
+  last_out_event_id?: string | null;
   user_id: string;
   user_name: string;
   site_id: string | null;
@@ -37,8 +39,8 @@ type EditState = {
   km: string;
   material: string;
   hours: string;
-  time_from: string;
-  time_to: string;
+  first_in: string;
+  last_out: string;
 };
 
 type Group = {
@@ -100,15 +102,24 @@ function numInput(value: string) {
   return trimmed === "" ? null : Number(trimmed.replace(",", "."));
 }
 
-function inputTimeFromIso(value: string | null) {
+function isoToTimeInput(value: string | null) {
   if (!value) return "";
-  const formatted = fmtTimeCZFromIso(value);
-  return formatted === "—" ? "" : formatted;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/Prague",
+  }).format(date);
 }
 
-function buildLocalIso(day: string, hhmm: string) {
-  const instant = parseReportedLeftAtCZ(hhmm, `${day}T00:00:00Z`);
-  return instant ? instant.toISOString() : null;
+function buildLocalIso(day: string, time: string) {
+  if (!day || !time) return null;
+  const [year, month, date] = day.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  if (![year, month, date, hours, minutes].every(Number.isFinite)) return null;
+  return new Date(year, month - 1, date, hours, minutes, 0, 0).toISOString();
 }
 
 function sourceLabel(kind: Row["sourceKind"]) {
@@ -192,8 +203,9 @@ function groupFlags(group: Group) {
   return { hasMissingNote, hasMissingSite, hasZeroRow, hasOpenDay };
 }
 
-export default function AdminAttendancePage() {
+function AdminAttendancePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const me = useMemo(() => getMe(), []);
   const [sites, setSites] = useState<Site[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -209,7 +221,7 @@ export default function AdminAttendancePage() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "", time_from: "", time_to: "" });
+  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "", first_in: "", last_out: "" });
   const editNoteRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -232,16 +244,18 @@ export default function AdminAttendancePage() {
       .catch(() => setUsers([]));
   }, [router, me]);
 
-  async function load(options?: { focusedDay?: string; clearDates?: boolean }) {
+  async function load(options?: { focusedDay?: string; siteId?: string; userId?: string; clearDates?: boolean }) {
     setErr(null);
     setInfo(null);
     const t = getToken();
     if (!t) return;
     const qs = new URLSearchParams();
     const day = options?.focusedDay ?? focusedDay;
+    const siteFilter = options?.siteId ?? siteId;
+    const userFilter = options?.userId ?? userId;
     if (day) qs.set("day", day);
-    if (siteId) qs.set("site_id", siteId);
-    if (userId) qs.set("user_id", userId);
+    if (siteFilter) qs.set("site_id", siteFilter);
+    if (userFilter) qs.set("user_id", userFilter);
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/attendance-summary?${qs.toString()}`, { headers: { authorization: `Bearer ${t}` } });
@@ -265,8 +279,8 @@ export default function AdminAttendancePage() {
       km: String(r.km || ""),
       material: String(r.material || ""),
       hours: String(r.hours || ""),
-      time_from: inputTimeFromIso(r.first_in),
-      time_to: inputTimeFromIso(r.last_out),
+      first_in: isoToTimeInput(r.first_in),
+      last_out: isoToTimeInput(r.last_out),
     });
     setErr(null);
     setInfo(null);
@@ -276,6 +290,19 @@ export default function AdminAttendancePage() {
       editNoteRef.current?.focus();
     }, 80);
   }
+
+  useEffect(() => {
+    const nextDay = searchParams.get("day") || "";
+    const nextSiteId = searchParams.get("site_id") || "";
+    const nextUserId = searchParams.get("user_id") || "";
+    setFocusedDay(nextDay);
+    setSiteId(nextSiteId);
+    setUserId(nextUserId);
+    if (getToken() && me?.role === "admin") {
+      load({ focusedDay: nextDay, siteId: nextSiteId, userId: nextUserId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, me?.role]);
 
   async function patchEvent(id: string, payload: Record<string, unknown>) {
     const t = getToken();
@@ -313,15 +340,8 @@ export default function AdminAttendancePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nešlo uložit kontrolu dne.");
-      if (data?.review) {
-        setReviews((current) => {
-          const next = current.filter((item) => item.key !== group.key);
-          next.unshift(data.review);
-          return next;
-        });
-      }
       setInfo(status === "approved" ? "Den je schválený." : status === "returned" ? "Den je vrácený k doplnění." : "Den je znovu označený jako čekající.");
-      await load({ focusedDay: group.day });
+      await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Nešlo uložit kontrolu dne.");
     } finally {
@@ -338,20 +358,21 @@ export default function AdminAttendancePage() {
       const sitePayload = { site_id: edit.site_id || null };
       if (r.sourceKind === "WORK") {
         for (const id of r.sourceIds || []) await patchEvent(id, sitePayload);
-        const inId = r.sourceIds?.[0];
-        if (inId && edit.time_from) {
-          const inIso = buildLocalIso(r.day, edit.time_from);
-          if (inIso) await patchEvent(inId, { server_time: inIso });
-        }
         if (r.sourceId) {
-          const outIso = edit.time_to ? buildLocalIso(r.day, edit.time_to) : null;
           await patchEvent(r.sourceId, {
             ...sitePayload,
-            ...(outIso ? { server_time: outIso } : {}),
             note_work: edit.note,
             km: numInput(edit.km),
             material_amount: numInput(edit.material),
           });
+        }
+        const inIso = buildLocalIso(r.day, edit.first_in);
+        const outIso = buildLocalIso(r.day, edit.last_out);
+        if (r.first_in_event_id && inIso) {
+          await patchEvent(r.first_in_event_id, { server_time: inIso });
+        }
+        if (r.last_out_event_id && outIso) {
+          await patchEvent(r.last_out_event_id, { server_time: outIso });
         }
       } else if (r.sourceKind === "PROGRAM" && r.sourceId) {
         await patchEvent(r.sourceId, {
@@ -404,31 +425,6 @@ export default function AdminAttendancePage() {
     }
   }
 
-  async function deleteDay(group: Group) {
-    const t = getToken();
-    if (!t) return;
-    const ok = window.confirm(`Opravdu smazat celý den ${group.day} pro ${group.user_name}? Tato akce smaže všechny řádky dne.`);
-    if (!ok) return;
-    setErr(null);
-    setInfo(null);
-    setBusyId(group.key);
-    try {
-      const res = await fetch('/api/admin/attendance/delete-day', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` },
-        body: JSON.stringify({ user_id: group.user_id, day: group.day }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Nešlo smazat celý den.');
-      setInfo('Celý den byl smazán.');
-      await load();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Nešlo smazat celý den.');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -460,14 +456,6 @@ export default function AdminAttendancePage() {
     for (const entry of audit) map.set(entry.key, [...(map.get(entry.key) || []), entry]);
     return map;
   }, [audit]);
-  const attentionGroups = useMemo(
-    () => groups.filter((group) => {
-      const flags = groupFlags(group);
-      return flags.hasMissingNote || flags.hasMissingSite || flags.hasZeroRow || flags.hasOpenDay;
-    }).length,
-    [groups],
-  );
-  const paidGroups = useMemo(() => groups.filter((group) => group.paid).length, [groups]);
 
   return (
     <AppShell
@@ -518,17 +506,6 @@ export default function AdminAttendancePage() {
             {info && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
           </div>
         )}
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
-            Zobrazené dny: <span className="font-semibold text-slate-950">{groups.length}</span>
-          </span>
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-            Vyžaduje pozornost: <span className="font-semibold">{attentionGroups}</span>
-          </span>
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
-            Uhrazené dny: <span className="font-semibold">{paidGroups}</span>
-          </span>
-        </div>
       </section>
 
       <section className="mt-4 space-y-4">
@@ -575,10 +552,7 @@ export default function AdminAttendancePage() {
 
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kontrola dne</div>
-                    <div className="mt-1 text-xs text-slate-500">Schválení vychází z reálné docházky, částky a navázaných řádků níže.</div>
-                  </div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Časová osa dne</div>
                   <div className="flex flex-wrap gap-2">
                     <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900 disabled:opacity-50" disabled={busyId === group.key} onClick={() => reviewDay(group, "approved")}>
                       Schválit den
@@ -591,9 +565,6 @@ export default function AdminAttendancePage() {
                         Zpět na čeká
                       </button>
                     ) : null}
-                    <button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50" disabled={busyId === group.key || group.paid} onClick={() => deleteDay(group)}>
-                      {busyId === group.key ? 'Mažu den' : 'Smazat celý den'}
-                    </button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -656,22 +627,22 @@ export default function AdminAttendancePage() {
                           ) : (
                             <>
                               <div className="grid gap-3 md:grid-cols-2">
+                                {r.sourceKind === "WORK" ? (
+                                  <>
+                                    <Field label="Příchod">
+                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.first_in} onChange={(e) => setEdit((p) => ({ ...p, first_in: e.target.value }))} />
+                                    </Field>
+                                    <Field label="Odchod">
+                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.last_out} onChange={(e) => setEdit((p) => ({ ...p, last_out: e.target.value }))} />
+                                    </Field>
+                                  </>
+                                ) : null}
                                 <Field label="Stavba">
                                   <select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={edit.site_id} onChange={(e) => setEdit((p) => ({ ...p, site_id: e.target.value }))}>
                                     <option value="">Bez stavby</option>
                                     {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                                   </select>
                                 </Field>
-                                {r.sourceKind === "WORK" ? (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Od">
-                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.time_from} onChange={(e) => setEdit((p) => ({ ...p, time_from: e.target.value }))} />
-                                    </Field>
-                                    <Field label="Do">
-                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.time_to} onChange={(e) => setEdit((p) => ({ ...p, time_to: e.target.value }))} />
-                                    </Field>
-                                  </div>
-                                ) : null}
                                 <Field label={r.sourceKind === "PROGRAM" || r.sourceKind === "OFFSITE" ? "Hodiny" : "Kilometry"}>
                                   <input
                                     className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
@@ -753,3 +724,18 @@ function FlagBadge({ text, tone }: { text: string; tone: "amber" | "red" | "blue
   return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${cls}`}>{text}</span>;
 }
 
+export default function AdminAttendancePage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell area="mixed" title="Docházka" subtitle="Načítám detail dnů a kontrolu docházky.">
+          <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+            Načítám administraci docházky…
+          </section>
+        </AppShell>
+      }
+    >
+      <AdminAttendancePageInner />
+    </Suspense>
+  );
+}

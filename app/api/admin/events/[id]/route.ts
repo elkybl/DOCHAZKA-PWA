@@ -3,7 +3,6 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
-import { dayLocalCZFromIso } from "@/lib/time";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -23,6 +22,17 @@ async function getEventForAdmin(id: string) {
   return { db, row: data };
 }
 
+function dayKeyPrague(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function buildPatch(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
   if (typeof body.note_work === "string") patch.note_work = body.note_work.trim();
@@ -35,8 +45,12 @@ function buildPatch(body: Record<string, unknown>) {
   if (body.programming_hours !== undefined) patch.programming_hours = body.programming_hours === null ? null : Number(body.programming_hours) || 0;
   if (typeof body.programming_note === "string") patch.programming_note = body.programming_note.trim();
   if (typeof body.server_time === "string" && body.server_time.trim()) {
-    patch.server_time = body.server_time.trim();
-    patch.day_local = dayLocalCZFromIso(body.server_time.trim()) || null;
+    const iso = new Date(body.server_time);
+    if (!Number.isNaN(iso.getTime())) {
+      patch.server_time = iso.toISOString();
+      const dayLocal = dayKeyPrague(iso.toISOString());
+      if (dayLocal) patch.day_local = dayLocal;
+    }
   }
   return patch;
 }

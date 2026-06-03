@@ -11,6 +11,11 @@ function isDay(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function startOfDayIso(v: string) { return isDay(v) ? `${v}T00:00:00.000Z` : v; }
 function endOfDayIso(v: string) { return isDay(v) ? `${v}T23:59:59.999Z` : v; }
 function reviewKey(userId: string, day: string, siteId: string | null) { return `${day}__${userId}__${siteId || ""}`; }
+function eventTypeLabel(type: string) {
+  if (type === "IN") return "Příchod";
+  if (type === "OUT") return "Odchod";
+  return "Mimo stavbu";
+}
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -86,12 +91,15 @@ export async function GET(req: NextRequest) {
     let workHours = 0, workPay = 0, totalKm = 0, kmPay = 0, mat = 0;
     let firstIn: string | null = null, lastOut: string | null = null;
     const workNotes: string[] = [];
+    let consecutiveInCount = 0;
+    let unmatchedOutCount = 0;
     let paidAll = true;
     const workDeleteIds: string[] = [];
 
     for (const e of list) {
       paidAll = paidAll && !!e.is_paid;
       if (e.type === "IN") {
+        if (lastIn) consecutiveInCount += 1;
         lastIn = e;
         workDeleteIds.push(e.id);
         if (!firstIn) {
@@ -113,6 +121,8 @@ export async function GET(req: NextRequest) {
           mat += toNum(e.material_amount, 0);
           if (e.note_work) workNotes.push(String(e.note_work).trim());
           lastIn = null;
+        } else {
+          unmatchedOutCount += 1;
         }
       }
     }
@@ -142,6 +152,27 @@ export async function GET(req: NextRequest) {
         material: round2(mat),
         total: round2(workPay + kmPay + mat),
         note: workNotes.join(" | "),
+        raw_events: list.map((event) => ({
+          id: event.id,
+          type: event.type,
+          label: eventTypeLabel(event.type),
+          server_time: event.server_time,
+          site_id: event.site_id,
+          site_name: event.site_id ? (siteName.get(event.site_id) || event.site_id) : null,
+          note:
+            event.type === "OUT"
+              ? String(event.note_work || "").trim()
+              : event.type === "OFFSITE"
+                ? String(event.offsite_reason || "").trim()
+                : "",
+        })),
+        raw_summary: {
+          in_count: list.filter((event) => event.type === "IN").length,
+          out_count: list.filter((event) => event.type === "OUT").length,
+          consecutive_in_count: consecutiveInCount,
+          unmatched_out_count: unmatchedOutCount,
+          has_open_in: !!lastIn,
+        },
       });
     }
 

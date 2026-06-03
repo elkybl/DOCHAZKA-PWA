@@ -14,6 +14,22 @@ type Row = {
   sourceIds?: string[];
   first_in_event_id?: string | null;
   last_out_event_id?: string | null;
+  raw_events?: Array<{
+    id: string;
+    type: "IN" | "OUT" | "OFFSITE";
+    label: string;
+    server_time: string;
+    site_id: string | null;
+    site_name: string | null;
+    note: string;
+  }>;
+  raw_summary?: {
+    in_count: number;
+    out_count: number;
+    consecutive_in_count: number;
+    unmatched_out_count: number;
+    has_open_in: boolean;
+  };
   user_id: string;
   user_name: string;
   site_id: string | null;
@@ -425,6 +441,30 @@ function AdminAttendancePageInner() {
     }
   }
 
+  async function deleteRawEvent(eventId: string) {
+    const t = getToken();
+    if (!t) return;
+    const ok = window.confirm("Opravdu smazat tuhle konkrétní událost?");
+    if (!ok) return;
+    setErr(null);
+    setInfo(null);
+    setBusyId(eventId);
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${t}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nešlo smazat událost.");
+      setInfo("Událost byla smazaná.");
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Nešlo smazat událost.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -575,6 +615,51 @@ function AdminAttendancePageInner() {
                   ))}
                 </div>
                 {review?.note ? <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">{review.note}</div> : null}
+                {group.rows.find((row) => row.sourceKind === "WORK" && row.raw_events?.length) ? (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Syrové události dne</div>
+                        <div className="mt-1 text-xs text-slate-500">Tady uvidíte jednotlivé příchody a odchody tak, jak opravdu přišly do systému. Odtud jde opravit den se dvěma příchody za sebou.</div>
+                      </div>
+                      {(() => {
+                        const rawRow = group.rows.find((row) => row.sourceKind === "WORK" && row.raw_summary);
+                        const rawSummary = rawRow?.raw_summary;
+                        if (!rawSummary) return null;
+                        const rawFlags: string[] = [];
+                        if (rawSummary.consecutive_in_count > 0) rawFlags.push(`${rawSummary.consecutive_in_count}× příchod navíc`);
+                        if (rawSummary.unmatched_out_count > 0) rawFlags.push(`${rawSummary.unmatched_out_count}× odchod bez příchodu`);
+                        if (rawSummary.has_open_in) rawFlags.push("otevřený příchod bez odchodu");
+                        if (!rawFlags.length) return null;
+                        return <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">{rawFlags.join(" · ")}</div>;
+                      })()}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {group.rows
+                        .filter((row) => row.sourceKind === "WORK" && row.raw_events?.length)
+                        .flatMap((row) => row.raw_events || [])
+                        .map((event) => (
+                          <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${event.type === "IN" ? "bg-blue-50 text-blue-800" : event.type === "OUT" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                                {event.label}
+                              </span>
+                              <span className="font-semibold text-slate-900">{fmtTimeCZFromIso(event.server_time)}</span>
+                              <span className="text-xs text-slate-500">{event.site_name || "Bez stavby"}</span>
+                              {event.note ? <span className="text-xs text-slate-600">{event.note}</span> : null}
+                            </div>
+                            <button
+                              className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              disabled={busyId === event.id}
+                              onClick={() => deleteRawEvent(event.id)}
+                            >
+                              {busyId === event.id ? "Mažu" : "Smazat událost"}
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
                 {auditItems.length ? (
                   <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Audit změn</div>

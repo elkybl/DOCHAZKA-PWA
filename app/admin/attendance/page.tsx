@@ -219,6 +219,39 @@ function groupFlags(group: Group) {
   return { hasMissingNote, hasMissingSite, hasZeroRow, hasOpenDay };
 }
 
+function compareRawEventsAsc(
+  a: NonNullable<Row["raw_events"]>[number],
+  b: NonNullable<Row["raw_events"]>[number],
+) {
+  return new Date(a.server_time).getTime() - new Date(b.server_time).getTime();
+}
+
+function buildRawDaySummary(events: NonNullable<Row["raw_events"]>) {
+  let lastIn: { id: string } | null = null;
+  let consecutiveInCount = 0;
+  let unmatchedOutCount = 0;
+
+  for (const event of events) {
+    if (event.type === "IN") {
+      if (lastIn) consecutiveInCount += 1;
+      lastIn = { id: event.id };
+      continue;
+    }
+    if (event.type === "OUT") {
+      if (lastIn) lastIn = null;
+      else unmatchedOutCount += 1;
+    }
+  }
+
+  return {
+    in_count: events.filter((event) => event.type === "IN").length,
+    out_count: events.filter((event) => event.type === "OUT").length,
+    consecutive_in_count: consecutiveInCount,
+    unmatched_out_count: unmatchedOutCount,
+    has_open_in: !!lastIn,
+  };
+}
+
 function AdminAttendancePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -465,11 +498,6 @@ function AdminAttendancePageInner() {
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const groups = useMemo(() => {
     const grouped = groupRows(rows);
     const needle = query.trim().toLocaleLowerCase("cs");
@@ -491,6 +519,33 @@ function AdminAttendancePageInner() {
     for (const review of reviews) map.set(review.key, review);
     return map;
   }, [reviews]);
+  const rawDayMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        events: NonNullable<Row["raw_events"]>;
+        summary: ReturnType<typeof buildRawDaySummary>;
+      }
+    >();
+    const grouped = new Map<string, NonNullable<Row["raw_events"]>>();
+
+    for (const row of rows) {
+      if (row.sourceKind !== "WORK" || !row.raw_events?.length) continue;
+      const key = `${row.day}__${row.user_id}`;
+      const current = grouped.get(key) || [];
+      grouped.set(key, [...current, ...row.raw_events]);
+    }
+
+    for (const [key, events] of grouped.entries()) {
+      const unique = [...new Map(events.map((event) => [event.id, event])).values()].sort(compareRawEventsAsc);
+      map.set(key, {
+        events: unique,
+        summary: buildRawDaySummary(unique),
+      });
+    }
+
+    return map;
+  }, [rows]);
   const auditMap = useMemo(() => {
     const map = new Map<string, AuditLog[]>();
     for (const entry of audit) map.set(entry.key, [...(map.get(entry.key) || []), entry]);
@@ -549,10 +604,13 @@ function AdminAttendancePageInner() {
       </section>
 
       <section className="mt-4 space-y-4">
-        {groups.map((group) => {
+        {groups.map((group, index) => {
           const flags = groupFlags(group);
           const review = reviewMap.get(group.key);
           const auditItems = auditMap.get(group.key) || [];
+          const rawDayKey = `${group.day}__${group.user_id}`;
+          const rawDay = rawDayMap.get(rawDayKey);
+          const showRawDaySection = groups.findIndex((candidate) => `${candidate.day}__${candidate.user_id}` === rawDayKey) === index;
           return (
             <div key={group.key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -615,17 +673,15 @@ function AdminAttendancePageInner() {
                   ))}
                 </div>
                 {review?.note ? <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">{review.note}</div> : null}
-                {group.rows.find((row) => row.sourceKind === "WORK" && row.raw_events?.length) ? (
+                {showRawDaySection && rawDay?.events.length ? (
                   <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Syrové události dne</div>
-                        <div className="mt-1 text-xs text-slate-500">Tady uvidíte jednotlivé příchody a odchody tak, jak opravdu přišly do systému. Odtud jde opravit den se dvěma příchody za sebou.</div>
+                        <div className="mt-1 text-xs text-slate-500">Tady uvidíte jednotlivé příchody a odchody za celý den uživatele, i když se přepínaly stavby. Odtud jde opravit den se dvěma příchody za sebou.</div>
                       </div>
                       {(() => {
-                        const rawRow = group.rows.find((row) => row.sourceKind === "WORK" && row.raw_summary);
-                        const rawSummary = rawRow?.raw_summary;
-                        if (!rawSummary) return null;
+                        const rawSummary = rawDay!.summary;
                         const rawFlags: string[] = [];
                         if (rawSummary.consecutive_in_count > 0) rawFlags.push(`${rawSummary.consecutive_in_count}× příchod navíc`);
                         if (rawSummary.unmatched_out_count > 0) rawFlags.push(`${rawSummary.unmatched_out_count}× odchod bez příchodu`);
@@ -635,10 +691,7 @@ function AdminAttendancePageInner() {
                       })()}
                     </div>
                     <div className="mt-3 space-y-2">
-                      {group.rows
-                        .filter((row) => row.sourceKind === "WORK" && row.raw_events?.length)
-                        .flatMap((row) => row.raw_events || [])
-                        .map((event) => (
+                      {rawDay!.events.map((event) => (
                           <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${event.type === "IN" ? "bg-blue-50 text-blue-800" : event.type === "OUT" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>

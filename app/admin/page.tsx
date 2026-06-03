@@ -50,7 +50,6 @@ function fmt(n: unknown) {
 
 function riskUrl(risk: Risk) {
   const qs = new URLSearchParams({ day: risk.day, user_id: risk.user_id });
-  if (risk.site_id) qs.set("site_id", risk.site_id);
   return `/admin/attendance?${qs.toString()}`;
 }
 

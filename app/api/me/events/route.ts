@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       id,
       type,
       server_time,
+      day_local,
       site_id,
       note_work,
       km,
@@ -40,10 +41,11 @@ export async function GET(req: NextRequest) {
 
   if (error) return json({ error: "DB chyba." }, { status: 500 });
 
-  let rows = (data || []).map((r: any) => ({
+  const allRows = (data || []).map((r: any) => ({
     id: r.id,
     type: r.type,
     server_time: r.server_time,
+    day_local: r.day_local || r.server_time.slice(0, 10),
     site_id: r.site_id,
     site_name: r.sites?.name || null,
     note_work: r.note_work ?? "",
@@ -56,6 +58,29 @@ export async function GET(req: NextRequest) {
     material_amount: r.material_amount ?? 0,
     is_paid: !!r.is_paid,
   }));
+
+  const daysUsed = Array.from(new Set(allRows.map((row) => row.day_local))).sort();
+  const fromDay = daysUsed[0];
+  const toDay = daysUsed[daysUsed.length - 1];
+  let locks: Array<{ from_day: string; to_day: string }> = [];
+  if (fromDay && toDay) {
+    const { data: lockRows } = await db
+      .from("attendance_payroll_locks")
+      .select("from_day,to_day")
+      .lte("from_day", toDay)
+      .gte("to_day", fromDay);
+    locks = (lockRows as Array<{ from_day: string; to_day: string }>) || [];
+  }
+
+  let rows = allRows.map((row) => {
+    const day = row.day_local;
+    const lock = locks.find((item) => item.from_day <= day && item.to_day >= day);
+    return {
+      ...row,
+      is_locked: !!lock,
+      lock_range: lock ? `${lock.from_day} – ${lock.to_day}` : null,
+    };
+  });
 
   if (onlyUnpaid) rows = rows.filter((r: any) => !r.is_paid);
   return json({ rows });

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/auth";
 import { getBearer, json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 import { writeAuditLog } from "@/lib/audit";
+import { findLockForDay, hasLockedOverlap } from "@/lib/payroll-locks";
 
 const singleSchema = z.object({
   user_id: z.string().uuid(),
@@ -35,6 +36,14 @@ export async function POST(req: NextRequest) {
 
   const bulk = bulkSchema.safeParse(body);
   if (bulk.success) {
+    const locked = await hasLockedOverlap(bulk.data.from_day, bulk.data.to_day);
+    if (locked) {
+      return json(
+        { error: `Období ${bulk.data.from_day} – ${bulk.data.to_day} zasahuje do uzamčených výplat ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
+
     let q = db
       .from("attendance_events")
       .update({
@@ -66,6 +75,14 @@ export async function POST(req: NextRequest) {
 
   const parsed = singleSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Neplatná data." }, { status: 400 });
+
+  const locked = await findLockForDay(parsed.data.day);
+  if (locked) {
+    return json(
+      { error: `Den ${parsed.data.day} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+      { status: 409 }
+    );
+  }
 
   let query = db
     .from("attendance_events")
@@ -104,6 +121,14 @@ export async function DELETE(req: NextRequest) {
 
   const bulk = bulkSchema.safeParse(body);
   if (bulk.success) {
+    const locked = await hasLockedOverlap(bulk.data.from_day, bulk.data.to_day);
+    if (locked) {
+      return json(
+        { error: `Období ${bulk.data.from_day} – ${bulk.data.to_day} zasahuje do uzamčených výplat ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
+
     let q = db
       .from("attendance_events")
       .update({
@@ -135,6 +160,14 @@ export async function DELETE(req: NextRequest) {
 
   const parsed = singleSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Neplatná data." }, { status: 400 });
+
+  const locked = await findLockForDay(parsed.data.day);
+  if (locked) {
+    return json(
+      { error: `Den ${parsed.data.day} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+      { status: 409 }
+    );
+  }
 
   let query = db
     .from("attendance_events")

@@ -8,6 +8,7 @@ type Row = {
   id: string;
   type: "OUT" | "OFFSITE";
   server_time: string;
+  day_local?: string;
   site_id: string | null;
   site_name: string | null;
   note_work: string;
@@ -19,6 +20,8 @@ type Row = {
   material_desc: string;
   material_amount: number;
   is_paid: boolean;
+  is_locked?: boolean;
+  lock_range?: string | null;
 };
 
 type ProfileResponse = {
@@ -144,6 +147,15 @@ export default function EditWorkPage() {
     if (!token) return;
     if (row.is_paid) {
       setErr("Uhrazený záznam nelze upravit.");
+      return;
+    }
+    if (row.is_locked) {
+      setErr(`Tenhle den je v uzamčeném výplatním období${row.lock_range ? ` ${row.lock_range}` : ""}.`);
+      return;
+    }
+
+    if (row.is_locked) {
+      setErr(`Tenhle den je v uzamčeném výplatním období${row.lock_range ? ` ${row.lock_range}` : ""}.`);
       return;
     }
 
@@ -404,22 +416,25 @@ function EditCard({
           <div className="text-base font-semibold">{row.type === "OUT" ? "Práce" : "Mimo stavbu"}</div>
           <div className="mt-1 text-xs text-slate-500">{fmtDateTimeCZFromIso(row.server_time)} · {row.site_name || "Bez stavby"}</div>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${row.is_paid ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-          {row.is_paid ? "Uhrazeno" : "K úpravě"}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${row.is_paid ? "bg-emerald-50 text-emerald-800" : row.is_locked ? "bg-slate-200 text-slate-700" : "bg-amber-50 text-amber-800"}`}>
+          {row.is_paid ? "Uhrazeno" : row.is_locked ? "Uzamčeno obdobím" : "K úpravě"}
         </span>
       </div>
+      {row.is_locked && row.lock_range ? (
+        <div className="mt-2 text-xs text-slate-500">Období {row.lock_range}</div>
+      ) : null}
 
       {row.type === "OUT" ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_220px]">
           <Field label="Popis práce">
-            <textarea className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" rows={4} value={row.note_work || ""} onChange={(e) => updateRow(row.id, { note_work: e.target.value })} disabled={row.is_paid} />
+            <textarea className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" rows={4} value={row.note_work || ""} onChange={(e) => updateRow(row.id, { note_work: e.target.value })} disabled={row.is_paid || row.is_locked} />
           </Field>
           <div className="space-y-3">
             <Field label="Kilometry">
-              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.km ?? 0)} onChange={(e) => updateRow(row.id, { km: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.km ?? 0)} onChange={(e) => updateRow(row.id, { km: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid || row.is_locked} />
             </Field>
             <Field label="Materiál Kč">
-              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+              <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid || row.is_locked} />
             </Field>
           </div>
 
@@ -433,8 +448,8 @@ function EditCard({
               Programování vybírejte jen z reálně odpracovaných hodin daného dne. Díky tomu zůstane součet práce a programování auditovatelný.
             </div>
             <div className="flex flex-wrap gap-2">
-              {!row.is_paid ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => copyPreviousText(row)}>Kopírovat poslední podobný popis</button> : null}
-              {!row.is_paid && isZeroDay ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => fillIntentionalZero(row)}>Označit jako záměrně nulový den</button> : null}
+              {!row.is_paid && !row.is_locked ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => copyPreviousText(row)}>Kopírovat poslední podobný popis</button> : null}
+              {!row.is_paid && !row.is_locked && isZeroDay ? <button className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" onClick={() => fillIntentionalZero(row)}>Označit jako záměrně nulový den</button> : null}
             </div>
           </div>
 
@@ -442,16 +457,16 @@ function EditCard({
             <div className="rounded-lg border bg-slate-50 p-3 lg:col-span-2">
               <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                 <Field label="Programování h">
-                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} max={dayInfo?.hours || undefined} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" inputMode="decimal" value={String(row.programming_hours ?? 0)} max={dayInfo?.hours || undefined} onChange={(e) => updateRow(row.id, { programming_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid || row.is_locked} />
                 </Field>
                 <Field label="Poznámka k programování">
-                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={row.programming_note || ""} onChange={(e) => updateRow(row.id, { programming_note: e.target.value.slice(0, 500) })} disabled={row.is_paid} />
+                  <input className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={row.programming_note || ""} onChange={(e) => updateRow(row.id, { programming_note: e.target.value.slice(0, 500) })} disabled={row.is_paid || row.is_locked} />
                 </Field>
               </div>
             </div>
           ) : null}
 
-          {!row.is_paid ? (
+          {!row.is_paid && !row.is_locked ? (
             <div className="rounded-lg border bg-blue-50/50 p-3 lg:col-span-2">
               <div className="grid gap-3 md:grid-cols-[1fr_160px_auto]">
                 <Field label="Mimo stavbu">
@@ -470,24 +485,24 @@ function EditCard({
       ) : (
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_180px]">
           <Field label="Popis">
-            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.offsite_reason || ""} onChange={(e) => updateRow(row.id, { offsite_reason: e.target.value })} disabled={row.is_paid} />
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.offsite_reason || ""} onChange={(e) => updateRow(row.id, { offsite_reason: e.target.value })} disabled={row.is_paid || row.is_locked} />
           </Field>
           <Field label="Hodiny">
-            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.offsite_hours ?? 0)} onChange={(e) => updateRow(row.id, { offsite_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.offsite_hours ?? 0)} onChange={(e) => updateRow(row.id, { offsite_hours: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid || row.is_locked} />
           </Field>
           <Field label="Materiál Kč">
-            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid} />
+            <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" inputMode="decimal" value={String(row.material_amount ?? 0)} onChange={(e) => updateRow(row.id, { material_amount: Number(onlyNumber(e.target.value)) })} disabled={row.is_paid || row.is_locked} />
           </Field>
         </div>
       )}
 
       <div className="mt-3">
         <Field label="Popis materiálu">
-          <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.material_desc || ""} onChange={(e) => updateRow(row.id, { material_desc: e.target.value })} disabled={row.is_paid} />
+          <input className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" value={row.material_desc || ""} onChange={(e) => updateRow(row.id, { material_desc: e.target.value })} disabled={row.is_paid || row.is_locked} />
         </Field>
       </div>
 
-      {!row.is_paid ? (
+      {!row.is_paid && !row.is_locked ? (
         <div className="mt-4 flex justify-end">
           <button onClick={() => save(row)} disabled={busy === row.id} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
             {busy === row.id ? "Ukládám" : "Uložit změny"}

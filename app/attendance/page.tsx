@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppNav";
 import { calendarTypeLabels, type CalendarItemType } from "@/lib/calendar";
@@ -11,6 +10,11 @@ type Site = {
   lat: number | null;
   lng: number | null;
   radius_m: number | null;
+};
+
+type RecentSite = {
+  id: string;
+  name: string;
 };
 
 type Me = {
@@ -46,6 +50,7 @@ type JsonRecord = Record<string, unknown> & {
   site_name?: unknown;
   active_site_name?: unknown;
   current_site_name?: unknown;
+  recent_sites?: unknown;
   items?: unknown;
 };
 
@@ -246,6 +251,13 @@ function fmtHours(value: number) {
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 }
 
+function fmtTimeShort(iso: string | null) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+}
+
 function defaultCategoryForManualKind(kind: "work" | "shopping" | "offsite" | "service") {
   if (kind === "shopping") return "nakup";
   if (kind === "offsite") return "mimo_lokaci";
@@ -262,6 +274,7 @@ export default function AttendancePage() {
 
   const [me, setMe] = useState<Me | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
+  const [recentSites, setRecentSites] = useState<RecentSite[]>([]);
   const [present, setPresent] = useState(false);
   const [activeSiteName, setActiveSiteName] = useState<string | null>(null);
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
@@ -274,7 +287,6 @@ export default function AttendancePage() {
   const [tempOpen, setTempOpen] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  const [note, setNote] = useState("");
   const [km, setKm] = useState("");
   const [matDesc, setMatDesc] = useState("");
   const [matAmount, setMatAmount] = useState("");
@@ -292,11 +304,9 @@ export default function AttendancePage() {
   const [manualDayTo, setManualDayTo] = useState("16:00");
   const [manualDaySiteId, setManualDaySiteId] = useState<string | null>(null);
   const [manualDayKind, setManualDayKind] = useState<"work" | "shopping" | "offsite" | "service">("work");
-  const [manualDayNote, setManualDayNote] = useState("");
   const [manualDayKm, setManualDayKm] = useState("");
   const [manualSplitRows, setManualSplitRows] = useState<WorkSplitRow[]>([makeSplitRow()]);
   const endCardRef = useRef<HTMLDivElement | null>(null);
-  const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const kmRef = useRef<HTMLInputElement | null>(null);
   const matAmountRef = useRef<HTMLInputElement | null>(null);
   const matDescRef = useRef<HTMLTextAreaElement | null>(null);
@@ -309,6 +319,7 @@ export default function AttendancePage() {
     if (!nearest) return null;
     return `${nearest.site.name} - ${Math.round(nearest.dist)} m`;
   }, [manualSiteId, nearest, sites]);
+  const activeStartLabel = useMemo(() => fmtTimeShort(activeInTime), [activeInTime]);
 
   const hasManualTime = manualOutTime.trim().length > 0;
   const currentRoundedHours = useMemo(() => {
@@ -344,6 +355,14 @@ export default function AttendancePage() {
     [manualSplitRows]
   );
 
+  const parsedMaterialAmount = useMemo(() => {
+    if (!matAmount.trim()) return 0;
+    return Number(matAmount.replace(",", "."));
+  }, [matAmount]);
+
+  const materialTrackedToday = Number.isFinite(parsedMaterialAmount) && parsedMaterialAmount > 0;
+  const materialNeedsDescription = materialTrackedToday && !matDesc.trim();
+
   const completionItems = useMemo(() => {
     return [
       { label: "Způsob ukončení", done: closeMode === "onsite" || hasManualTime },
@@ -359,10 +378,12 @@ export default function AttendancePage() {
     ];
   }, [closeMode, hasManualTime, km, currentRoundedHours, splitHoursTotal, me?.is_programmer, didProgram, progHours, progNote]);
 
-  const completedCount = completionItems.filter((item) => item.done).length;
+  const completedCount = completionItems.filter((item) => item.done).length + (materialTrackedToday && !materialNeedsDescription ? 1 : 0);
   const missingCompletionItems = completionItems.filter((item) => !item.done);
-  const canSubmitOut = present && missingCompletionItems.length === 0 && !busy;
-  const currentStep = !present ? 1 : !completionItems[0]?.done ? 2 : !completionItems[2]?.done || !completionItems[1]?.done ? 3 : 4;
+  const missingRequiredCount = missingCompletionItems.length + (materialNeedsDescription ? 1 : 0);
+  const totalChecklistCount = completionItems.length + (materialTrackedToday ? 1 : 0);
+  const canSubmitOut = present && missingRequiredCount === 0 && !busy;
+  const currentStep = !present ? 1 : !completionItems[0]?.done ? 2 : !completionItems[2]?.done || !completionItems[1]?.done || materialNeedsDescription ? 3 : 4;
 
   useEffect(() => {
     setManualSplitRows((current) => {
@@ -392,7 +413,6 @@ export default function AttendancePage() {
       setCloseMode("manual");
     }
     const map: Record<string, HTMLInputElement | HTMLTextAreaElement | null> = {
-      note: noteRef.current,
       km: kmRef.current,
       material: matAmountRef.current,
       material_desc: matDescRef.current,
@@ -456,6 +476,10 @@ export default function AttendancePage() {
 
     const firstMissing = missingCompletionItems[0];
     if (!firstMissing) {
+      if (materialNeedsDescription) {
+        focusOutField("material_desc", "Doplňte, jaký materiál jste dnes použili nebo nakoupili.");
+        return;
+      }
       setOutErr(null);
       if (closeMode === "manual") {
         void doOut(true);
@@ -479,10 +503,10 @@ export default function AttendancePage() {
       "Způsob ukončení": { field: "manual_out_time", message: "Vyberte, jak den ukončujete. Pokud už nejste na stavbě, zadejte čas odchodu bez polohy." },
       Kilometry: { field: "km", message: "Nejdřív doplňte kilometry. Pokud žádné nejsou, zadejte 0." },
       "Programování": { field: "prog_hours", message: "Pokud se dnes programovalo, doplňte hodiny a poznámku k programování." },
-      "Rozpad hodin": { field: "note", message: "Nejdřív správně rozdělte hodiny do kategorií, aby jejich součet seděl na celý den." },
+      "Rozpad hodin": { field: "split", message: "Nejdřív správně rozdělte hodiny do kategorií, aby jejich součet seděl na celý den." },
     };
 
-    const target = fieldMap[firstMissing.label] ?? { field: "note", message: "Před ukončením dne ještě doplňte chybějící údaje." };
+    const target = fieldMap[firstMissing.label] ?? { field: "split", message: "Před ukončením dne ještě doplňte chybějící údaje." };
     focusOutField(target.field, target.message);
   }
 
@@ -538,11 +562,22 @@ export default function AttendancePage() {
       status.open?.site_name ??
       (openSiteId ? safeSites.find((site) => site.id === openSiteId)?.name : null) ??
       null;
+    const recentSiteList = Array.isArray(status.recent_sites)
+      ? status.recent_sites
+          .map((item) => asRecord(item))
+          .filter(Boolean)
+          .map((item) => ({
+            id: String(item?.id || ""),
+            name: String(item?.name || ""),
+          }))
+          .filter((item) => item.id && item.name)
+      : [];
 
     setPresent(!!presentVal);
     setActiveSiteId(openSiteId ? String(openSiteId) : null);
     setActiveSiteName(siteNameVal ? String(siteNameVal) : null);
     setActiveInTime(typeof status.open?.in_time === "string" ? status.open.in_time : null);
+    setRecentSites(recentSiteList);
 
     const day = todayIso();
     const calendar = await fetchJSON(`/api/calendar?from=${day}&to=${day}`, token);
@@ -619,6 +654,9 @@ export default function AttendancePage() {
       setActiveSiteName(site?.name || null);
       setActiveInTime(data?.server_time || new Date().toISOString());
       setSplitRows([makeSplitRow()]);
+      if (site?.id && site.name) {
+        setRecentSites((current) => [{ id: site.id, name: site.name }, ...current.filter((item) => item.id !== site.id)].slice(0, 5));
+      }
       setInfo(`Docházka zahájena${site?.name ? ` - ${site.name}` : ""}.`);
       setManualSiteId(null);
     } catch (error: unknown) {
@@ -673,6 +711,7 @@ export default function AttendancePage() {
       setActiveSiteName(`Dočasná: ${name}`);
       setActiveInTime(inJson?.server_time || new Date().toISOString());
       setSplitRows([makeSplitRow()]);
+      setRecentSites((current) => [{ id: String(newSiteId), name: `Dočasná: ${name}` }, ...current.filter((item) => item.id !== String(newSiteId))].slice(0, 5));
       setTempOpen(false);
       setTempName("");
       setInfo("Docházka zahájena na dočasné stavbě.");
@@ -698,6 +737,7 @@ export default function AttendancePage() {
 
       const matAmt = matAmount.trim() ? Number(matAmount.replace(",", ".")) : 0;
       if (matAmount.trim() && (!Number.isFinite(matAmt) || matAmt < 0)) return focusOutField("material", "Částka za materiál není platná.");
+      if (matAmt > 0 && !matDesc.trim()) return focusOutField("material_desc", "Doplňte, jaký materiál jste dnes použili nebo nakoupili.");
 
       if (me?.is_programmer && didProgram) {
         const ph = Number(progHours.replace(",", "."));
@@ -732,7 +772,7 @@ export default function AttendancePage() {
 
       const payload: Record<string, string | number | boolean | null | undefined> = {
         site_id: siteId || undefined,
-        note_work: composeWorkNote(note, splitRows) || undefined,
+        note_work: composeWorkNote("", splitRows) || undefined,
         km: kmVal,
         material_desc: matDesc.trim() || undefined,
         material_amount: matAmt,
@@ -760,7 +800,6 @@ export default function AttendancePage() {
       setActiveInTime(null);
       setSplitRows([makeSplitRow()]);
       setInfo(forceWithoutLocation ? "Docházka ukončena bez polohy." : "Docházka ukončena.");
-      setNote("");
       setKm("");
       setMatDesc("");
       setMatAmount("");
@@ -801,7 +840,7 @@ export default function AttendancePage() {
           time_to: manualDayTo,
           site_id: manualDaySiteId,
           kind: manualDayKind,
-          note_work: composeWorkNote(manualDayNote, manualSplitRows),
+          note_work: composeWorkNote("", manualSplitRows),
           km: kmVal,
         }),
       });
@@ -813,7 +852,6 @@ export default function AttendancePage() {
       setManualDayOpen(false);
       setManualSplitRows([makeSplitRow(defaultCategoryForManualKind("work"))]);
       setManualDayKind("work");
-      setManualDayNote("");
       setManualDayKm("");
     } catch (error: unknown) {
       setErr(getErrorMessage(error));
@@ -865,24 +903,25 @@ export default function AttendancePage() {
                       ? "Den už běží. Doplňte rozpad hodin, kilometry a případné programování. Nouzové ukončení nechte jen jako záložní variantu."
                       : "Aplikace umí použít nejbližší stavbu podle polohy. Když poloha nesedí, stavbu přepněte ručně nebo si založte dočasnou."}
                   </p>
-                  {present ? (
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      {[
-                        { id: 1, title: "Krok 1", desc: "Docházka běží", active: currentStep === 1, done: currentStep > 1 },
-                        { id: 2, title: "Krok 2", desc: "Rozepište hodiny a kilometry", active: currentStep === 2, done: currentStep > 2 },
-                        { id: 3, title: "Krok 3", desc: "Ukončete se zapnutou polohou", active: currentStep === 3, done: currentStep > 3 },
-                        { id: 4, title: "Krok 4", desc: "Když není poloha, použijte nouzové uzavření", active: currentStep === 4, done: false },
-                      ].map((step) => (
-                        <div
-                          key={step.id}
-                          className={`rounded-2xl border px-3 py-3 text-sm ${step.active ? "border-blue-200 bg-blue-50 text-blue-950" : step.done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white text-slate-600"}`}
-                        >
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em]">{step.title}</div>
-                          <div className="mt-1 leading-5">{step.desc}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <HeaderStat
+                      label="Stav dne"
+                      value={present ? "Docházka běží" : "Připraveno"}
+                      tone={present ? "emerald" : "blue"}
+                    />
+                    <HeaderStat
+                      label="Aktivní stavba"
+                      value={present ? activeSiteName || "Bez stavby" : selectedSite?.name || "Vyberte stavbu"}
+                    />
+                    <HeaderStat
+                      label={present ? "Zahájeno" : "Poloha / tip"}
+                      value={present ? activeStartLabel : nearestLabel || "Vyberte ručně"}
+                    />
+                    <HeaderStat
+                      label={present ? "Odpracováno dnes" : "Poslední stavby"}
+                      value={present ? `${fmtHours(currentRoundedHours)} h` : recentSites.length ? `${recentSites.length} naposledy` : "Zatím žádné"}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid min-w-[240px] gap-3 rounded-[24px] border border-slate-200 bg-white/90 p-4 text-sm shadow-sm xl:w-[280px]">
@@ -895,6 +934,26 @@ export default function AttendancePage() {
                     <div className="mt-1 font-semibold text-slate-950">{nearestLabel || "Nenalezena v dosahu"}</div>
                     <div className="mt-1 text-xs text-slate-500">Přesnost: {pos ? `${Math.round(pos.accuracy)} m` : "bez polohy"}</div>
                   </div>
+                  {!present && recentSites.length ? (
+                    <div>
+                      <div className="text-xs font-medium text-slate-500">Naposledy použité stavby</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {recentSites.map((site) => (
+                          <button
+                            key={site.id}
+                            type="button"
+                            onClick={() => {
+                              setManualSiteId(site.id);
+                              setInfo(`Předvybraná stavba: ${site.name}`);
+                            }}
+                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-900"
+                          >
+                            {site.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1085,10 +1144,22 @@ export default function AttendancePage() {
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-semibold text-slate-600">
-                  Krok 3: Kilometry
+                <div>
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
+                    <span>Krok 3: Kilometry</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKm("0");
+                        if (outField === "km") setOutField(null);
+                      }}
+                      className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-900"
+                    >
+                      Dnes bez kilometrů
+                    </button>
+                  </div>
                   <input ref={kmRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "km" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={km} onChange={(e) => { setKm(e.target.value); if (outField === "km") setOutField(null); }} />
-                </label>
+                </div>
                 <label className="block text-xs font-semibold text-slate-600">
                   Materiál Kč
                   <input ref={matAmountRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={matAmount} onChange={(e) => { setMatAmount(e.target.value); if (outField === "material") setOutField(null); }} />
@@ -1107,6 +1178,9 @@ export default function AttendancePage() {
                     if (outField === "material_desc") setOutField(null);
                   }}
                 />
+                <span className="mt-2 block text-[11px] font-medium text-slate-500">
+                  Vyplňte jen tehdy, když je materiál vyšší než 0 Kč.
+                </span>
               </label>
             </div>
 
@@ -1114,19 +1188,21 @@ export default function AttendancePage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className={`text-sm font-semibold ${canSubmitOut ? "text-emerald-950" : "text-amber-950"}`}>
-                    {canSubmitOut ? "Krok 4: Den je připravený k odeslání" : `Před odesláním chybí ještě ${missingCompletionItems.length} položky`}
+                    {canSubmitOut ? "Krok 4: Den je připravený k odeslání" : `Před odesláním chybí ještě ${missingRequiredCount} položky`}
                   </div>
                   <div className={`mt-1 text-xs leading-5 ${canSubmitOut ? "text-emerald-900" : "text-amber-900"}`}>
                     {canSubmitOut
                       ? closeMode === "manual"
                         ? `Den se odešle s ručním časem odchodu ${manualOutTime}.`
                         : "Den se odešle jako běžné ukončení s aktuální polohou."
-                      : "Průvodce vás po kliknutí navede na první chybějící krok."}
+                      : materialNeedsDescription
+                        ? "Doplňte ještě, jaký materiál jste dnes použili nebo nakoupili."
+                        : "Průvodce vás po kliknutí navede na první chybějící krok."}
                   </div>
                 </div>
                 <div className="flex min-w-[220px] flex-col items-stretch gap-2">
                   <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${canSubmitOut ? "bg-white text-emerald-800" : "bg-white text-amber-800"}`}>
-                    {canSubmitOut ? "Připraveno k odeslání" : `${completedCount}/${completionItems.length} kroků hotovo`}
+                    {canSubmitOut ? "Připraveno k odeslání" : `${completedCount}/${totalChecklistCount} kroků hotovo`}
                   </div>
                   <button
                     type="button"
@@ -1180,6 +1256,27 @@ export default function AttendancePage() {
 
       {manualPickOpen ? (
         <Modal title="Vybrat stavbu" onClose={() => setManualPickOpen(false)}>
+          {recentSites.length ? (
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Naposledy použité stavby</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {recentSites.map((site) => (
+                  <button
+                    key={`recent-${site.id}`}
+                    type="button"
+                    onClick={() => {
+                      setManualSiteId(site.id);
+                      setManualPickOpen(false);
+                      setInfo(`Vybraná stavba: ${site.name}`);
+                    }}
+                    className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-900"
+                  >
+                    {site.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="max-h-96 overflow-auto rounded-2xl border border-slate-200">
             {sites.map((site) => (
               <button
@@ -1324,25 +1421,6 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          <label className="mt-3 block text-sm font-medium text-slate-700">
-            Souhrn dne (volitelné)
-            <textarea
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              rows={3}
-              placeholder={
-                manualDayKind === "shopping"
-                  ? "Např. nákup kabelů, jističů a svorek do rozvaděče"
-                  : manualDayKind === "offsite"
-                    ? "Např. příprava podkladů, odvoz materiálu, řešení u dodavatele"
-                    : manualDayKind === "service"
-                      ? "Např. dohledání závady, výměna drobného dílu, rychlý servis"
-                      : "Krátké shrnutí dne navíc"
-              }
-              value={manualDayNote}
-              onChange={(e) => setManualDayNote(e.target.value)}
-            />
-            <span className="mt-2 block text-xs text-slate-500">Pokud je rozpad hodin vyplněný poctivě, stačí sem napsat jen krátké shrnutí navíc.</span>
-          </label>
           <input className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" inputMode="decimal" placeholder="Kilometry (volitelné)" value={manualDayKm} onChange={(e) => setManualDayKm(e.target.value)} />
 
           <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4">
@@ -1356,6 +1434,30 @@ export default function AttendancePage() {
         </Modal>
       ) : null}
     </AppShell>
+  );
+}
+
+function HeaderStat({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "blue" | "emerald";
+}) {
+  const toneClass =
+    tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-950"
+      : tone === "emerald"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+        : "border-slate-200 bg-white text-slate-950";
+
+  return (
+    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className="mt-2 text-sm font-semibold leading-5">{value}</div>
+    </div>
   );
 }
 

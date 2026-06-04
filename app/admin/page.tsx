@@ -50,6 +50,7 @@ function fmt(n: unknown) {
 
 function riskUrl(risk: Risk) {
   const qs = new URLSearchParams({ day: risk.day, user_id: risk.user_id });
+  if (risk.site_id) qs.set("site_id", risk.site_id);
   return `/admin/attendance?${qs.toString()}`;
 }
 
@@ -66,6 +67,12 @@ function riskGroupLabel(code: string) {
       return "Podezřele krátký den";
     case "missing_note":
       return "Chybí popis práce";
+    case "missing_split":
+      return "Chybí rozpad hodin";
+    case "missing_km":
+      return "Chybí kilometry";
+    case "material_without_desc":
+      return "Materiál bez popisu";
     case "missing_site":
       return "Chybí stavba";
     default:
@@ -80,6 +87,13 @@ const adminLinks = [
   { href: "/admin/sites", title: "Stavby", desc: "Akce, GPS, radius a aktivní stav." },
   { href: "/admin/users", title: "Lidé", desc: "Pracovníci, role, PINy a sazby." },
   { href: "/admin/site-requests", title: "Žádosti o stavbu", desc: "Nové stavby založené z terénu." },
+];
+
+const workerLinks = [
+  { href: "/attendance", title: "Docházka", desc: "Příchod, odchod a doplnění dne." },
+  { href: "/me", title: "Moje výdělky", desc: "Osobní přehled uhrazeno a k úhradě." },
+  { href: "/me/edit", title: "Úpravy dne", desc: "Doplnění práce, materiálu a navazujících údajů." },
+  { href: "/me/rates", title: "Moje sazby", desc: "Hodinové sazby a stavby." },
 ];
 
 export default function AdminHome() {
@@ -178,10 +192,48 @@ export default function AdminHome() {
         </div>
       </section>
 
+      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Začni tady</h2>
+            <p className="mt-1 text-sm text-slate-600">Krátký ranní průchod tím, co má největší dopad na provoz a výplaty.</p>
+          </div>
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+            Denní orientace pro admin část
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <MenuCard
+            href="/admin/attendance"
+            title="1. Zkontrolovat docházku"
+            desc={(summary?.open_shifts ?? 0) > 0 ? `Otevřených nebo neukončených dnů: ${fmt(summary?.open_shifts ?? 0)}.` : "Docházka je klidná, ale vyplatí se projít nové dny."}
+          />
+          <MenuCard
+            href="/admin/attendance"
+            title="2. Projít vrácené dny"
+            desc={(summary?.pending_reviews ?? 0) > 0 ? `Čeká na kontrolu: ${fmt(summary?.pending_reviews ?? 0)}.` : "Teď tu nejsou žádné vrácené nebo čekající dny."}
+          />
+          <MenuCard
+            href="/admin/payments"
+            title="3. Dořešit výplaty"
+            desc={(summary?.unpaid_events ?? 0) > 0 ? `Neuhrazených záznamů: ${fmt(summary?.unpaid_events ?? 0)}.` : "Výplaty jsou aktuálně bez otevřených neuhrazených položek."}
+          />
+        </div>
+      </section>
+
       {err ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{err}</div> : null}
 
       <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_460px]">
         <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold">Moje práce</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {workerLinks.map((item) => (
+                <MenuCard key={item.href} {...item} />
+              ))}
+            </div>
+          </div>
+
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-base font-semibold">Správa systému</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

@@ -13,6 +13,9 @@ type EventRow = {
   server_time: string;
   day_local: string | null;
   note_work: string | null;
+  km: number | null;
+  material_amount: number | null;
+  material_desc: string | null;
   is_paid: boolean;
 };
 
@@ -50,11 +53,21 @@ function riskTitle(code: string) {
       return "Nulová nebo velmi krátká směna";
     case "missing_note":
       return "Odchod bez popisu práce";
+    case "missing_split":
+      return "Chybí rozpad hodin";
+    case "missing_km":
+      return "Chybí kilometry";
+    case "material_without_desc":
+      return "Materiál bez popisu";
     case "missing_site":
       return "Záznam bez stavby";
     default:
       return "Rizikový záznam";
   }
+}
+
+function hasWorkBreakdown(note: string | null) {
+  return !!note && /Rozpad hodin:/i.test(note);
 }
 
 export async function GET(req: NextRequest) {
@@ -70,7 +83,7 @@ export async function GET(req: NextRequest) {
     db.from("attendance_events").select("id", { count: "exact", head: true }).eq("is_paid", false),
     db
       .from("attendance_events")
-      .select("id,user_id,site_id,type,server_time,day_local,note_work,is_paid")
+      .select("id,user_id,site_id,type,server_time,day_local,note_work,km,material_amount,material_desc,is_paid")
       .gte("server_time", from)
       .order("server_time", { ascending: true })
       .limit(1500),
@@ -158,6 +171,15 @@ export async function GET(req: NextRequest) {
 
       if (!e.note_work || !e.note_work.trim()) {
         addRisk({ code: "missing_note", event: e, detail: "Odchod nemá vyplněný popis práce.", severity: "low" });
+      }
+      if (!hasWorkBreakdown(e.note_work)) {
+        addRisk({ code: "missing_split", event: e, detail: "Den nemá rozepsané hodiny do kategorií práce.", severity: "medium" });
+      }
+      if (e.km == null) {
+        addRisk({ code: "missing_km", event: e, detail: "Odchod nemá vyplněné kilometry. Pokud žádné nebyly, má tam být 0.", severity: "low" });
+      }
+      if ((e.material_amount || 0) > 0 && !e.material_desc?.trim()) {
+        addRisk({ code: "material_without_desc", event: e, detail: "U materiálu je částka, ale chybí popis použitého nebo nakoupeného materiálu.", severity: "medium" });
       }
       openByUser.delete(e.user_id);
     }

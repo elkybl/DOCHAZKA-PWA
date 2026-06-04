@@ -3,20 +3,16 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, parseReportedLeftAtCZ } from "@/lib/time";
+import { findLockForDay } from "@/lib/payroll-locks";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
   const toRad = (x: number) => (x * Math.PI) / 180;
-
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);
   const lat2 = toRad(b.lat);
-
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
@@ -25,49 +21,40 @@ export async function POST(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
 
-  const requested_site_id = body?.site_id as string | undefined;
-  const allow_without_location = !!body?.allow_without_location;
-  const reported_left_at = (body?.reported_left_at ?? "").toString().trim();
+  const allowWithoutLocation = !!body?.allow_without_location;
+  const reportedLeftAt = (body?.reported_left_at ?? "").toString().trim();
+  const noteWork = (body?.note_work ?? "").toString().trim() || null;
+  const materialDesc = (body?.material_desc ?? "").toString().trim() || null;
+  const programmingNote = (body?.programming_note ?? "").toString().trim() || null;
+
+  const km = body?.km != null ? Number(body.km) : null;
+  const materialAmount = body?.material_amount != null ? Number(body.material_amount) : null;
+  const programmingHours = body?.programming_hours != null ? Number(body.programming_hours) : null;
 
   const lat = Number(body?.lat);
   const lng = Number(body?.lng);
-  const accuracy_m = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
-
-  const note_work_raw = (body?.note_work ?? "").toString().trim();
-  const note_work = note_work_raw || null;
-  const km = body?.km != null ? Number(body.km) : null;
-
-  const material_desc = (body?.material_desc ?? "").toString().trim() || null;
-  const material_amount = body?.material_amount != null ? Number(body.material_amount) : null;
-
-  const programming_hours = body?.programming_hours != null ? Number(body.programming_hours) : null;
-  const programming_note = (body?.programming_note ?? "").toString().trim() || null;
-
-  if (
-    programming_hours != null &&
-    (!Number.isFinite(programming_hours) || programming_hours < 0 || programming_hours > 24)
-  ) {
-    return json({ error: "Neplatné hodiny programování." }, { status: 400 });
-  }
-
+  const accuracyM = body?.accuracy_m != null ? Number(body.accuracy_m) : null;
   const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
 
-  if (!hasLocation && !allow_without_location) {
+  if (!hasLocation && !allowWithoutLocation) {
     return json({ error: "Chybí poloha." }, { status: 400 });
   }
-
-  if (allow_without_location && !reported_left_at) {
-    return json({ error: "Zadej čas odchodu bez polohy." }, { status: 400 });
+  if (allowWithoutLocation && !reportedLeftAt) {
+    return json({ error: "Zadejte čas odchodu bez polohy." }, { status: 400 });
   }
-
   if (km != null && (!Number.isFinite(km) || km < 0)) {
-    return json({ error: "Km je neplatné." }, { status: 400 });
+    return json({ error: "Kilometry nejsou platné." }, { status: 400 });
   }
-
-  if (material_amount != null && (!Number.isFinite(material_amount) || material_amount < 0)) {
-    return json({ error: "Materiál částka je neplatná." }, { status: 400 });
+  if (materialAmount != null && (!Number.isFinite(materialAmount) || materialAmount < 0)) {
+    return json({ error: "Částka materiálu není platná." }, { status: 400 });
+  }
+  if ((materialAmount || 0) > 0 && !materialDesc) {
+    return json({ error: "K materiálu doplňte stručný popis." }, { status: 400 });
+  }
+  if (programmingHours != null && (!Number.isFinite(programmingHours) || programmingHours < 0 || programmingHours > 24)) {
+    return json({ error: "Hodiny programování nejsou platné." }, { status: 400 });
   }
 
   const db = supabaseAdmin();
@@ -77,15 +64,14 @@ export async function POST(req: NextRequest) {
     .select("id,is_programmer")
     .eq("id", session.userId)
     .maybeSingle();
+  if (meErr) return json({ error: "DB chyba (uživatel)." }, { status: 500 });
 
-  if (meErr) return json({ error: "DB chyba (me)." }, { status: 500 });
-
-  const canProg = (me as any)?.is_programmer === true;
-  if (!canProg && (programming_hours != null || programming_note)) {
+  const canProg = (me as { is_programmer?: boolean } | null)?.is_programmer === true;
+  if (!canProg && (programmingHours != null || programmingNote)) {
     return json({ error: "Programování smí zadávat jen programátor." }, { status: 403 });
   }
 
-  const { data: last, error: lastErr } = await db
+  const { data: lastInRow, error: lastErr } = await db
     .from("attendance_events")
     .select("type,server_time,site_id")
     .eq("user_id", session.userId)
@@ -93,103 +79,73 @@ export async function POST(req: NextRequest) {
     .limit(1);
 
   if (lastErr) return json({ error: "DB chyba." }, { status: 500 });
+  if (!lastInRow || !lastInRow[0] || lastInRow[0].type !== "IN") {
+    return json({ error: "Nemáte otevřenou směnu. Nejdřív je potřeba zadat příchod." }, { status: 409 });
+  }
 
-  if (!last || !last[0] || last[0].type !== "IN") {
+  const openShift = lastInRow[0] as { server_time: string; site_id: string | null };
+  const siteId = body?.site_id ? String(body.site_id) : openShift.site_id || null;
+  if (!siteId) return json({ error: "Chybí stavba." }, { status: 400 });
+
+  let outInstant = new Date();
+  if (allowWithoutLocation && reportedLeftAt) {
+    const parsed = parseReportedLeftAtCZ(reportedLeftAt, String(openShift.server_time));
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      return json({ error: "Neplatný ručně zadaný čas odchodu." }, { status: 400 });
+    }
+
+    const inTime = new Date(String(openShift.server_time));
+    if (parsed.getTime() < inTime.getTime()) {
+      return json({ error: "Odchod nemůže být dřív než příchod." }, { status: 400 });
+    }
+    outInstant = parsed;
+  }
+
+  const outIso = outInstant.toISOString();
+  const dayLocal = dayLocalCZFromIso(outIso);
+  const locked = await findLockForDay(dayLocal);
+  if (locked) {
     return json(
-      { error: "Nemáš otevřenou směnu (chybí příchod). Nejdřív dej PŘÍCHOD." },
+      { error: `Den ${dayLocal} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
       { status: 409 }
     );
   }
 
-  const site_id = requested_site_id || (last[0].site_id ? String(last[0].site_id) : undefined);
-
-  if (!site_id) {
-    return json(
-      {
-        error:
-          "Nepodařilo se určit stavbu k ukončení dne. Vyberte stavbu ručně nebo použijte ruční doplnění dne.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { data: site, error: sErr } = await db
+  const { data: site, error: siteErr } = await db
     .from("sites")
     .select("id,lat,lng,radius_m")
-    .eq("id", site_id)
+    .eq("id", siteId)
     .single();
+  if (siteErr || !site) return json({ error: "Stavba nenalezena." }, { status: 404 });
 
-  if (sErr || !site) {
-    return json({ error: "Stavba nenalezena." }, { status: 404 });
-  }
-
-  let distance_m: number | null = null;
-  const radius_m = Number(site.radius_m || 0);
-
+  let distanceM: number | null = null;
+  const radiusM = Number(site.radius_m || 0);
   if (hasLocation) {
-    distance_m = Math.round(
-      haversineMeters(
-        { lat, lng },
-        { lat: Number(site.lat), lng: Number(site.lng) }
-      )
-    );
-
-    if (radius_m > 0 && distance_m > radius_m && !allow_without_location) {
-      return json(
-        { error: `Jsi mimo radius stavby (${distance_m} m > ${radius_m} m).` },
-        { status: 403 }
-      );
+    distanceM = Math.round(haversineMeters({ lat, lng }, { lat: Number(site.lat), lng: Number(site.lng) }));
+    if (radiusM > 0 && distanceM > radiusM && !allowWithoutLocation) {
+      return json({ error: `Jste mimo radius stavby (${distanceM} m > ${radiusM} m).` }, { status: 403 });
     }
   }
-
-  let outInstant = new Date();
-
-  if (allow_without_location && reported_left_at) {
-    const inIso = String(last[0].server_time || "");
-    const parsed = parseReportedLeftAtCZ(reported_left_at, inIso);
-
-    if (!parsed || isNaN(parsed.getTime())) {
-      return json({ error: "Neplatný ručně zadaný čas odchodu." }, { status: 400 });
-    }
-
-    const inTime = new Date(inIso);
-    if (isNaN(inTime.getTime())) {
-      return json({ error: "Neplatný čas příchodu." }, { status: 500 });
-    }
-
-    if (parsed.getTime() < inTime.getTime()) {
-      return json({ error: "Odchod nemůže být dřív než příchod." }, { status: 400 });
-    }
-
-    outInstant = parsed;
-  }
-
-  const nowIso = outInstant.toISOString();
 
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,
-    site_id,
+    site_id: siteId,
     type: "OUT",
-    server_time: nowIso,
-    day_local: dayLocalCZFromIso(nowIso),
-
+    server_time: outIso,
+    day_local: dayLocal,
     lat: hasLocation ? lat : null,
     lng: hasLocation ? lng : null,
-    accuracy_m,
-    distance_m,
-
-    note_work,
+    accuracy_m: accuracyM,
+    distance_m: distanceM,
+    note_work: noteWork,
     km,
-    material_desc,
-    material_amount,
-
-    programming_hours: canProg ? programming_hours : null,
-    programming_note: canProg ? programming_note : null,
+    material_desc: materialDesc,
+    material_amount: materialAmount,
+    programming_hours: canProg ? programmingHours : null,
+    programming_note: canProg ? programmingNote : null,
   });
 
-  if (error) {
-    return json({ error: `Nešlo uložit odchod: ${error.message}` }, { status: 500 });
-  }
+  if (error) return json({ error: `Nešlo uložit odchod: ${error.message}` }, { status: 500 });
 
-  return json({ ok: true, distance_m, allow_without_location, server_time: nowIso });
+  return json({ ok: true, distance_m: distanceM, allow_without_location: allowWithoutLocation, server_time: outIso, day_local: dayLocal });
 }

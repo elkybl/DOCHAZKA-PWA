@@ -299,7 +299,7 @@ export default function AttendancePage() {
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const kmRef = useRef<HTMLInputElement | null>(null);
   const matAmountRef = useRef<HTMLInputElement | null>(null);
-  const matDescRef = useRef<HTMLInputElement | null>(null);
+  const matDescRef = useRef<HTMLTextAreaElement | null>(null);
   const progHoursRef = useRef<HTMLInputElement | null>(null);
   const manualOutTimeRef = useRef<HTMLInputElement | null>(null);
 
@@ -706,7 +706,7 @@ export default function AttendancePage() {
 
       if (forceWithoutLocation && !manualOutTime.trim()) return focusOutField("manual_out_time", "Zadejte čas odchodu bez polohy.");
       const splitError = validateSplitRows(splitRows, currentRoundedHours);
-      if (splitError) return focusOutField("note", splitError);
+      if (splitError) return focusOutField("split", splitError);
 
       setBusy(true);
 
@@ -1038,7 +1038,7 @@ export default function AttendancePage() {
               )}
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className={`mt-4 rounded-2xl border bg-slate-50 p-4 ${outField === "split" ? "border-red-300 bg-red-50/40" : "border-slate-200"}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Krok 2: Rozpad hodin a práce</div>
@@ -1094,15 +1094,19 @@ export default function AttendancePage() {
                   <input ref={matAmountRef} className={`mt-1 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="0" inputMode="decimal" value={matAmount} onChange={(e) => { setMatAmount(e.target.value); if (outField === "material") setOutField(null); }} />
                 </label>
               </div>
-            </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-semibold text-slate-900">Popis práce navíc</div>
-              <div className="mt-1 text-xs text-slate-500">Sem patří jen krátké shrnutí dne navíc. Hlavní obsah práce už je rozepsaný v kategoriích výše.</div>
-
-              <label className="mt-4 block text-xs font-semibold text-slate-600">
-                Popis práce (volitelné)
-                <textarea ref={noteRef} className={`mt-1 min-h-24 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "note" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`} placeholder="Co se dnes dělalo" value={note} onChange={(e) => { setNote(e.target.value); if (outField === "note") setOutField(null); }} />
+              <label className="mt-3 block text-xs font-semibold text-slate-600">
+                Popis materiálu
+                <textarea
+                  ref={matDescRef}
+                  className={`mt-1 min-h-24 w-full rounded-2xl border p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 ${outField === "material_desc" ? "border-red-300 bg-red-50/50" : "border-slate-300"}`}
+                  placeholder="Např. CYKY 3x2,5, jistič B16, svorky WAGO, lišta, vypínače."
+                  value={matDesc}
+                  onChange={(e) => {
+                    setMatDesc(e.target.value);
+                    if (outField === "material_desc") setOutField(null);
+                  }}
+                />
               </label>
             </div>
 

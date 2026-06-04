@@ -4,6 +4,7 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 type Ev = {
   user_id: string;
@@ -25,22 +26,6 @@ type Ev = {
 function toNum(v: unknown, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
 function round1(n: number) { return Math.round(n * 10) / 10; }
-
-type UserRateRow = {
-  id: string;
-  name: string;
-  hourly_rate: number | null;
-  km_rate: number | null;
-  programming_rate: number | null;
-};
-
-type UserSiteRateRow = {
-  user_id: string;
-  site_id: string;
-  hourly_rate: number | null;
-  km_rate: number | null;
-  programming_rate: number | null;
-};
 
 type SiteRow = {
   id: string;
@@ -67,42 +52,13 @@ export async function GET(req: NextRequest) {
 
   const { data: users, error: uErr } = await db
     .from("users")
-    .select("id,name,role,hourly_rate,km_rate,programming_rate")
+    .select("id,name,role")
     .order("name", { ascending: true });
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
-  const defaultByUser = new Map<string, { name: string; hourly: number; km: number; programming: number }>();
-  for (const u of (users || []) as UserRateRow[]) {
-    defaultByUser.set(u.id, {
-      name: u.name,
-      hourly: toNum(u.hourly_rate, 0),
-      km: toNum(u.km_rate, 0),
-      programming: toNum(u.programming_rate, 0),
-    });
-  }
-
-  const { data: usrSiteRates, error: rErr } = await db
-    .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate,programming_rate");
-  if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
-
-  const rateMap = new Map<string, { hourly: number; km: number; programming: number }>();
-  for (const r of (usrSiteRates || []) as UserSiteRateRow[]) {
-    rateMap.set(`${r.user_id}__${r.site_id}`, {
-      hourly: toNum(r.hourly_rate, 0),
-      km: toNum(r.km_rate, 0),
-      programming: toNum(r.programming_rate, 0),
-    });
-  }
-
-  const getRate = (user_id: string, site_id: string | null) => {
-    if (site_id) {
-      const r = rateMap.get(`${user_id}__${site_id}`);
-      if (r) return r;
-    }
-    const def = defaultByUser.get(user_id);
-    return { hourly: def?.hourly ?? 0, km: def?.km ?? 0, programming: def?.programming ?? 0 };
-  };
+  const userNameById = new Map<string, string>();
+  for (const u of users || []) userNameById.set(String((u as any).id), String((u as any).name || ""));
+  const engine = await loadEffectiveRateEngine(db, { userIds: Array.from(userNameById.keys()) });
 
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
@@ -166,10 +122,10 @@ export async function GET(req: NextRequest) {
   for (const [key, listRaw] of byUserDaySite.entries()) {
     const [user_id, day, site_id_raw] = key.split("__");
     const site_id = site_id_raw || null;
-    const user = defaultByUser.get(user_id);
-    if (!user) continue;
+    const userName = userNameById.get(user_id);
+    if (!userName) continue;
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
-    const rates = getRate(user_id, site_id);
+    const rates = engine.getRate(user_id, site_id, day);
 
     let lastIn: Ev | null = null;
     let workHours = 0;
@@ -198,7 +154,7 @@ export async function GET(req: NextRequest) {
         material += toNum(e.material_amount, 0);
         const ph = toNum(e.programming_hours, 0);
         progHours += ph;
-        progPay += ph * rates.programming;
+          progPay += ph * rates.prog;
         if (e.note_work) notes.push(String(e.note_work).trim());
         if (e.programming_note) notes.push(`Programování: ${String(e.programming_note).trim()}`);
       } else if (e.type === "OFFSITE") {
@@ -214,7 +170,7 @@ export async function GET(req: NextRequest) {
     if (!aggMap.has(aggKey)) {
       aggMap.set(aggKey, {
         user_id,
-        user_name: user.name,
+        user_name: userName,
         site_id,
         site_name: site_id ? (siteName.get(site_id) || site_id) : "Bez akce",
         from_day: day,

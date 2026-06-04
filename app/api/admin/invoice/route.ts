@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 const TZ = "Europe/Prague";
 
@@ -109,33 +110,15 @@ export async function GET(req: NextRequest) {
 
   const db = supabaseAdmin();
 
-  const { data: u, error: uErr } = await db.from("users").select("id,name,hourly_rate,km_rate").eq("id", userId).single();
+  const { data: u, error: uErr } = await db.from("users").select("id,name").eq("id", userId).single();
   if (uErr || !u) return json({ error: "Uživatel nenalezen." }, { status: 404 });
-
-  const defaultHourly = toNum((u as any).hourly_rate, 0);
-  const defaultKm = toNum((u as any).km_rate, 0);
-
-  const { data: usrSiteRates } = await db
-    .from("user_site_rates")
-    .select("site_id,hourly_rate,km_rate")
-    .eq("user_id", userId);
-
-  const rateMap = new Map<string, { hourly: number; km: number }>();
-  for (const r of usrSiteRates || []) {
-    rateMap.set(String((r as any).site_id), { hourly: toNum((r as any).hourly_rate, 0), km: toNum((r as any).km_rate, 0) });
-  }
+  const engine = await loadEffectiveRateEngine(db, { userIds: [userId] });
 
   const { data: sites } = await db.from("sites").select("id,name");
   const siteName = new Map<string, string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  const getRate = (site_id: string | null) => {
-    if (site_id) {
-      const r = rateMap.get(site_id);
-      if (r) return { ...r, source: "site" as const };
-    }
-    return { hourly: defaultHourly, km: defaultKm, source: "default" as const };
-  };
+  const getRate = (site_id: string | null, dayInput?: string | null) => engine.getRate(userId, site_id, dayInput);
 
   const { data: evs, error: evErr } = await db
     .from("attendance_events")
@@ -263,7 +246,7 @@ export async function GET(req: NextRequest) {
         const minutes = Math.max(0, Math.round((outRounded.getTime() - lastIn.rounded.getTime()) / 60000));
         const hours = minutes / 60;
 
-        const r = getRate(sid);
+        const r = getRate(sid, day);
         const amount = hours * r.hourly;
 
         const bucket = addSite(sid);
@@ -284,7 +267,7 @@ export async function GET(req: NextRequest) {
         const sid = e.site_id || null;
         const h = toNum(e.offsite_hours, 0);
         if (h > 0) {
-          const r = getRate(sid);
+          const r = getRate(sid, day);
           const amount = h * r.hourly;
           const bucket = addSite(sid);
           bucket.off.push({
@@ -312,7 +295,7 @@ export async function GET(req: NextRequest) {
         const k = toNum(e.km, 0);
         if (k > 0) {
           const sid = e.site_id || null;
-          const r = getRate(sid);
+          const r = getRate(sid, day);
           const bucket = addSite(sid);
           bucket.km += k;
           bucket.km_rate = round2(r.km);
@@ -329,9 +312,10 @@ export async function GET(req: NextRequest) {
       if (tripKm > 0) {
         const bucket = addSite(null);
         bucket.km += tripKm;
-        bucket.km_rate = round2(defaultKm);
-        bucket.km_amount += tripKm * defaultKm;
-        bucket.day_total += tripKm * defaultKm;
+        const dayDefaultKm = getRate(null, day).km;
+        bucket.km_rate = round2(dayDefaultKm);
+        bucket.km_amount += tripKm * dayDefaultKm;
+        bucket.day_total += tripKm * dayDefaultKm;
       }
     }
 
@@ -393,7 +377,12 @@ export async function GET(req: NextRequest) {
 
   return json({
     range: { from: from || dayKeyPrague(fromIso), to: to || dayKeyPrague(toIso) },
-    user: { id: u.id, name: (u as any).name || "", hourly_rate: defaultHourly, km_rate: defaultKm },
+    user: {
+      id: u.id,
+      name: (u as any).name || "",
+      hourly_rate: getRate(null, from || dayKeyPrague(fromIso)).hourly,
+      km_rate: getRate(null, from || dayKeyPrague(fromIso)).km,
+    },
     note: "Časy jsou zaokrouhlené na 30 minut pro výpočet. Reálná data v DB se nemění. Km z knihy jízd se přiřazuje do Nezařazeno, pokud nejsou ruční km u odchodu.",
     sites: sitesOut,
   });

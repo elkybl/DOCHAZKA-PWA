@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 type Ev = {
   id: string;
@@ -35,40 +36,9 @@ export async function GET(req: NextRequest) {
   const to = url.searchParams.get("to") || new Date().toISOString();
 
   const db = supabaseAdmin();
-
-  // default sazby
-  const { data: me, error: meErr } = await db
-    .from("users")
-    .select("hourly_rate,km_rate")
-    .eq("id", session.userId)
-    .single();
-
-  if (meErr) return json({ error: "DB chyba (user)." }, { status: 500 });
-
-  const defaultHourly = toNum(me?.hourly_rate, 0);
-  const defaultKmRate = toNum(me?.km_rate, 0);
-
-  // sazby per stavba
-  const { data: siteRates } = await db
-    .from("user_site_rates")
-    .select("site_id,hourly_rate,km_rate")
-    .eq("user_id", session.userId);
-
-  const rateBySite = new Map<string, { hourly: number; km: number }>();
-  for (const r of siteRates || []) {
-    rateBySite.set((r as any).site_id, {
-      hourly: toNum((r as any).hourly_rate, 0),
-      km: toNum((r as any).km_rate, 0),
-    });
-  }
-
-  const getRate = (site_id: string | null) => {
-    if (site_id) {
-      const r = rateBySite.get(site_id);
-      if (r) return r;
-    }
-    return { hourly: defaultHourly, km: defaultKmRate };
-  };
+  const engine = await loadEffectiveRateEngine(db, { userIds: [session.userId] });
+  const getRate = (site_id: string | null, dayInput?: string | null) =>
+    engine.getRate(session.userId, site_id, dayInput);
 
   // eventy
   const { data, error } = await db
@@ -105,7 +75,7 @@ export async function GET(req: NextRequest) {
         const h = minutes / 60;
 
         hours += h;
-        const r = getRate(lastIn.site_id || e.site_id || null);
+        const r = getRate(lastIn.site_id || e.site_id || null, day);
         hoursPay += h * r.hourly;
 
         lastIn = null;
@@ -118,7 +88,7 @@ export async function GET(req: NextRequest) {
     for (const o of evs.filter((x) => x.type === "OFFSITE")) {
       const h = toNum(o.offsite_hours, 0);
       offH += h;
-      const r = getRate(o.site_id || null);
+      const r = getRate(o.site_id || null, day);
       offPay += h * r.hourly;
     }
     hours += offH;
@@ -130,7 +100,7 @@ export async function GET(req: NextRequest) {
     for (const o of evs.filter((x) => x.type === "OUT")) {
       const k = toNum(o.km, 0);
       km += k;
-      const r = getRate(o.site_id || null);
+      const r = getRate(o.site_id || null, day);
       kmPay += k * r.km;
     }
 

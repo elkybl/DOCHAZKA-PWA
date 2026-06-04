@@ -6,6 +6,7 @@ import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, fmtTimeCZFromIso, roundToHalfHourCZ, toDate } from "@/lib/time";
 import { compareAttendanceEventsAsc, compareAttendanceEventsDesc } from "@/lib/attendance-order";
 import { czLocalToUtcDate } from "@/lib/time";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 const qSchema = z.object({
   from: z.string().optional(), // YYYY-MM-DD
@@ -44,36 +45,18 @@ export async function GET(req: NextRequest) {
 
   // maps for names
   const [{ data: users }, { data: sites }] = await Promise.all([
-    db.from("users").select("id,name,role,hourly_rate,km_rate"),
+    db.from("users").select("id,name,role"),
     db.from("sites").select("id,name"),
   ]);
 
   const userName = new Map<string,string>();
-  const userRate = new Map<string,{ hourly:number; km:number }>();
   for (const u of users || []) {
     userName.set((u as any).id, (u as any).name);
-    userRate.set((u as any).id, { hourly: Number((u as any).hourly_rate||0), km: Number((u as any).km_rate||0) });
   }
   const siteName = new Map<string,string>();
   for (const s of sites || []) siteName.set((s as any).id, (s as any).name);
 
-  // per user+site overrides
-  const { data: usrSiteRates } = await db.from("user_site_rates").select("user_id,site_id,hourly_rate,km_rate");
-  const rateMap = new Map<string,{ hourly:number; km:number }>();
-  for (const r of usrSiteRates || []) {
-    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: Number((r as any).hourly_rate||0),
-      km: Number((r as any).km_rate||0),
-    });
-  }
-  const getRate = (uid: string, sid: string | null) => {
-    if (sid) {
-      const r = rateMap.get(`${uid}__${sid}`);
-      if (r) return { ...r, source: "site" as const };
-    }
-    const d = userRate.get(uid) || { hourly:0, km:0 };
-    return { ...d, source: "default" as const };
-  };
+  const engine = await loadEffectiveRateEngine(db, { userIds: Array.from(userName.keys()) });
 
   let q = db
     .from("attendance_events")
@@ -133,7 +116,7 @@ if (to) {
   const rows = enriched.map((e:any) => {
     const uid = e.user_id as string;
     const sid = e.site_id as string | null;
-    const r = getRate(uid, sid);
+    const r = engine.getRate(uid, sid, e.day_local || dayLocalCZFromIso(e.server_time));
 	const raw = toDate(e.server_time);
 	const rounded = roundToHalfHourCZ(raw.toISOString());
     const row:any = {

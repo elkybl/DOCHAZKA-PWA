@@ -1,12 +1,12 @@
-"use client";
+﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppNav";
 
 type U = {
   id: string;
   name: string;
-  email?: string | null;
   role: "admin" | "worker";
   is_active: boolean;
   google_sheet_url?: string | null;
@@ -36,7 +36,6 @@ type RiskRow = {
 
 type UserForm = {
   name: string;
-  email: string;
   pin: string;
   role: "admin" | "worker";
   is_active: boolean;
@@ -52,7 +51,6 @@ function token() {
 function emptyForm(): UserForm {
   return {
     name: "",
-    email: "",
     pin: "",
     role: "worker",
     is_active: true,
@@ -139,7 +137,6 @@ export default function AdminUsers() {
     const payload: {
       id?: string;
       name: string;
-      email: string | null;
       pin?: string;
       role: "admin" | "worker";
       is_active: boolean;
@@ -148,7 +145,6 @@ export default function AdminUsers() {
       programming_rate: number | null;
     } = {
       name: form.name.trim(),
-      email: form.email.trim() || null,
       role: form.role,
       is_active: !!form.is_active,
       google_sheet_url: form.google_sheet_url.trim() || null,
@@ -183,7 +179,6 @@ export default function AdminUsers() {
     setEditingId(u.id);
     setForm({
       name: u.name,
-      email: u.email || "",
       pin: "",
       role: u.role,
       is_active: u.is_active,
@@ -275,10 +270,6 @@ export default function AdminUsers() {
               <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Například Lukáš" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
 
-            <Field label="E-mail" hint="Použije se pro notifikace o plánované práci, vráceném dni a dalších změnách.">
-              <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="jmeno@firma.cz" inputMode="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.slice(0, 200) })} />
-            </Field>
-
             <Field label={editingId ? "Nový PIN" : "PIN"} hint={editingId ? "Když necháš prázdné, PIN zůstane stejný." : "Používá se pro přihlášení."}>
               <input className="mt-1 w-full rounded-lg border px-3 py-2" placeholder={editingId ? "Nepovinné" : "PIN"} inputMode="numeric" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "").slice(0, 8) })} />
             </Field>
@@ -305,7 +296,7 @@ export default function AdminUsers() {
                 <input type="checkbox" checked={!!form.is_programmer} onChange={(e) => setForm({ ...form, is_programmer: e.target.checked })} />
                 Programátor
               </label>
-              <Field label="Programátorská sazba" hint="Kč za hodinu. Pracovník si ji může upravit i v části Moje sazby.">
+              <Field label="Programátorská sazba" hint="Kč za hodinu. Historii sazeb a výjimky pro stavby spravuje administrace.">
                 <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2" placeholder="Například 650" inputMode="decimal" value={form.programming_rate} onChange={(e) => setForm({ ...form, programming_rate: e.target.value.replace(/[^\d.,]/g, "").slice(0, 10) })} disabled={!form.is_programmer} />
               </Field>
             </div>
@@ -349,11 +340,13 @@ export default function AdminUsers() {
                         <span>Odpracované dny: {profile.workedDays}</span>
                         <span>Programování: {u.programming_rate == null ? "nenastaveno" : `${u.programming_rate} Kč/h`}</span>
                       </div>
-                      {u.email ? <div className="mt-2 text-sm text-slate-500">{u.email}</div> : null}
                       {u.google_sheet_url ? <a className="mt-2 inline-flex text-sm font-medium text-blue-700 underline" href={u.google_sheet_url} target="_blank" rel="noreferrer">Otevřít Google Sheet</a> : null}
                     </div>
 
                     <div className="flex gap-2">
+                      <Link href={`/me/rates?user_id=${u.id}`} className="rounded-lg border px-3 py-2 text-sm">
+                        Sazby
+                      </Link>
                       <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => edit(u)}>Upravit</button>
                       <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => removeUser(u.id, u.name)} disabled={deletingId === u.id}>
                         {deletingId === u.id ? "Mažu..." : "Smazat"}

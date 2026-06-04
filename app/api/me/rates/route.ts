@@ -3,10 +3,13 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { loadEffectiveRateEngine, normalizeEffectiveFrom, syncCurrentRateTables } from "@/lib/effective-rates";
 
 const rateNum = z.number().min(0).max(200000);
 
 const saveSchema = z.object({
+  user_id: z.string().uuid().optional(),
+  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   programming_rate: rateNum.nullable().optional(),
   default_hourly_rate: rateNum.nullable().optional(),
   default_km_rate: rateNum.nullable().optional(),
@@ -22,11 +25,11 @@ const saveSchema = z.object({
     .default([]),
 });
 
-function toNullOrNumber(v: any) {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return n;
+function toNullOrNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num;
 }
 
 export async function GET(req: NextRequest) {
@@ -34,36 +37,42 @@ export async function GET(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
 
-  const userId = (session as any).userId as string;
+  const url = new URL(req.url);
+  const requestedUserId = url.searchParams.get("user_id")?.trim() || "";
+  const targetUserId = session.role === "admin" && requestedUserId ? requestedUserId : session.userId;
+  const effectiveFrom = normalizeEffectiveFrom(url.searchParams.get("effective_from"));
+
   const db = supabaseAdmin();
+  const engine = await loadEffectiveRateEngine(db, { userIds: [targetUserId] });
+  const targetUser = engine.userById.get(targetUserId);
+  if (!targetUser) return json({ error: "Uživatel nenalezen." }, { status: 404 });
 
-  const { data: me, error: meErr } = await db
-    .from("users")
-    .select("id,hourly_rate,km_rate,is_programmer,programming_rate")
-    .eq("id", userId)
-    .single();
-
-  if (meErr || !me) return json({ error: "Uživatel nenalezen." }, { status: 404 });
-
-  const { data: rows, error: rErr } = await db
-    .from("user_site_rates")
-    .select("site_id,hourly_rate,km_rate,programming_rate")
-    .eq("user_id", userId)
-    .order("site_id", { ascending: true });
-
-  if (rErr) return json({ error: "DB chyba (user_site_rates)." }, { status: 500 });
+  const defaultSnapshot = engine.getDefaultSnapshot(targetUserId, effectiveFrom);
+  const siteRows = engine
+    .listSiteIds(targetUserId)
+    .map((siteId) => {
+      const row = engine.getSiteOverrideSnapshot(targetUserId, siteId, effectiveFrom);
+      if (!row) return null;
+      return {
+        site_id: siteId,
+        hourly_rate: row.hourly_rate,
+        km_rate: row.km_rate,
+        programming_rate: row.programming_rate,
+        effective_from: row.effective_from,
+      };
+    })
+    .filter(Boolean);
 
   return json({
-    default_hourly_rate: (me as any).hourly_rate ?? null,
-    default_km_rate: (me as any).km_rate ?? null,
-    is_programmer: !!(me as any).is_programmer,
-    programming_rate: (me as any).programming_rate ?? null,
-    rows: (rows || []).map((r: any) => ({
-      site_id: r.site_id,
-      hourly_rate: r.hourly_rate ?? null,
-      km_rate: r.km_rate ?? null,
-      programming_rate: r.programming_rate ?? null,
-    })),
+    can_edit: session.role === "admin",
+    user_id: targetUserId,
+    target_user_name: targetUser.name || "",
+    effective_from: effectiveFrom,
+    default_hourly_rate: defaultSnapshot.hourly_rate ?? null,
+    default_km_rate: defaultSnapshot.km_rate ?? null,
+    is_programmer: !!targetUser.is_programmer,
+    programming_rate: defaultSnapshot.programming_rate ?? null,
+    rows: siteRows,
   });
 }
 
@@ -71,9 +80,7 @@ export async function POST(req: NextRequest) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
   if (!session) return json({ error: "Nepřihlášen." }, { status: 401 });
-
-  const userId = (session as any).userId as string;
-  const db = supabaseAdmin();
+  if (session.role !== "admin") return json({ error: "Sazby spravuje administrace." }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = saveSchema.safeParse(body);
@@ -82,53 +89,61 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = parsed.data;
-  const defHourly = toNullOrNumber(payload.default_hourly_rate);
-  const defKm = toNullOrNumber(payload.default_km_rate);
-  const defProg = toNullOrNumber(payload.programming_rate);
+  const targetUserId = payload.user_id || session.userId;
+  const effectiveFrom = normalizeEffectiveFrom(payload.effective_from);
+  const db = supabaseAdmin();
 
-  // 1) uložit default sazby do users
-  const upd = await db
-    .from("users")
-    .update({
-      hourly_rate: defHourly,
-      km_rate: defKm,
-      programming_rate: defProg,
-    })
-    .eq("id", userId);
+  const [userRes, siteRes] = await Promise.all([
+    db.from("users").select("id").eq("id", targetUserId).maybeSingle(),
+    db.from("sites").select("id"),
+  ]);
+  if (userRes.error) return json({ error: "DB chyba (users)." }, { status: 500 });
+  if (!userRes.data) return json({ error: "Uživatel nenalezen." }, { status: 404 });
+  if (siteRes.error) return json({ error: "DB chyba (sites)." }, { status: 500 });
 
-  if (upd.error) return json({ error: `Nešlo uložit default sazby: ${upd.error.message}` }, { status: 500 });
-
-  // 2) uložit sazby pro stavby (upsert)
-  const rowsToUpsert = (payload.rows || []).map((r) => ({
-    user_id: userId,
-    site_id: r.site_id,
-    hourly_rate: toNullOrNumber(r.hourly_rate),
-    km_rate: toNullOrNumber(r.km_rate),
-    programming_rate: toNullOrNumber((r as any).programming_rate),
-  }));
-
-  // nechceme ukládat úplně prázdné řádky (obě null) – místo toho je smažeme
-  const toKeep = rowsToUpsert.filter((r) => r.hourly_rate !== null || r.km_rate !== null || r.programming_rate !== null);
-  const toDeleteSiteIds = rowsToUpsert
-    .filter((r) => r.hourly_rate === null && r.km_rate === null && r.programming_rate === null)
-    .map((r) => r.site_id);
-
-  if (toKeep.length) {
-    const up = await db
-      .from("user_site_rates")
-      .upsert(toKeep, { onConflict: "user_id,site_id" });
-
-    if (up.error) return json({ error: `Nešlo uložit sazby pro stavby: ${up.error.message}` }, { status: 500 });
+  const validSiteIds = new Set(((siteRes.data || []) as Array<{ id: string }>).map((site) => String(site.id)));
+  for (const row of payload.rows || []) {
+    if (!validSiteIds.has(String(row.site_id))) {
+      return json({ error: "Jedna ze staveb pro sazbu už neexistuje." }, { status: 400 });
+    }
   }
 
-  if (toDeleteSiteIds.length) {
-    const del = await db
-      .from("user_site_rates")
-      .delete()
-      .eq("user_id", userId)
-      .in("site_id", toDeleteSiteIds);
+  const defaultInsert = await db.from("user_rate_history").upsert(
+    {
+      user_id: targetUserId,
+      effective_from: effectiveFrom,
+      hourly_rate: toNullOrNumber(payload.default_hourly_rate),
+      km_rate: toNullOrNumber(payload.default_km_rate),
+      programming_rate: toNullOrNumber(payload.programming_rate),
+      created_by: session.userId,
+    },
+    { onConflict: "user_id,effective_from" }
+  );
+  if (defaultInsert.error) {
+    return json({ error: `Nešlo uložit výchozí sazby: ${defaultInsert.error.message}` }, { status: 500 });
+  }
 
-    if (del.error) return json({ error: `Nešlo vyčistit prázdné sazby: ${del.error.message}` }, { status: 500 });
+  const siteRows = (payload.rows || []).map((row) => ({
+    user_id: targetUserId,
+    site_id: row.site_id,
+    effective_from: effectiveFrom,
+    hourly_rate: toNullOrNumber(row.hourly_rate),
+    km_rate: toNullOrNumber(row.km_rate),
+    programming_rate: toNullOrNumber(row.programming_rate),
+    created_by: session.userId,
+  }));
+
+  if (siteRows.length) {
+    const siteInsert = await db.from("user_site_rate_history").upsert(siteRows, { onConflict: "user_id,site_id,effective_from" });
+    if (siteInsert.error) {
+      return json({ error: `Nešlo uložit sazby pro stavby: ${siteInsert.error.message}` }, { status: 500 });
+    }
+  }
+
+  try {
+    await syncCurrentRateTables(db, targetUserId);
+  } catch (error) {
+    return json({ error: `Historie sazeb je uložená, ale nepodařilo se přepočítat aktuální sazby: ${String((error as { message?: string })?.message || error)}` }, { status: 500 });
   }
 
   return json({ ok: true });

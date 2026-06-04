@@ -4,18 +4,14 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 function toNum(v: any, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 function round2(n: number) { return Math.round(n * 100) / 100; }
 function isDay(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v); }
 function startOfDayIso(v: string) { return isDay(v) ? `${v}T00:00:00.000Z` : v; }
 function endOfDayIso(v: string) { return isDay(v) ? `${v}T23:59:59.999Z` : v; }
-function reviewKey(userId: string, day: string, siteId: string | null) { return `${day}__${userId}__${siteId || ""}`; }
-function eventTypeLabel(type: string) {
-  if (type === "IN") return "Příchod";
-  if (type === "OUT") return "Odchod";
-  return "Mimo stavbu";
-}
+function reviewKey(userId: string, day: string, siteId: string | null) { return `${userId}__${day}__${siteId || ""}`; }
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -37,24 +33,11 @@ export async function GET(req: NextRequest) {
   const userId = url.searchParams.get("user_id");
 
   const db = supabaseAdmin();
-  const { data: users, error: uErr } = await db.from("users").select("id,name,hourly_rate,km_rate,programming_rate").order("name", { ascending: true });
+  const { data: users, error: uErr } = await db.from("users").select("id,name").order("name", { ascending: true });
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
-  const defByUser = new Map<string, any>();
-  for (const u of users || []) defByUser.set((u as any).id, u);
-
-  const { data: usrSiteRates, error: rErr } = await db.from("user_site_rates").select("user_id,site_id,hourly_rate,km_rate,programming_rate");
-  if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
-  const rateMap = new Map<string, any>();
-  for (const r of usrSiteRates || []) rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, r);
-
-  const getRates = (uid: string, sid: string | null) => {
-    if (sid) {
-      const r = rateMap.get(`${uid}__${sid}`);
-      if (r) return { hourly: toNum(r.hourly_rate), km: toNum(r.km_rate), programming: toNum((r as any).programming_rate), source: "site" as const };
-    }
-    const d = defByUser.get(uid);
-    return { hourly: toNum(d?.hourly_rate), km: toNum(d?.km_rate), programming: toNum(d?.programming_rate), source: "default" as const };
-  };
+  const userNameById = new Map<string, string>();
+  for (const u of users || []) userNameById.set(String((u as any).id), String((u as any).name || ""));
+  const engine = await loadEffectiveRateEngine(db, { userIds: Array.from(userNameById.keys()) });
 
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
@@ -81,67 +64,54 @@ export async function GET(req: NextRequest) {
   for (const [key, listRaw] of grouped.entries()) {
     const [uid, day, sidRaw] = key.split("__");
     const sid = sidRaw || null;
-    const uname = (defByUser.get(uid) as any)?.name || uid;
+    const uname = userNameById.get(uid) || uid;
     const sname = sid ? (siteName.get(sid) || sid) : null;
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
     let lastIn: any = null;
-    let firstInEventId: string | null = null;
-    let lastOutEventId: string | null = null;
     let workHours = 0, workPay = 0, totalKm = 0, kmPay = 0, mat = 0;
     let firstIn: string | null = null, lastOut: string | null = null;
     const workNotes: string[] = [];
-    let consecutiveInCount = 0;
-    let unmatchedOutCount = 0;
     let paidAll = true;
     const workDeleteIds: string[] = [];
 
     for (const e of list) {
       paidAll = paidAll && !!e.is_paid;
       if (e.type === "IN") {
-        if (lastIn) consecutiveInCount += 1;
         lastIn = e;
         workDeleteIds.push(e.id);
-        if (!firstIn) {
-          firstIn = e.server_time;
-          firstInEventId = e.id;
-        }
+        if (!firstIn) firstIn = e.server_time;
       } else if (e.type === "OUT") {
         workDeleteIds.push(e.id);
         lastOut = e.server_time;
-        lastOutEventId = e.id;
         if (lastIn) {
           const mins = Math.max(0, Math.round((toDate(e.server_time).getTime() - toDate(lastIn.server_time).getTime()) / 60000));
           const h = round2(mins / 60);
           workHours += h;
-          const rates = getRates(uid, sid || e.site_id || lastIn.site_id || null);
+          const rates = engine.getRate(uid, sid || e.site_id || lastIn.site_id || null, day);
           workPay += h * rates.hourly;
           totalKm += toNum(e.km, 0);
           kmPay += toNum(e.km, 0) * rates.km;
           mat += toNum(e.material_amount, 0);
           if (e.note_work) workNotes.push(String(e.note_work).trim());
           lastIn = null;
-        } else {
-          unmatchedOutCount += 1;
         }
       }
     }
 
-    if (workDeleteIds.length > 0 || workHours > 0 || totalKm > 0 || mat > 0 || workNotes.length) {
+    if (workHours > 0 || totalKm > 0 || mat > 0 || workNotes.length) {
       rows.push({
         id: `work__${uid}__${day}__${sid || "none"}`,
         sourceKind: "WORK",
         sourceId: workDeleteIds[workDeleteIds.length - 1] || null,
         sourceIds: workDeleteIds,
-        first_in_event_id: firstInEventId,
-        last_out_event_id: lastOutEventId,
         user_id: uid,
         user_name: uname,
         site_id: sid,
         site_name: sname,
         day,
         paid: paidAll,
-        title: lastOut ? "Práce" : "Otevřený den",
+        title: "Práce",
         first_in: firstIn,
         last_out: lastOut,
         hours: round2(workHours),
@@ -152,34 +122,13 @@ export async function GET(req: NextRequest) {
         material: round2(mat),
         total: round2(workPay + kmPay + mat),
         note: workNotes.join(" | "),
-        raw_events: list.map((event) => ({
-          id: event.id,
-          type: event.type,
-          label: eventTypeLabel(event.type),
-          server_time: event.server_time,
-          site_id: event.site_id,
-          site_name: event.site_id ? (siteName.get(event.site_id) || event.site_id) : null,
-          note:
-            event.type === "OUT"
-              ? String(event.note_work || "").trim()
-              : event.type === "OFFSITE"
-                ? String(event.offsite_reason || "").trim()
-                : "",
-        })),
-        raw_summary: {
-          in_count: list.filter((event) => event.type === "IN").length,
-          out_count: list.filter((event) => event.type === "OUT").length,
-          consecutive_in_count: consecutiveInCount,
-          unmatched_out_count: unmatchedOutCount,
-          has_open_in: !!lastIn,
-        },
       });
     }
 
     for (const e of list.filter((x) => x.type === "OUT" && toNum(x.programming_hours, 0) > 0)) {
-      const rates = getRates(uid, sid || e.site_id || null);
+      const rates = engine.getRate(uid, sid || e.site_id || null, day);
       const ph = toNum(e.programming_hours, 0);
-      const pr = toNum(rates.programming, 0);
+      const pr = toNum(rates.prog, 0);
       rows.push({
         id: `prog__${e.id}`,
         sourceKind: "PROGRAM",
@@ -207,7 +156,7 @@ export async function GET(req: NextRequest) {
     for (const e of list.filter((x) => x.type === "OFFSITE")) {
       const h = toNum(e.offsite_hours, 0);
       if (h <= 0) continue;
-      const rates = getRates(uid, sid || e.site_id || null);
+      const rates = engine.getRate(uid, sid || e.site_id || null, day);
       rows.push({
         id: `off__${e.id}`,
         sourceKind: "OFFSITE",

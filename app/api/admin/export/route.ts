@@ -4,6 +4,7 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate, ceilMinutesTo30 } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 type Ev = {
   user_id: string;
@@ -49,43 +50,13 @@ export async function GET(req: NextRequest) {
 
   const { data: users, error: uErr } = await db
     .from("users")
-    .select("id,name,role,hourly_rate,km_rate,is_programmer,programming_rate")
+    .select("id,name,role")
     .order("name", { ascending: true });
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
-  const defaultByUser = new Map<string, { name: string; hourly: number; km: number; prog: number }>();
-  for (const u of users || []) {
-    defaultByUser.set((u as any).id, {
-      name: (u as any).name,
-      hourly: toNum((u as any).hourly_rate, 0),
-      km: toNum((u as any).km_rate, 0),
-      prog: toNum((u as any).programming_rate, toNum((u as any).hourly_rate, 0)),
-    });
-  }
-
-  const { data: usrSiteRates, error: rErr } = await db
-    .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate,programming_rate");
-  if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
-
-  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
-  for (const r of usrSiteRates || []) {
-    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: toNum((r as any).hourly_rate, 0),
-      km: toNum((r as any).km_rate, 0),
-      prog: toNum((r as any).programming_rate, toNum((r as any).hourly_rate, 0)),
-    });
-  }
-
-  const getRate = (user_id: string, site_id: string | null) => {
-    if (site_id) {
-      const r = rateMap.get(`${user_id}__${site_id}`);
-      if (r) return r;
-    }
-    const def = defaultByUser.get(user_id);
-    const hourly = def?.hourly ?? 0;
-    return { hourly, km: def?.km ?? 0, prog: def?.prog ?? hourly };
-  };
+  const userNameById = new Map<string, string>();
+  for (const u of users || []) userNameById.set(String((u as any).id), String((u as any).name || ""));
+  const engine = await loadEffectiveRateEngine(db, { userIds: Array.from(userNameById.keys()) });
 
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
   if (sErr) return json({ error: "DB chyba (sites)." }, { status: 500 });
@@ -113,8 +84,8 @@ export async function GET(req: NextRequest) {
   for (const [key, listRaw] of byUserDay.entries()) {
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
     const [user_id, day] = key.split("__");
-    const def = defaultByUser.get(user_id);
-    if (!def) continue;
+    const userName = userNameById.get(user_id);
+    if (!userName) continue;
 
     const sitesUsed = new Set<string>();
     const workNotes: string[] = [];
@@ -142,7 +113,7 @@ export async function GET(req: NextRequest) {
         const minutesRounded = ceilMinutesTo30(Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000)));
         const h = minutesRounded / 60;
         hours += h;
-        const r = getRate(user_id, lastIn.site_id || e.site_id || null);
+        const r = engine.getRate(user_id, lastIn.site_id || e.site_id || null, day);
         const progH = Math.max(0, Math.min(h, toNum(e.programming_hours, 0)));
         const siteH = Math.max(0, h - progH);
         hoursPay += siteH * r.hourly + progH * r.prog;
@@ -155,7 +126,7 @@ export async function GET(req: NextRequest) {
     for (const o of list.filter((x) => x.type === "OFFSITE")) {
       const h = toNum(o.offsite_hours, 0);
       offH += h;
-      const r = getRate(user_id, o.site_id || null);
+      const r = engine.getRate(user_id, o.site_id || null, day);
       offPay += h * r.hourly;
     }
     hours += offH;
@@ -166,7 +137,7 @@ export async function GET(req: NextRequest) {
     for (const o of list.filter((x) => x.type === "OUT")) {
       const k = toNum(o.km, 0);
       km += k;
-      const r = getRate(user_id, o.site_id || null);
+      const r = engine.getRate(user_id, o.site_id || null, day);
       kmPay += k * r.km;
     }
 
@@ -176,7 +147,7 @@ export async function GET(req: NextRequest) {
 
     rows.push({
       user_id,
-      user_name: def.name,
+      user_name: userName,
       day,
       sites: Array.from(sitesUsed),
       work_notes: workNotes,

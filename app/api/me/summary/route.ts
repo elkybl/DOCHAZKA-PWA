@@ -2,14 +2,16 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
-import { ceilMinutesTo30 } from "@/lib/time";
+import { dayLocalCZFromIso, ceilMinutesTo30 } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
 import {
   applyPaymentAmount,
+  bucketForGroupedFallback,
   bucketFromPaidFlag,
   emptyPaymentAllocation,
   finalizePaymentAllocation,
 } from "@/lib/payment-state";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 const TZ = "Europe/Prague";
 
@@ -81,15 +83,6 @@ type Ev = {
   is_paid: boolean;
 };
 
-function hasOpenShift(events: Ev[]) {
-  let balance = 0;
-  for (const event of events) {
-    if (event.type === "IN") balance += 1;
-    if (event.type === "OUT" && balance > 0) balance -= 1;
-  }
-  return balance > 0;
-}
-
 export async function GET(req: NextRequest) {
   const token = getBearer(req);
   const session = token ? await verifySession(token) : null;
@@ -114,33 +107,9 @@ export async function GET(req: NextRequest) {
     .single();
   if (meErr || !me) return json({ error: "Uživatel nenalezen." }, { status: 404 });
 
-  const defaultHourly = toNum((me as any).hourly_rate, 0);
-  const defaultKm = toNum((me as any).km_rate, 0);
   const isProg = (me as any).is_programmer === true;
-  const defaultProg = toNum((me as any).programming_rate, defaultHourly);
-
-  const { data: usrSiteRates } = await db
-    .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate,programming_rate")
-    .eq("user_id", userId);
-
-  const rateMap = new Map<string, { hourly: number; km: number; prog: number }>();
-  for (const r of usrSiteRates || []) {
-    const hourly = toNum((r as any).hourly_rate, 0);
-    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly,
-      km: toNum((r as any).km_rate, 0),
-      prog: toNum((r as any).programming_rate, hourly || defaultProg),
-    });
-  }
-
-  const getRate = (site_id: string | null) => {
-    if (site_id) {
-      const r = rateMap.get(`${userId}__${site_id}`);
-      if (r) return { ...r, source: "site" as const };
-    }
-    return { hourly: defaultHourly, km: defaultKm, prog: defaultProg, source: "default" as const };
-  };
+  const engine = await loadEffectiveRateEngine(db, { userIds: [userId] });
+  const getRate = (site_id: string | null, dayInput?: string | null) => engine.getRate(userId, site_id, dayInput);
 
   const { data: sites } = await db.from("sites").select("id,name");
   const siteName = new Map<string, string>();
@@ -158,6 +127,21 @@ export async function GET(req: NextRequest) {
 
   if (evErr) return json({ error: "DB chyba (events)." }, { status: 500 });
   const events = (evs || []) as Ev[];
+
+  const { data: trips, error: tErr } = await db
+    .from("trips")
+    .select("id,start_time,distance_km,distance_km_user")
+    .eq("user_id", userId)
+    .gte("start_time", fromIso)
+    .lte("start_time", toIso);
+
+  if (tErr) return json({ error: "DB chyba (trips)." }, { status: 500 });
+
+  const tripKmByDay = new Map<string, number>();
+  for (const t of (trips || []) as any[]) {
+    const day = dayLocalCZFromIso(t.start_time);
+    tripKmByDay.set(day, (tripKmByDay.get(day) || 0) + toNum((t as any).distance_km_user ?? (t as any).distance_km, 0));
+  }
 
   const byDay = new Map<string, Ev[]>();
   for (const e of events) {
@@ -218,7 +202,7 @@ export async function GET(req: NextRequest) {
         const outTimeRounded = new Date(lastIn.t.getTime() + minutesRounded * 60000);
 
         const sid = (lastIn.site_id || e.site_id) as string | null;
-        const r = getRate(sid);
+        const r = getRate(sid, day);
 
         // programování je jen pro programátory a zapisuje se na OUT eventu jako počet hodin v rámci směny
         const progH = isProg ? Math.max(0, Math.min(hours, toNum((e as any).programming_hours, 0))) : 0;
@@ -276,7 +260,7 @@ export async function GET(req: NextRequest) {
     for (const e of list.filter((x) => x.type === "OFFSITE")) {
       const h = toNum(e.offsite_hours, 0);
       if (h <= 0) continue;
-      const r = getRate(e.site_id || null);
+      const r = getRate(e.site_id || null, day);
       const offPay = round2(h * r.hourly);
       const offPaid = !!e.is_paid;
       offsites.push({
@@ -301,8 +285,7 @@ export async function GET(req: NextRequest) {
     const hours = round2(workHours + offHours);
     const hoursPay = round2(workPay + offPay);
 
-    // Kilometry v /me držíme ve stejné logice jako export a výplaty:
-    // počítají se jen z ručně zadaných kilometrů na OUT eventech.
+    // km override: if user entered km in OUT, prefer that. Otherwise use trips.
     let kmManual = 0;
     let kmManualPay = 0;
     let kmManualAny = false;
@@ -312,7 +295,7 @@ export async function GET(req: NextRequest) {
       if (k <= 0) continue;
       kmManualAny = true;
       kmManual += k;
-      const r = getRate(o.site_id || null);
+      const r = getRate(o.site_id || null, day);
       kmManualPay += k * r.km;
     }
 
@@ -323,12 +306,22 @@ export async function GET(req: NextRequest) {
     for (const o of list.filter((x) => x.type === "OUT")) {
       const k = toNum(o.km, 0);
       if (k <= 0) continue;
-      const r = getRate(o.site_id || null);
+      const r = getRate(o.site_id || null, day);
       const pay = round2(k * r.km);
       payment = applyPaymentAmount(payment, pay, bucketFromPaidFlag(!!o.is_paid));
     }
 
-    if (!kmManualAny) km_source = "none";
+    if (!kmManualAny) {
+      const tripKm = toNum(tripKmByDay.get(day), 0);
+      if (tripKm > 0) {
+        km_source = "trips";
+        km = round1(tripKm);
+        kmPay = round2(tripKm * getRate(null, day).km);
+
+        const bucket = bucketForGroupedFallback(list);
+        if (bucket) payment = applyPaymentAmount(payment, kmPay, bucket);
+      }
+    }
 
     const materialNotes: string[] = [];
     let material = 0;
@@ -343,15 +336,7 @@ export async function GET(req: NextRequest) {
     }
     material = round2(material);
 
-    const isOpenDay = hasOpenShift(list);
     payment = finalizePaymentAllocation(payment);
-    if (isOpenDay && payment.paid_total <= 0 && payment.unpaid_total <= 0 && payment.unknown_total <= 0) {
-      payment = {
-        ...payment,
-        payment_state: "unpaid",
-        paid: false,
-      };
-    }
 
     const total = round2(hoursPay + kmPay + material);
 
@@ -369,7 +354,6 @@ export async function GET(req: NextRequest) {
       paid_total: payment.paid_total,
       unpaid_total: payment.unpaid_total,
       unknown_total: payment.unknown_total,
-      is_open_day: isOpenDay,
 
       first_in: firstInRounded,
       last_out: lastOutRounded,

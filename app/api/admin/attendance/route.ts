@@ -4,6 +4,7 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { toDate } from "@/lib/time";
 import { compareAttendanceEventsAsc } from "@/lib/attendance-order";
+import { loadEffectiveRateEngine } from "@/lib/effective-rates";
 
 type Ev = {
   user_id: string;
@@ -59,45 +60,13 @@ export async function GET(req: NextRequest) {
   const db = supabaseAdmin();
 
   // users (default sazby)
-  const { data: users, error: uErr } = await db
-    .from("users")
-    .select("id,name,role,hourly_rate,km_rate")
-    .order("name", { ascending: true });
+  const { data: users, error: uErr } = await db.from("users").select("id,name,role").order("name", { ascending: true });
 
   if (uErr) return json({ error: "DB chyba (users)." }, { status: 500 });
 
-  const defaultByUser = new Map<string, { name: string; hourly: number; km: number }>();
-  for (const u of users || []) {
-    defaultByUser.set((u as any).id, {
-      name: (u as any).name,
-      hourly: toNum((u as any).hourly_rate, 0),
-      km: toNum((u as any).km_rate, 0),
-    });
-  }
-
-  // sazby per user+site
-  const { data: usrSiteRates, error: rErr } = await db
-    .from("user_site_rates")
-    .select("user_id,site_id,hourly_rate,km_rate");
-
-  if (rErr) return json({ error: "DB chyba (rates)." }, { status: 500 });
-
-  const rateMap = new Map<string, { hourly: number; km: number }>();
-  for (const r of usrSiteRates || []) {
-    rateMap.set(`${(r as any).user_id}__${(r as any).site_id}`, {
-      hourly: toNum((r as any).hourly_rate, 0),
-      km: toNum((r as any).km_rate, 0),
-    });
-  }
-
-  const getRate = (user_id: string, site_id: string | null) => {
-    if (site_id) {
-      const r = rateMap.get(`${user_id}__${site_id}`);
-      if (r) return { ...r, source: "site" as const };
-    }
-    const def = defaultByUser.get(user_id);
-    return { hourly: def?.hourly ?? 0, km: def?.km ?? 0, source: "default" as const };
-  };
+  const userNameById = new Map<string, string>();
+  for (const u of users || []) userNameById.set(String((u as any).id), String((u as any).name || ""));
+  const engine = await loadEffectiveRateEngine(db, { userIds: Array.from(userNameById.keys()) });
 
   // sites map (kvůli názvu)
   const { data: sites, error: sErr } = await db.from("sites").select("id,name");
@@ -132,8 +101,8 @@ export async function GET(req: NextRequest) {
 
   for (const [key, listRaw] of byUserDay.entries()) {
     const [user_id, day] = key.split("__");
-    const def = defaultByUser.get(user_id);
-    if (!def) continue;
+    const userName = userNameById.get(user_id);
+    if (!userName) continue;
 
     const list = [...listRaw].sort(compareAttendanceEventsAsc);
 
@@ -178,7 +147,7 @@ export async function GET(req: NextRequest) {
         const minutes = Math.max(0, Math.round((out.getTime() - lastIn.t.getTime()) / 60000));
         const hours = minutes / 60;
 
-        const r = getRate(user_id, lastIn.site_id || e.site_id || null);
+        const r = engine.getRate(user_id, lastIn.site_id || e.site_id || null, day);
         const pay = hours * r.hourly;
 
         segments.push({
@@ -215,7 +184,7 @@ export async function GET(req: NextRequest) {
     for (const e of list.filter((x) => x.type === "OFFSITE")) {
       const h = toNum(e.offsite_hours, 0);
       if (h <= 0) continue;
-      const r = getRate(user_id, e.site_id || null);
+      const r = engine.getRate(user_id, e.site_id || null, day);
       offsites.push({
         kind: "OFFSITE",
         site_id: e.site_id || null,
@@ -245,7 +214,7 @@ export async function GET(req: NextRequest) {
       const k = toNum(o.km, 0);
       if (k <= 0) continue;
       km += k;
-      const r = getRate(user_id, o.site_id || null);
+      const r = engine.getRate(user_id, o.site_id || null, day);
       kmPay += k * r.km;
     }
     km = round1(km);
@@ -266,7 +235,7 @@ export async function GET(req: NextRequest) {
 
     rows.push({
       user_id,
-      user_name: def.name,
+      user_name: userName,
       day,
 
       first_in: firstIn,

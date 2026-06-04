@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { buildDayReviewKey, listLatestUserDayReviews } from "@/lib/day-reviews";
 
 export async function GET(req: NextRequest) {
   const token = getBearer(req);
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
   const daysUsed = Array.from(new Set(allRows.map((row) => row.day_local))).sort();
   const fromDay = daysUsed[0];
   const toDay = daysUsed[daysUsed.length - 1];
+
   let locks: Array<{ from_day: string; to_day: string }> = [];
   if (fromDay && toDay) {
     const { data: lockRows } = await db
@@ -72,13 +74,19 @@ export async function GET(req: NextRequest) {
     locks = (lockRows as Array<{ from_day: string; to_day: string }>) || [];
   }
 
+  const reviews = fromDay && toDay ? await listLatestUserDayReviews(db, { userId: session.userId, fromDay, toDay }) : new Map();
+
   let rows = allRows.map((row) => {
     const day = row.day_local;
     const lock = locks.find((item) => item.from_day <= day && item.to_day >= day);
+    const review = reviews.get(buildDayReviewKey(session.userId, row.day_local, row.site_id));
     return {
       ...row,
       is_locked: !!lock,
       lock_range: lock ? `${lock.from_day} – ${lock.to_day}` : null,
+      review_status: review?.status || null,
+      review_note: review?.note || null,
+      approved_at: review?.approved_at || null,
     };
   });
 

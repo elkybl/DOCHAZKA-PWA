@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 function toNum(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -75,6 +76,15 @@ export async function POST(req: NextRequest) {
   if (!Number.isFinite(km) || km < 0) return json({ error: "Kilometry nejsou platné." }, { status: 400 });
 
   const db = supabaseAdmin();
+  const approvedReview = await findApprovedDayReview(db, {
+    userId: session.userId,
+    day: day_local,
+    siteId: site_id,
+  });
+  if (approvedReview) {
+    return json({ error: approvedDayEditMessage(day_local) }, { status: 409 });
+  }
+
   const in_time = pragueLocalToUtcIso(day_local, time_from);
   const out_time = pragueLocalToUtcIso(day_local, time_to);
   const noteFinal = (note_work || "Ruční doplnění dne").slice(0, 2000);
@@ -112,4 +122,3 @@ export async function POST(req: NextRequest) {
 
   return json({ ok: true });
 }
-

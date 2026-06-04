@@ -4,6 +4,8 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZNow } from "@/lib/time";
 import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
+import { getLatestOpenShift } from "@/lib/open-shift";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -40,23 +42,26 @@ export async function POST(req: NextRequest) {
   }
 
   const db = supabaseAdmin();
-  const { data: last, error: lastErr } = await db
-    .from("attendance_events")
-    .select("type,server_time,site_id")
-    .eq("user_id", session.userId)
-    .order("server_time", { ascending: false })
-    .limit(1);
+  const approvedReview = await findApprovedDayReview(db, {
+    userId: session.userId,
+    day: today,
+    siteId: site_id,
+  });
+  if (approvedReview) {
+    return json({ error: approvedDayEditMessage(today) }, { status: 409 });
+  }
 
-  if (lastErr) return json({ error: "DB chyba." }, { status: 500 });
-  if (last && last[0] && last[0].type === "IN") {
+  let openShift: { server_time: string; site_id: string | null; day_local: string | null } | null = null;
+  try {
+    openShift = await getLatestOpenShift(db, session.userId);
+  } catch (error: unknown) {
+    return json({ error: error instanceof Error ? error.message : "DB chyba." }, { status: 500 });
+  }
+  if (openShift) {
     return json({ error: "Už máte otevřený příchod. Nejdřív ukončete aktivní den." }, { status: 409 });
   }
 
-  const { data: site, error: sErr } = await db
-    .from("sites")
-    .select("id,lat,lng,radius_m")
-    .eq("id", site_id)
-    .single();
+  const { data: site, error: sErr } = await db.from("sites").select("id,lat,lng,radius_m").eq("id", site_id).single();
   if (sErr || !site) return json({ error: "Stavba nenalezena." }, { status: 404 });
 
   const distance_m = Math.round(
@@ -67,15 +72,7 @@ export async function POST(req: NextRequest) {
     return json({ error: `Jste mimo radius stavby (${distance_m} m > ${radius_m} m).` }, { status: 403 });
   }
 
-  let now = new Date();
-  if (last?.[0]?.server_time) {
-    const lastTime = new Date(String(last[0].server_time));
-    if (!Number.isNaN(lastTime.getTime()) && now.getTime() <= lastTime.getTime()) {
-      now = new Date(lastTime.getTime() + 1000);
-    }
-  }
-
-  const nowIso = now.toISOString();
+  const nowIso = new Date().toISOString();
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,
     site_id,
@@ -89,6 +86,5 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) return json({ error: `Nešlo uložit příchod: ${error.message}` }, { status: 500 });
-  return json({ ok: true, distance_m });
+  return json({ ok: true, distance_m, server_time: nowIso });
 }
-

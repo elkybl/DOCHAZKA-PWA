@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 const schema = z.object({
   id: z.string().uuid(),
@@ -30,7 +31,7 @@ export async function PATCH(req: NextRequest) {
 
   const { data: row, error: rowErr } = await db
     .from("attendance_events")
-    .select("id,user_id,type,is_paid,day_local")
+    .select("id,user_id,site_id,type,is_paid,day_local")
     .eq("id", parsed.data.id)
     .single();
 
@@ -39,6 +40,15 @@ export async function PATCH(req: NextRequest) {
   if (row.is_paid) return json({ error: "Už zaplaceno – nelze upravit." }, { status: 409 });
 
   if (row.day_local) {
+    const approvedReview = await findApprovedDayReview(db, {
+      userId: session.userId,
+      day: String(row.day_local),
+      siteId: row.site_id ? String(row.site_id) : null,
+    });
+    if (approvedReview) {
+      return json({ error: approvedDayEditMessage(String(row.day_local)) }, { status: 409 });
+    }
+
     const locked = await findLockForDay(String(row.day_local));
     if (locked) {
       return json(
@@ -81,4 +91,3 @@ export async function PATCH(req: NextRequest) {
 
   return json({ ok: true });
 }
-

@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { parseReportedLeftAtCZ, roundToHalfHourCZ } from "@/lib/time";
+import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 function clampOutTime(out: Date, inTimeIso: string) {
   const now = new Date();
@@ -44,6 +46,25 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (action !== "APPROVE") return json({ error: "Neplatná akce." }, { status: 400 });
   if (!src) return json({ error: "Chybí čas odchodu (např. 16:50)." }, { status: 400 });
 
+  const dayLocal = String(reqRow.day_local || reqRow.in_time?.slice(0, 10) || "");
+  if (dayLocal) {
+    const approvedReview = await findApprovedDayReview(db, {
+      userId: String(reqRow.user_id),
+      day: dayLocal,
+      siteId: reqRow.site_id ? String(reqRow.site_id) : null,
+    });
+    if (approvedReview) {
+      return json({ error: approvedDayEditMessage(dayLocal, "admin") }, { status: 409 });
+    }
+    const locked = await findLockForDay(dayLocal);
+    if (locked) {
+      return json(
+        { error: `Den ${dayLocal} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
+  }
+
   // 1) parse reported_left_at (CZ) -> Date | null
   let outTime = parseReportedLeftAtCZ(src, reqRow.in_time);
   if (!outTime) return json({ error: "Neplatný čas. Použij např. 16:50." }, { status: 400 });
@@ -60,7 +81,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     site_id: reqRow.site_id,
     type: "OUT",
     server_time: outTime.toISOString(),
-    day_local: reqRow.day_local || null,
+    day_local: reqRow.day_local || dayLocal || null,
     note_work: reqRow.note_work || null,
     km: reqRow.km ?? null,
     material_desc: reqRow.material_desc || null,

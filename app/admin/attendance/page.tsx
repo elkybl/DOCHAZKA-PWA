@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppNav";
 import { fmtTimeCZFromIso } from "@/lib/time";
 
@@ -12,24 +12,6 @@ type Row = {
   sourceKind: "WORK" | "PROGRAM" | "OFFSITE";
   sourceId: string | null;
   sourceIds?: string[];
-  first_in_event_id?: string | null;
-  last_out_event_id?: string | null;
-  raw_events?: Array<{
-    id: string;
-    type: "IN" | "OUT" | "OFFSITE";
-    label: string;
-    server_time: string;
-    site_id: string | null;
-    site_name: string | null;
-    note: string;
-  }>;
-  raw_summary?: {
-    in_count: number;
-    out_count: number;
-    consecutive_in_count: number;
-    unmatched_out_count: number;
-    has_open_in: boolean;
-  };
   user_id: string;
   user_name: string;
   site_id: string | null;
@@ -55,8 +37,6 @@ type EditState = {
   km: string;
   material: string;
   hours: string;
-  first_in: string;
-  last_out: string;
 };
 
 type Group = {
@@ -118,26 +98,6 @@ function numInput(value: string) {
   return trimmed === "" ? null : Number(trimmed.replace(",", "."));
 }
 
-function isoToTimeInput(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Europe/Prague",
-  }).format(date);
-}
-
-function buildLocalIso(day: string, time: string) {
-  if (!day || !time) return null;
-  const [year, month, date] = day.split("-").map(Number);
-  const [hours, minutes] = time.split(":").map(Number);
-  if (![year, month, date, hours, minutes].every(Number.isFinite)) return null;
-  return new Date(year, month - 1, date, hours, minutes, 0, 0).toISOString();
-}
-
 function sourceLabel(kind: Row["sourceKind"]) {
   if (kind === "WORK") return "Práce";
   if (kind === "PROGRAM") return "Programování";
@@ -170,7 +130,7 @@ function actionLabel(action: string) {
 }
 
 function buildGroupKey(row: Row) {
-  return `${row.day}__${row.user_id}__${row.site_id || ""}`;
+  return `${row.day}__${row.user_id}__${row.site_id || "none"}`;
 }
 
 function groupRows(rows: Row[]) {
@@ -219,42 +179,8 @@ function groupFlags(group: Group) {
   return { hasMissingNote, hasMissingSite, hasZeroRow, hasOpenDay };
 }
 
-function compareRawEventsAsc(
-  a: NonNullable<Row["raw_events"]>[number],
-  b: NonNullable<Row["raw_events"]>[number],
-) {
-  return new Date(a.server_time).getTime() - new Date(b.server_time).getTime();
-}
-
-function buildRawDaySummary(events: NonNullable<Row["raw_events"]>) {
-  let lastIn: { id: string } | null = null;
-  let consecutiveInCount = 0;
-  let unmatchedOutCount = 0;
-
-  for (const event of events) {
-    if (event.type === "IN") {
-      if (lastIn) consecutiveInCount += 1;
-      lastIn = { id: event.id };
-      continue;
-    }
-    if (event.type === "OUT") {
-      if (lastIn) lastIn = null;
-      else unmatchedOutCount += 1;
-    }
-  }
-
-  return {
-    in_count: events.filter((event) => event.type === "IN").length,
-    out_count: events.filter((event) => event.type === "OUT").length,
-    consecutive_in_count: consecutiveInCount,
-    unmatched_out_count: unmatchedOutCount,
-    has_open_in: !!lastIn,
-  };
-}
-
-function AdminAttendancePageInner() {
+export default function AdminAttendancePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const me = useMemo(() => getMe(), []);
   const [sites, setSites] = useState<Site[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -270,7 +196,7 @@ function AdminAttendancePageInner() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "", first_in: "", last_out: "" });
+  const [edit, setEdit] = useState<EditState>({ site_id: "", note: "", km: "", material: "", hours: "" });
   const editNoteRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -293,18 +219,16 @@ function AdminAttendancePageInner() {
       .catch(() => setUsers([]));
   }, [router, me]);
 
-  async function load(options?: { focusedDay?: string; siteId?: string; userId?: string; clearDates?: boolean }) {
+  async function load(options?: { focusedDay?: string; clearDates?: boolean }) {
     setErr(null);
     setInfo(null);
     const t = getToken();
     if (!t) return;
     const qs = new URLSearchParams();
     const day = options?.focusedDay ?? focusedDay;
-    const siteFilter = options?.siteId ?? siteId;
-    const userFilter = options?.userId ?? userId;
     if (day) qs.set("day", day);
-    if (siteFilter) qs.set("site_id", siteFilter);
-    if (userFilter) qs.set("user_id", userFilter);
+    if (siteId) qs.set("site_id", siteId);
+    if (userId) qs.set("user_id", userId);
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/attendance-summary?${qs.toString()}`, { headers: { authorization: `Bearer ${t}` } });
@@ -328,8 +252,6 @@ function AdminAttendancePageInner() {
       km: String(r.km || ""),
       material: String(r.material || ""),
       hours: String(r.hours || ""),
-      first_in: isoToTimeInput(r.first_in),
-      last_out: isoToTimeInput(r.last_out),
     });
     setErr(null);
     setInfo(null);
@@ -339,19 +261,6 @@ function AdminAttendancePageInner() {
       editNoteRef.current?.focus();
     }, 80);
   }
-
-  useEffect(() => {
-    const nextDay = searchParams.get("day") || "";
-    const nextSiteId = searchParams.get("site_id") || "";
-    const nextUserId = searchParams.get("user_id") || "";
-    setFocusedDay(nextDay);
-    setSiteId(nextSiteId);
-    setUserId(nextUserId);
-    if (getToken() && me?.role === "admin") {
-      load({ focusedDay: nextDay, siteId: nextSiteId, userId: nextUserId });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, me?.role]);
 
   async function patchEvent(id: string, payload: Record<string, unknown>) {
     const t = getToken();
@@ -415,14 +324,6 @@ function AdminAttendancePageInner() {
             material_amount: numInput(edit.material),
           });
         }
-        const inIso = buildLocalIso(r.day, edit.first_in);
-        const outIso = buildLocalIso(r.day, edit.last_out);
-        if (r.first_in_event_id && inIso) {
-          await patchEvent(r.first_in_event_id, { server_time: inIso });
-        }
-        if (r.last_out_event_id && outIso) {
-          await patchEvent(r.last_out_event_id, { server_time: outIso });
-        }
       } else if (r.sourceKind === "PROGRAM" && r.sourceId) {
         await patchEvent(r.sourceId, {
           ...sitePayload,
@@ -474,29 +375,35 @@ function AdminAttendancePageInner() {
     }
   }
 
-  async function deleteRawEvent(eventId: string) {
+  async function deleteDay(group: Group) {
     const t = getToken();
     if (!t) return;
-    const ok = window.confirm("Opravdu smazat tuhle konkrétní událost?");
+    const ok = window.confirm(`Opravdu smazat celý den ${group.day} pro ${group.user_name}? Tato akce smaže všechny řádky dne.`);
     if (!ok) return;
     setErr(null);
     setInfo(null);
-    setBusyId(eventId);
+    setBusyId(group.key);
     try {
-      const res = await fetch(`/api/admin/events/${eventId}`, {
-        method: "DELETE",
-        headers: { authorization: `Bearer ${t}` },
+      const res = await fetch('/api/admin/attendance/delete-day', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` },
+        body: JSON.stringify({ user_id: group.user_id, day: group.day }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Nešlo smazat událost.");
-      setInfo("Událost byla smazaná.");
+      if (!res.ok) throw new Error(data?.error || 'Nešlo smazat celý den.');
+      setInfo('Celý den byl smazán.');
       await load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Nešlo smazat událost.");
+      setErr(e instanceof Error ? e.message : 'Nešlo smazat celý den.');
     } finally {
       setBusyId(null);
     }
   }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const groups = useMemo(() => {
     const grouped = groupRows(rows);
@@ -519,38 +426,19 @@ function AdminAttendancePageInner() {
     for (const review of reviews) map.set(review.key, review);
     return map;
   }, [reviews]);
-  const rawDayMap = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        events: NonNullable<Row["raw_events"]>;
-        summary: ReturnType<typeof buildRawDaySummary>;
-      }
-    >();
-    const grouped = new Map<string, NonNullable<Row["raw_events"]>>();
-
-    for (const row of rows) {
-      if (row.sourceKind !== "WORK" || !row.raw_events?.length) continue;
-      const key = `${row.day}__${row.user_id}`;
-      const current = grouped.get(key) || [];
-      grouped.set(key, [...current, ...row.raw_events]);
-    }
-
-    for (const [key, events] of grouped.entries()) {
-      const unique = [...new Map(events.map((event) => [event.id, event])).values()].sort(compareRawEventsAsc);
-      map.set(key, {
-        events: unique,
-        summary: buildRawDaySummary(unique),
-      });
-    }
-
-    return map;
-  }, [rows]);
   const auditMap = useMemo(() => {
     const map = new Map<string, AuditLog[]>();
     for (const entry of audit) map.set(entry.key, [...(map.get(entry.key) || []), entry]);
     return map;
   }, [audit]);
+  const attentionGroups = useMemo(
+    () => groups.filter((group) => {
+      const flags = groupFlags(group);
+      return flags.hasMissingNote || flags.hasMissingSite || flags.hasZeroRow || flags.hasOpenDay;
+    }).length,
+    [groups],
+  );
+  const paidGroups = useMemo(() => groups.filter((group) => group.paid).length, [groups]);
 
   return (
     <AppShell
@@ -601,16 +489,25 @@ function AdminAttendancePageInner() {
             {info && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{info}</div>}
           </div>
         )}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+            Zobrazené dny: <span className="font-semibold text-slate-950">{groups.length}</span>
+          </span>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+            Vyžaduje pozornost: <span className="font-semibold">{attentionGroups}</span>
+          </span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+            Uhrazené dny: <span className="font-semibold">{paidGroups}</span>
+          </span>
+        </div>
       </section>
 
       <section className="mt-4 space-y-4">
-        {groups.map((group, index) => {
+        {groups.map((group) => {
           const flags = groupFlags(group);
           const review = reviewMap.get(group.key);
+          const reviewLocked = review?.status === "approved";
           const auditItems = auditMap.get(group.key) || [];
-          const rawDayKey = `${group.day}__${group.user_id}`;
-          const rawDay = rawDayMap.get(rawDayKey);
-          const showRawDaySection = groups.findIndex((candidate) => `${candidate.day}__${candidate.user_id}` === rawDayKey) === index;
           return (
             <div key={group.key} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -663,6 +560,9 @@ function AdminAttendancePageInner() {
                         Zpět na čeká
                       </button>
                     ) : null}
+                    <button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50" disabled={busyId === group.key || group.paid || reviewLocked} onClick={() => deleteDay(group)}>
+                      {busyId === group.key ? 'Mažu den' : 'Smazat celý den'}
+                    </button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -673,46 +573,6 @@ function AdminAttendancePageInner() {
                   ))}
                 </div>
                 {review?.note ? <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">{review.note}</div> : null}
-                {showRawDaySection && rawDay?.events.length ? (
-                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Syrové události dne</div>
-                        <div className="mt-1 text-xs text-slate-500">Tady uvidíte jednotlivé příchody a odchody za celý den uživatele, i když se přepínaly stavby. Odtud jde opravit den se dvěma příchody za sebou.</div>
-                      </div>
-                      {(() => {
-                        const rawSummary = rawDay!.summary;
-                        const rawFlags: string[] = [];
-                        if (rawSummary.consecutive_in_count > 0) rawFlags.push(`${rawSummary.consecutive_in_count}× příchod navíc`);
-                        if (rawSummary.unmatched_out_count > 0) rawFlags.push(`${rawSummary.unmatched_out_count}× odchod bez příchodu`);
-                        if (rawSummary.has_open_in) rawFlags.push("otevřený příchod bez odchodu");
-                        if (!rawFlags.length) return null;
-                        return <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">{rawFlags.join(" · ")}</div>;
-                      })()}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {rawDay!.events.map((event) => (
-                          <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${event.type === "IN" ? "bg-blue-50 text-blue-800" : event.type === "OUT" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                                {event.label}
-                              </span>
-                              <span className="font-semibold text-slate-900">{fmtTimeCZFromIso(event.server_time)}</span>
-                              <span className="text-xs text-slate-500">{event.site_name || "Bez stavby"}</span>
-                              {event.note ? <span className="text-xs text-slate-600">{event.note}</span> : null}
-                            </div>
-                            <button
-                              className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                              disabled={busyId === event.id}
-                              onClick={() => deleteRawEvent(event.id)}
-                            >
-                              {busyId === event.id ? "Mažu" : "Smazat událost"}
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ) : null}
                 {auditItems.length ? (
                   <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Audit změn</div>
@@ -731,7 +591,7 @@ function AdminAttendancePageInner() {
               <div className="mt-4 space-y-3">
                 {group.rows.map((r) => {
                   const isEditing = editingId === r.id;
-                  const locked = r.paid;
+                  const locked = r.paid || reviewLocked;
                   return (
                     <div key={r.id} className="rounded-lg border border-slate-200 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -761,20 +621,14 @@ function AdminAttendancePageInner() {
                       {isEditing ? (
                         <div id={`edit-row-${r.id}`} className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
                           {locked ? (
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Tento řádek je uhrazený. Pokud ho potřebujete upravit, nejdřív ho vraťte ve výplatách mezi neuhrazené.</div>
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                              {reviewLocked
+                                ? "Tenhle den je schválený. Nejprve ho vraťte k doplnění a teprve potom upravujte záznamy."
+                                : "Tento řádek je uhrazený. Pokud ho potřebujete upravit, nejdřív ho vraťte ve výplatách mezi neuhrazené."}
+                            </div>
                           ) : (
                             <>
                               <div className="grid gap-3 md:grid-cols-2">
-                                {r.sourceKind === "WORK" ? (
-                                  <>
-                                    <Field label="Příchod">
-                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.first_in} onChange={(e) => setEdit((p) => ({ ...p, first_in: e.target.value }))} />
-                                    </Field>
-                                    <Field label="Odchod">
-                                      <input className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" type="time" value={edit.last_out} onChange={(e) => setEdit((p) => ({ ...p, last_out: e.target.value }))} />
-                                    </Field>
-                                  </>
-                                ) : null}
                                 <Field label="Stavba">
                                   <select className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" value={edit.site_id} onChange={(e) => setEdit((p) => ({ ...p, site_id: e.target.value }))}>
                                     <option value="">Bez stavby</option>
@@ -862,18 +716,3 @@ function FlagBadge({ text, tone }: { text: string; tone: "amber" | "red" | "blue
   return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${cls}`}>{text}</span>;
 }
 
-export default function AdminAttendancePage() {
-  return (
-    <Suspense
-      fallback={
-        <AppShell area="mixed" title="Docházka" subtitle="Načítám detail dnů a kontrolu docházky.">
-          <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
-            Načítám administraci docházky…
-          </section>
-        </AppShell>
-      }
-    >
-      <AdminAttendancePageInner />
-    </Suspense>
-  );
-}

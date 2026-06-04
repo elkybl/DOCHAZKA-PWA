@@ -482,7 +482,7 @@ export default function AttendancePage() {
       }
       setOutErr(null);
       if (closeMode === "manual") {
-        void doOut(true);
+        await doOut(true);
         return;
       }
       const currentPos = pos || (await getPosition().catch(() => null));
@@ -495,7 +495,7 @@ export default function AttendancePage() {
         return;
       }
       setPos(currentPos);
-      void doOut(false);
+      await doOut(false);
       return;
     }
 
@@ -750,7 +750,7 @@ export default function AttendancePage() {
 
       setBusy(true);
 
-      const currentPos = forceWithoutLocation ? null : pos || (await getPosition().catch(() => null));
+      const currentPos = pos || (await getPosition().catch(() => null));
       if (currentPos) setPos(currentPos);
 
       let siteId: string | null = manualSiteId || activeSiteId || null;
@@ -794,10 +794,7 @@ export default function AttendancePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Nepodařilo se uložit odchod.");
 
-      setPresent(false);
-      setActiveSiteId(null);
-      setActiveSiteName(null);
-      setActiveInTime(null);
+      await load();
       setSplitRows([makeSplitRow()]);
       setInfo(forceWithoutLocation ? "Docházka ukončena bez polohy." : "Docházka ukončena.");
       setKm("");
@@ -808,7 +805,10 @@ export default function AttendancePage() {
       setProgNote("");
       setManualOutTime("");
     } catch (error: unknown) {
-      setErr(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErr(message);
+      setOutErr(message);
+      endCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } finally {
       setBusy(false);
     }

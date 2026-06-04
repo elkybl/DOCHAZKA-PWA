@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
+import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -15,22 +17,11 @@ async function getEventForAdmin(id: string) {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("attendance_events")
-    .select("id,is_paid,user_id,day_local,type,server_time")
+    .select("id,is_paid,user_id,site_id,day_local,type,server_time")
     .eq("id", id)
     .single();
   if (error || !data) return { error: json({ error: "Záznam nenalezen." }, { status: 404 }) };
   return { db, row: data };
-}
-
-function dayKeyPrague(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Prague",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
 }
 
 function buildPatch(body: Record<string, unknown>) {
@@ -44,14 +35,6 @@ function buildPatch(body: Record<string, unknown>) {
   if (body.offsite_hours !== undefined) patch.offsite_hours = body.offsite_hours === null ? null : Number(body.offsite_hours) || 0;
   if (body.programming_hours !== undefined) patch.programming_hours = body.programming_hours === null ? null : Number(body.programming_hours) || 0;
   if (typeof body.programming_note === "string") patch.programming_note = body.programming_note.trim();
-  if (typeof body.server_time === "string" && body.server_time.trim()) {
-    const iso = new Date(body.server_time);
-    if (!Number.isNaN(iso.getTime())) {
-      patch.server_time = iso.toISOString();
-      const dayLocal = dayKeyPrague(iso.toISOString());
-      if (dayLocal) patch.day_local = dayLocal;
-    }
-  }
   return patch;
 }
 
@@ -66,6 +49,24 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if ("error" in found) return found.error;
   if (found.row.is_paid) {
     return json({ error: "Uhrazený záznam je zamčený. Nejprve ho vraťte ve výplatách mezi neuhrazené." }, { status: 409 });
+  }
+  if (found.row.day_local) {
+    const approvedReview = await findApprovedDayReview(found.db, {
+      userId: String(found.row.user_id),
+      day: String(found.row.day_local),
+      siteId: found.row.site_id ? String(found.row.site_id) : null,
+    });
+    if (approvedReview) {
+      return json({ error: approvedDayEditMessage(String(found.row.day_local), "admin") }, { status: 409 });
+    }
+
+    const locked = await findLockForDay(String(found.row.day_local));
+    if (locked) {
+      return json(
+        { error: `Den ${found.row.day_local} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
   }
 
   const { error } = await found.db.from("attendance_events").delete().eq("id", id);
@@ -95,6 +96,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if ("error" in found) return found.error;
   if (found.row.is_paid) {
     return json({ error: "Uhrazený záznam je zamčený. Nejprve ho vraťte ve výplatách mezi neuhrazené." }, { status: 409 });
+  }
+  if (found.row.day_local) {
+    const approvedReview = await findApprovedDayReview(found.db, {
+      userId: String(found.row.user_id),
+      day: String(found.row.day_local),
+      siteId: found.row.site_id ? String(found.row.site_id) : null,
+    });
+    if (approvedReview) {
+      return json({ error: approvedDayEditMessage(String(found.row.day_local), "admin") }, { status: 409 });
+    }
+
+    const locked = await findLockForDay(String(found.row.day_local));
+    if (locked) {
+      return json(
+        { error: `Den ${found.row.day_local} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
   }
 
   const body = await req.json().catch(() => ({}));

@@ -4,6 +4,7 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZNow } from "@/lib/time";
 import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 export async function POST(req: NextRequest) {
   const token = getBearer(req);
@@ -38,6 +39,15 @@ export async function POST(req: NextRequest) {
 
   const server_time = dayOk ? new Date(`${dayFinal}T12:00:00.000Z`).toISOString() : new Date().toISOString();
   const db = supabaseAdmin();
+  const approvedReview = await findApprovedDayReview(db, {
+    userId: session.userId,
+    day: dayFinal,
+    siteId: site_id || null,
+  });
+  if (approvedReview) {
+    return json({ error: approvedDayEditMessage(dayFinal) }, { status: 409 });
+  }
+
   const { error } = await db.from("attendance_events").insert({
     user_id: session.userId,
     site_id: site_id || null,
@@ -53,4 +63,3 @@ export async function POST(req: NextRequest) {
   if (error) return json({ error: `Nešlo uložit práci mimo stavbu: ${error.message}` }, { status: 500 });
   return json({ ok: true });
 }
-

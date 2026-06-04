@@ -4,6 +4,8 @@ import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
 import { dayLocalCZFromIso, parseReportedLeftAtCZ } from "@/lib/time";
 import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
+import { getLatestOpenShift } from "@/lib/open-shift";
 
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -71,19 +73,16 @@ export async function POST(req: NextRequest) {
     return json({ error: "Programování smí zadávat jen programátor." }, { status: 403 });
   }
 
-  const { data: lastInRow, error: lastErr } = await db
-    .from("attendance_events")
-    .select("type,server_time,site_id")
-    .eq("user_id", session.userId)
-    .order("server_time", { ascending: false })
-    .limit(1);
-
-  if (lastErr) return json({ error: "DB chyba." }, { status: 500 });
-  if (!lastInRow || !lastInRow[0] || lastInRow[0].type !== "IN") {
+  let openShift: { server_time: string; site_id: string | null; day_local: string | null } | null = null;
+  try {
+    openShift = await getLatestOpenShift(db, session.userId);
+  } catch (error: unknown) {
+    return json({ error: error instanceof Error ? error.message : "DB chyba." }, { status: 500 });
+  }
+  if (!openShift) {
     return json({ error: "Nemáte otevřenou směnu. Nejdřív je potřeba zadat příchod." }, { status: 409 });
   }
 
-  const openShift = lastInRow[0] as { server_time: string; site_id: string | null };
   const siteId = body?.site_id ? String(body.site_id) : openShift.site_id || null;
   if (!siteId) return json({ error: "Chybí stavba." }, { status: 400 });
 
@@ -103,6 +102,15 @@ export async function POST(req: NextRequest) {
 
   const outIso = outInstant.toISOString();
   const dayLocal = dayLocalCZFromIso(outIso);
+  const approvedReview = await findApprovedDayReview(db, {
+    userId: session.userId,
+    day: dayLocal,
+    siteId,
+  });
+  if (approvedReview) {
+    return json({ error: approvedDayEditMessage(dayLocal) }, { status: 409 });
+  }
+
   const locked = await findLockForDay(dayLocal);
   if (locked) {
     return json(

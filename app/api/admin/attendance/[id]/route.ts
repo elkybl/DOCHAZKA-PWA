@@ -2,6 +2,8 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, findApprovedDayReview } from "@/lib/day-reviews";
 
 async function requireAdmin(req: NextRequest) {
   const token = getBearer(req);
@@ -33,10 +35,27 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
   }
 
   const db = supabaseAdmin();
-  const { data: row, error: rowError } = await db.from("attendance_events").select("id,is_paid,user_id,day_local").eq("id", id).single();
+  const { data: row, error: rowError } = await db.from("attendance_events").select("id,is_paid,user_id,site_id,day_local").eq("id", id).single();
   if (rowError || !row) return json({ error: "Záznam nenalezen." }, { status: 404 });
   if (row.is_paid) {
     return json({ error: "Uhrazený záznam je zamčený. Nejprve ho vraťte ve výplatách mezi neuhrazené." }, { status: 409 });
+  }
+  if (row.day_local) {
+    const approvedReview = await findApprovedDayReview(db, {
+      userId: String(row.user_id),
+      day: String(row.day_local),
+      siteId: row.site_id ? String(row.site_id) : null,
+    });
+    if (approvedReview) {
+      return json({ error: approvedDayEditMessage(String(row.day_local), "admin") }, { status: 409 });
+    }
+    const locked = await findLockForDay(String(row.day_local));
+    if (locked) {
+      return json(
+        { error: `Den ${row.day_local} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+        { status: 409 }
+      );
+    }
   }
 
   const { error } = await db.from("attendance_events").delete().eq("id", id);

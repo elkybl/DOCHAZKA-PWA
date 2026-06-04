@@ -3,6 +3,8 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getBearer, json } from "@/lib/http";
 import { verifySession } from "@/lib/auth";
+import { findLockForDay } from "@/lib/payroll-locks";
+import { approvedDayEditMessage, hasAnyApprovedDayReview } from "@/lib/day-reviews";
 
 const schema = z.object({
   user_id: z.string().min(1),
@@ -27,6 +29,17 @@ export async function POST(req: NextRequest) {
 
   const { user_id, day } = parsed.data;
   const db = supabaseAdmin();
+  const approvedReview = await hasAnyApprovedDayReview(db, { userId: user_id, day });
+  if (approvedReview) {
+    return json({ error: approvedDayEditMessage(day, "admin") }, { status: 409 });
+  }
+  const locked = await findLockForDay(day);
+  if (locked) {
+    return json(
+      { error: `Den ${day} je v uzamčeném výplatním období ${locked.from_day} – ${locked.to_day}.` },
+      { status: 409 }
+    );
+  }
 
   // 1) primárně mažeme přes day_local (nejčistší)
   const del1 = await db.from("attendance_events").delete().eq("user_id", user_id).eq("day_local", day);
